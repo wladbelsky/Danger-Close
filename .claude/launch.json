@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "danger-close", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8767"], "port": 8767 }
+  ]
+}
