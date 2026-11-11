@@ -16,13 +16,14 @@ made during its review) as one commit and push it, then start the next stage. On
 Update the status here when a stage is finished. The full approved design is summarised in "Design" below.
 
 1. **Sensor**: camera, test scene with a live and a knocked-out T-90, smoke and flash, 4 modes on one sheet — done.
-2. **Terrain and performance**: the whole map, forests, shadows; draw calls and generation time measured; a sheet of seeds — **in progress**.
-3. **Roads, rail, lakes, towns, occupancy** — not started.
+2. **Terrain and performance**: the whole map, forests, shadows; draw calls and generation time measured; a sheet of seeds — done.
+3. **Roads, rail, lakes, towns, occupancy** — **in progress**.
 4. **Gunship and HUD**: orbit, transit, slewing, clicks, friend-or-foe boxes on dummies — not started.
 5. **Units and allied patrols**: models, infantry, scale against the buildings — not started.
 6. **Combat**: arming on music, bases, the weapon table, the beat, wrecks, retreat — not started.
 7. **AA, flares, clouds, weather, day and night** — not started.
-8. **Splash, all properties, README, preview, soak** — not started.
+8. **Big guns in frame**: the barrels of the big guns (105 mm and the railgun at least; the others are optional) visible at the edge of the frame while selected, with a firing animation (recoil, muzzle flash, gases) on every shot — not started.
+9. **Splash, all properties, README, preview, soak** — not started.
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -63,7 +64,7 @@ Update the status here when a stage is finished. The full approved design is sum
   bundled once with esbuild: `export * from "three"` → `esbuild --bundle --minify --format=iife --global-name=THREE --target=es2020`.
 - Code taken from FAB / Code 3 (r149) needs the r187 changes: `opaque_fragment` (was `output_fragment`), `ColorManagement.enabled = false` (core.js) and linear output, light
   intensities × π (legacy units), `addUpdateRange` (was `updateRange`), `PCFShadowMap` (`PCFSoftShadowMap` is gone), `InstancedMesh` can compute its own bounding sphere.
-- Load order: `core → sensor → models → armor → effects → testscene → main`. `testscene` is the stage 1 scene and goes away in stage 2.
+- Load order: `core → sensor → models → armor → mapgen → terrain → effects → main`.
   Target order: core → sensor → models → armor → mapgen → terrain → effects → weather → infantry → units → weapons → battle → gunship → hud → main → properties → settings.
 
 | File | Contents |
@@ -72,12 +73,13 @@ Update the status here when a stage is finished. The full approved design is sum
 | `js/sensor.js` | `SENSOR` (modes, render target, post shader), `SU` shared uniforms, `sensorHook` / `sensorMat` (the heat term) |
 | `js/models.js` | mesh helpers (`M`, `HOT`, `box`, `cyl`, `taper`, `prism`, `strut`…), `mergeStatic` (bakes `aHeat`), `disposeTree`, seasonal materials |
 | `js/armor.js` | vehicle models facing +x, `WRECK_MATS`, `toWreck` |
+| `js/mapgen.js` | `MAP` (seeded heights and masks on a 4 m grid, built as a generator run in slices), `vnoise`, `groundH` (exactly the mesh's triangles), `groundN` |
+| `js/terrain.js` | `TERRAIN`: ground chunks (16×16 of 128 m), the ground material (mask + tiled detail in world space, `GROUND_PAL` per season), vegetation (one InstancedMesh per kind and chunk; roles fixed per seed, shapes per season) |
 | `js/effects.js` | `Tracers`, `SpriteFX`, `Scorch`, `blast` |
-| `js/testscene.js` | stage 1 sensor test scene (temporary) |
 | `js/main.js` | scene init, camera, `VIEW`, `updateEnvironment`, `fitShadow`, main loop |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=1`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=4`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
@@ -92,4 +94,4 @@ Update the status here when a stage is finished. The full approved design is sum
 ## Running & testing
 - Browser preview: `python -m http.server 8767` in this folder, URL params `?hour=22`, `?season=winter`, `?mode=wh`, `?zoom=150`, `?ts=N`.
 - Tests: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 [file / -g pattern]` (Playwright in Docker, SwiftShader; `$env:SEED = N`).
-- Sensor sheets: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 -c tools/preview.config.js` → `test-results/sensor-day.png`, `sensor-night.png`.
+- Review sheets: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 -c tools/preview.config.js` → `test-results/*.png`, `terrain-metrics.json`. URL params also `?seed=N`, `?x=&z=` (view point), `?az=` (fixed camera azimuth, deg).

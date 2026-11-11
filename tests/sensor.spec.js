@@ -32,7 +32,9 @@ test('thermal shows heat: the live engine is hot, black-hot is the inverse of wh
   await wp.boot({ query: '?hour=12' });
   await wp.sim(1);
   const r = await wp.run(() => {
-    const [ex, ey] = __t.screenOf(-26 - Math.cos(0.5) * 2, 2, 2 + Math.sin(0.5) * 2);
+    for (const v of TERRAIN.veg) v.visible = false;
+    const tank = buildT90(); tank.scale.setScalar(ARMOR_SCALE); tank.position.set(CAM_TGT.x, CAM_TGT.y, CAM_TGT.z); scene.add(tank);
+    const [ex, ey] = __t.screenOf(CAM_TGT.x - 2, CAM_TGT.y + 1.8, CAM_TGT.z);
     const box = (x, y, s) => [x - s, y - s, x + s, y + s];
     const engine = box(ex, ey, 0.008), far = box(0.82, 0.14, 0.04);
     SENSOR.set('wh'); const we = __t.sample(...engine), wf = __t.sample(...far);
@@ -53,7 +55,7 @@ test('the vision mode is not persisted across a restart', async ({ wp }) => {
 test('auto default: TV by day, white-hot at night', async ({ wp }) => {
   await wp.boot({ query: '?hour=12&mode=auto' });
   expect(await wp.run(() => SENSOR.mode)).toBe('tv');
-  await wp.page.goto('/index.html?hour=1&mode=auto');
+  await wp.goto('?hour=1&mode=auto');
   expect(await wp.run(() => SENSOR.mode)).toBe('wh');
 });
 

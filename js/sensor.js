@@ -20,6 +20,7 @@ function sensorHook(shader) {
       float alb = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)), sol = dot(reflectedLight.directDiffuse, vec3(0.333));
       gl_FragColor.rgb = vec3(clamp(uAmbHeat + (alb - 0.35) * uAlbK + sol * 0.12 + uMatHeat + vHeat * uBaked, 0.0, 1.0));
     } else gl_FragColor.rgb *= uGain;`);
+  if (this.userData.extend) this.userData.extend(shader);   // a material's own additions (the ground); it then needs a customProgramCacheKey
 }
 function sensorMat(mat, heat) { mat.onBeforeCompile = sensorHook; if (heat != null) mat.userData.heat = heat; return mat; }
 

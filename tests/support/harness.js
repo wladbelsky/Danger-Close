@@ -36,14 +36,22 @@ class Wallpaper {
       this.installed = true;
     }
     await this.page.goto('/index.html' + query);
-    const ok = await this.page.evaluate(() => typeof ready !== 'undefined' && ready);
-    if (!ok) throw new Error('wallpaper did not initialise');
+    await this.waitReady();
     await this.page.evaluate((splash) => { __t.setup(); const sp = document.getElementById('splash'); if (!splash && sp) sp.style.display = 'none'; }, splash);
     return this;
   }
+  /* the world is built in slices after the page loads; polled by timer (requestAnimationFrame is stubbed) */
+  async waitReady() { await this.page.waitForFunction(() => typeof ready !== 'undefined' && ready, null, { polling: 100, timeout: 120000 }); }
   async reload() {
     await this.page.reload();
+    await this.waitReady();
     await this.page.evaluate(() => __t.setup());
+  }
+  /* load another URL in the same page (e.g. another seed) */
+  async goto(query) {
+    await this.page.goto('/index.html' + query);
+    await this.waitReady();
+    await this.page.evaluate(() => { __t.setup(); const sp = document.getElementById('splash'); if (sp) sp.style.display = 'none'; });
   }
   /* run fn(arg) in the page */
   run(fn, arg) { return this.page.evaluate(fn, arg); }

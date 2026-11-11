@@ -3,3 +3,7 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 #modes { position: fixed; left: 28px; top: 28px; display: flex; gap: 6px; font: 600 13px/1 Consolas, "Courier New", monospace; }
 #modes button { font: inherit; letter-spacing: .12em; padding: 7px 12px; color: #d8e4e0; background: rgba(8, 14, 14, .62); border: 1px solid rgba(216, 228, 224, .28); cursor: pointer; }
 #modes button.on { color: #0b1212; background: #d8e4e0; border-color: #d8e4e0; }
+#splash { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #060909; color: #d8e4e0; font: 600 34px/1 Consolas, "Courier New", monospace; letter-spacing: .34em; transition: opacity .6s; animation: splashFailsafe .6s 45s forwards; }
+#splash .s { font-size: 13px; letter-spacing: .3em; opacity: .55; }
+#splash.off { opacity: 0; pointer-events: none; }
+@keyframes splashFailsafe { to { opacity: 0; visibility: hidden; } }

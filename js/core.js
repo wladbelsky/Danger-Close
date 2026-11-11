@@ -27,13 +27,13 @@ const CFG = {
   season: 'auto',     // auto (PC date) / spring / summer / autumn / winter
   vision: 'tv',       // default vision mode: tv / wh / bh / nv / auto (TV by day, white-hot at night)
   shadows: true,
+  seed: 0,            // map seed, 0 = a new map on each launch
   msaa: 4             // render target samples (0 = off)
 };
 
 /* ===== Ground & wind =====
-   Flat ground until the map generator (js/mapgen.js) replaces groundH; WIND is the drift of smoke and dust. 1 unit = 1 m. */
+   groundH / groundN are in js/mapgen.js; WIND is the drift of smoke and dust. 1 unit = 1 m. */
 const WIND = new V3(-1.6, 0, 0.6);
-function groundH(x, z) { return 0; }
 
 /* ===== Seasons: auto from the PC date (northern hemisphere) or fixed in the settings =====
    ground = base colour of the terrain texture, grass = its speckles, hg = hemisphere bounce from the ground,

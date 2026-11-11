@@ -144,7 +144,7 @@ function craterGeometry() {
 class Scorch {
   static MERGE = 0.6;                                // two craters closer than MERGE × (r1 + r2) become one
   static CROWD = 30;                                 // slots kept free (crowd): a 3 s fade frees them at ~10/s
-  static LIFT = 0.055;                               // its base over the ground: above the paving and its painted lines (≤ 0.048; lower, the taxiway lines showed through)
+  static LIFT = 0.2;                               // its base over the ground: above the paving and its painted lines (≤ 0.048; lower, the taxiway lines showed through)
   constructor(scene, n) {
     const geo = craterGeometry();
     // no depth write: its faded ejecta would cut holes in ground decals drawn after it (runway lettering); nearly flat, so it doesn't need it
@@ -152,8 +152,8 @@ class Scorch {
     this.mesh = new THREE.InstancedMesh(geo, mat, n); this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.mesh.receiveShadow = true;
     this.mesh.frustumCulled = false; this.mesh.renderOrder = 1; this.mesh.count = n;
     this.items = []; const zero = new THREE.Matrix4().makeScale(0, 0, 0);
-    for (let i = 0; i < n; i++) { this.mesh.setMatrixAt(i, zero); this.items.push({ on: false, fade: false, k: 0, p: new V3(), r: 1, base: 1, t: 0, max: 1, rot: 0 }); }
-    this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new V3(); this._y = new V3(0, 1, 0);
+    for (let i = 0; i < n; i++) { this.mesh.setMatrixAt(i, zero); this.items.push({ on: false, fade: false, k: 0, p: new V3(), n: new V3(0, 1, 0), r: 1, base: 1, t: 0, max: 1, rot: 0 }); }
+    this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._qy = new THREE.Quaternion(); this._s = new V3(); this._y = new V3(0, 1, 0);
     scene.add(this.mesh);
   }
   spawn(p, r, life) {
@@ -169,7 +169,7 @@ class Scorch {
     }
     // a free slot (crowding keeps some); with none at all this one isn't made — rather than cut a showing one short
     it = this.items.find(o => !o.on); if (!it) return null;
-    it.on = true; it.fade = false; it.k = 1; it.p.set(p.x, groundH(p.x, p.z) + Scorch.LIFT, p.z); it.r = it.base = r; it.t = it.max = life; it.rot = rand(0, TAU);
+    it.on = true; it.fade = false; it.k = 1; it.p.set(p.x, groundH(p.x, p.z) + Scorch.LIFT, p.z); it.r = it.base = r; it.t = it.max = life; it.rot = rand(0, TAU); groundN(p.x, p.z, it.n);
     this.crowd();
     return it;
   }
@@ -193,7 +193,7 @@ class Scorch {
       it.t -= dt; changed = true;
       const k = it.k = it.t <= 0 ? 0 : Math.min(1, it.t / (it.max * 0.25));
       if (it.t <= 0) it.on = false;
-      this._q.setFromAxisAngle(this._y, it.rot); this._s.set(it.r * k, it.r * 0.8 * k * k, it.r * k * 0.85);   // flattens as it shrinks
+      this._q.setFromUnitVectors(this._y, it.n).multiply(this._qy.setFromAxisAngle(this._y, it.rot)); this._s.set(it.r * k, it.r * 0.8 * k * k, it.r * k * 0.85);   // flattens as it shrinks
       this.mesh.setMatrixAt(i, this._m.compose(it.p, this._q, this._s));
     }
     if (changed) this.mesh.instanceMatrix.needsUpdate = true;

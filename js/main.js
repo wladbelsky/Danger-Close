@@ -12,6 +12,7 @@ if (QS.has('hour')) { CFG.timeMode = 'fixed'; CFG.fixedHour = parseFloat(QS.get(
 if (QS.has('zoom')) CFG.zoom = parseFloat(QS.get('zoom'));
 if (QS.has('season')) CFG.season = QS.get('season');
 if (QS.has('mode')) CFG.vision = QS.get('mode');
+if (QS.has('seed')) CFG.seed = parseInt(QS.get('seed'), 10) || 0;
 
 /* ---- Wallpaper Engine properties ---- */
 window.wallpaperPropertyListener = {
@@ -20,7 +21,7 @@ window.wallpaperPropertyListener = {
   setPaused(v) { paused = v; }
 };
 
-/* ---- init ---- */
+/* ---- init: the renderer at once, the world in slices under the splash ---- */
 function init() {
   const canvas = document.getElementById('c');
   renderer = new THREE.WebGLRenderer({ canvas, antialias: false, precision: 'highp', powerPreference: 'high-performance' });   // (MSAA is on the render target)
@@ -35,7 +36,7 @@ function init() {
   hemi = new THREE.HemisphereLight(0xffffff, 0x333333, 0.6); scene.add(hemi);
   sunLight = new THREE.DirectionalLight(0xffffff, 1);
   sunLight.castShadow = CFG.shadows;
-  sunLight.shadow.mapSize.set(2048, 2048);
+  sunLight.shadow.mapSize.set(SHADOW_N, SHADOW_N);
   Object.assign(sunLight.shadow.camera, { left: -50, right: 50, top: 50, bottom: -50, near: 1, far: 1600 });   // bounds: fitShadow()
   sunLight.shadow.bias = -0.0005; sunLight.shadow.normalBias = 0.25;
   scene.add(sunLight); scene.add(sunLight.target);
@@ -46,15 +47,41 @@ function init() {
   FX.smoke = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, 420, true, 0.14);
   FX.dust = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, 240, true, 0.46);
   FX.scorch = new Scorch(scene, 60);
-  FX.tracers.onSplash = null;
 
-  updateEnvironment();
-  buildTestScene();
-  ready = true;
+  runSlices(buildWorld(), finishInit);
+}
+function* buildWorld() {
+  const t0 = performance.now();
+  yield* MAP.generate(CFG.seed || (Math.random() * 2147483647 | 1));
+  yield* TERRAIN.buildGround();
+  const season = seasonNow(); TERRAIN.setSeason(season);
+  yield* TERRAIN.buildVeg(season);
+  MAP.genMs = performance.now() - t0;
+}
+/* run a generator in slices of ~30 ms, yielding to the browser in between (a MessageChannel: no 4 ms timer clamp, no throttling) */
+function runSlices(gen, done) {
+  const ch = new MessageChannel();
+  ch.port1.onmessage = () => {
+    const t = performance.now();
+    while (performance.now() - t < 30) if (gen.next().done) { ch.port1.onmessage = null; ch.port1.close(); done(); return; }
+    ch.port2.postMessage(0);
+  };
+  ch.port2.postMessage(0);
+}
+function finishInit() {
+  const p = MAP.startPoint();
+  CAM_TGT.set(QS.has('x') ? parseFloat(QS.get('x')) : p[0], 0, QS.has('z') ? parseFloat(QS.get('z')) : p[1]);
+  CAM_TGT.y = groundH(CAM_TGT.x, CAM_TGT.z);
+  if (QS.has('az')) camAz = parseFloat(QS.get('az')) * DEG;
   window.addEventListener('resize', resize);
+  resize();
+  updateEnvironment();
   buildModeStrip();
   SENSOR.set(SENSOR.initial());
-  resize(); updateEnvironment();
+  updateEnvironment();
+  renderer.setRenderTarget(SENSOR.rt); renderer.compile(scene, camera); renderer.setRenderTarget(null);   // under the splash: no compile stalls later
+  ready = true;
+  const s = document.getElementById('splash'); if (s) { s.classList.add('off'); setTimeout(() => s.remove(), 700); }
   requestAnimationFrame(frame);
 }
 
@@ -72,7 +99,7 @@ function buildModeStrip() {
 function markModes() { for (const b of document.querySelectorAll('#modes button')) b.classList.toggle('on', b.dataset.m === SENSOR.mode); }
 
 /* ---- camera: perspective with a narrow lens from far away; ~95 m of screen height at 100 % zoom ---- */
-const VIEW_H = 95, CAM_D = 340, CAM_ELEV = 62 * DEG, CAM_TGT = new V3(0, 0, 0);
+const VIEW_H = 95, CAM_D = 340, CAM_ELEV = 45 * DEG, CAM_TGT = new V3(0, 0, 0);
 let camAz = 135 * DEG;
 function resize() {
   if (!window.innerWidth || !window.innerHeight) return;   // a hidden pane / window at start: a zero-sized target is an incomplete framebuffer
@@ -106,7 +133,8 @@ const VIEW = {
 /* ---- time of day, season & lighting ---- */
 const _hg = new THREE.Color(), SUN_DIR = new V3();
 function updateEnvironment() {
-  const S = SEASONS[seasonNow()];
+  const season = seasonNow(); if (TERRAIN.season && season !== TERRAIN.season) TERRAIN.changeSeason(season);   // a new month, or the setting changed
+  const S = SEASONS[season];
   const sp = sunPosition(getNow(), CFG.lat, CFG.lon);
   ENV.elev = sp.elev;
   const k = skyAt(sp.elev);
@@ -118,7 +146,7 @@ function updateEnvironment() {
   hemi.color.copy(k.hs); hemi.groundColor.copy(k.hg).lerp(_hg, 0.6); hemi.intensity = k.hi * Math.PI;
   scene.fog.color.copy(k.fog);
   ENV.smokeTint.copy(k.smoke);
-  ENV.dustTint.setHex(S.ground).lerp(k.smoke, 0.45);
+  ENV.dustTint.setHex(GROUND_PAL[season].a).lerp(k.smoke, 0.45);
   ENV.night = 1 - smoothstep(-10, 1, sp.elev);
   ENV.day = smoothstep(-6, 10, sp.elev);
   SENSOR.env();
@@ -132,7 +160,7 @@ const _shc = new V3(), _shm = new THREE.Matrix4(), _shi = new THREE.Matrix4(), _
 function fitShadow() {
   const sc = sunLight.shadow.camera;
   let r = 0; for (const c of SCREEN_CORNERS) r = Math.max(r, VIEW.groundAt(c[0], c[1], CAM_TGT.y, _shc).distanceTo(CAM_TGT));
-  r = Math.ceil((r + 40) / 16) * 16;
+  r = Math.ceil((r + 30) / 16) * 16;
   if (sc.right !== r) { sc.left = -r; sc.right = r; sc.top = r; sc.bottom = -r; sc.updateProjectionMatrix(); }
   const texel = 2 * r / SHADOW_N;
   _shm.lookAt(SUN_DIR, _shO, _shU); _shi.copy(_shm).invert();
@@ -159,7 +187,7 @@ function renderFrame() { if (CFG.shadows) fitShadow(); SENSOR.render(); }
 const TIME_SCALE = Math.max(1, Math.round(parseFloat(QS.get('ts') || '1')));
 function step(dt) {
   T += dt;
-  SENSOR_DEMO.update(dt);
+  if (!QS.has('az')) { camAz -= 0.03 * dt; updateCameraPose(); }   // (a plain turn until the gunship comes in stage 4)
   FX.tracers.update(dt);
   FX.flash.update(dt);
   FX.fire.update(dt);
