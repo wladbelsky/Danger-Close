@@ -6,10 +6,10 @@
 const CHUNK_CELLS = 32, CHUNK_N = MAP_N / CHUNK_CELLS, CHUNK_M = CHUNK_CELLS * MAP_CELL;
 /* albedo of the ground per season: a / b grass, fld dry field, frs forest floor; heat: its offset on the thermal sensor (snow is cold) */
 const GROUND_PAL = {
-  spring: { a: 0x3e5228, b: 0x324524, fld: 0x4c5b30, frs: 0x26301c, heat: 0.13 },
-  summer: { a: 0x434e2d, b: 0x39462a, fld: 0x59603a, frs: 0x262f1c, heat: 0.13 },
-  autumn: { a: 0x55512e, b: 0x484526, fld: 0x605636, frs: 0x3a3020, heat: 0.10 },
-  winter: { a: 0x747c88, b: 0x6c7482, fld: 0x7a828e, frs: 0x626a76, heat: -0.22 }
+  spring: { a: 0x3e5228, b: 0x324524, fld: 0x4c5b30, frs: 0x26301c, heat: 0.13, crops: [0x4e6232, 0x5a4a36, 0x46582e, 0x5c5a3a], yard: 0x56553e },
+  summer: { a: 0x434e2d, b: 0x39462a, fld: 0x59603a, frs: 0x262f1c, heat: 0.13, crops: [0x86783f, 0x52632c, 0x6c6a40, 0x5a4a34], yard: 0x625c44 },
+  autumn: { a: 0x55512e, b: 0x484526, fld: 0x605636, frs: 0x3a3020, heat: 0.10, crops: [0x6e5a3a, 0x4c3c2c, 0x6a6036, 0x58603a], yard: 0x5a5240 },
+  winter: { a: 0x747c88, b: 0x6c7482, fld: 0x7a828e, frs: 0x626a76, heat: -0.22, crops: [0x7a828e, 0x727a86, 0x6e7682, 0x7e8692], yard: 0x6a7280 }
 };
 function detailTex() {   // tiling noise: r coarse grain, g big blotches, b fine speckle
   const S = 512, rng = mulberry32(77), data = new Uint8Array(S * S * 4);
@@ -22,6 +22,7 @@ function detailTex() {   // tiling noise: r coarse grain, g big blotches, b fine
   const t = new THREE.DataTexture(data, S, S, THREE.RGBAFormat); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.anisotropy = 4; t.needsUpdate = true;
   return t;
 }
+function landTex() { const t = new THREE.CanvasTexture(LAYOUT.landuse); t.flipY = false; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 4; return t; }
 function vegGeometry(parts) {   // a geometry from parts with per-vertex colours
   const pos = [], nor = [], col = [], c = new THREE.Color();
   for (const [geo, hex, x, y, z, sx, sy, sz] of parts) {
@@ -105,19 +106,26 @@ const TERRAIN = {
   },
   buildMaterial() {
     const data = new Uint8Array(MAP_V * MAP_V * 4), F = MAP.forest, D = MAP.dry;
-    for (let k = 0; k < F.length; k++) { data[k * 4] = 255 * D[k] * (1 - F[k]); data[k * 4 + 1] = 255 * F[k]; data[k * 4 + 3] = 255; }
+    for (let k = 0; k < F.length; k++) { const x = -MAP_HALF + (k % MAP_V) * MAP_CELL, z = -MAP_HALF + ((k / MAP_V) | 0) * MAP_CELL; data[k * 4] = 255 * D[k] * (1 - F[k]); data[k * 4 + 1] = 255 * F[k]; data[k * 4 + 2] = occAt(x, z) & OCC_YARD ? 230 : 0; data[k * 4 + 3] = 255; }
     const mask = new THREE.DataTexture(data, MAP_V, MAP_V, THREE.RGBAFormat); mask.magFilter = THREE.LinearFilter; mask.minFilter = THREE.LinearMipmapLinearFilter; mask.generateMipmaps = true; mask.needsUpdate = true;
-    const u = this.u = { tMask: { value: mask }, tDet: { value: detailTex() }, uA: { value: new THREE.Color() }, uB: { value: new THREE.Color() }, uFld: { value: new THREE.Color() }, uFrs: { value: new THREE.Color() } };
+    const u = this.u = { tMask: { value: mask }, tDet: { value: detailTex() }, uA: { value: new THREE.Color() }, uB: { value: new THREE.Color() }, uFld: { value: new THREE.Color() }, uFrs: { value: new THREE.Color() }, tLand: { value: landTex() }, uYard: { value: new THREE.Color() }, uC0: { value: new THREE.Color() }, uC1: { value: new THREE.Color() }, uC2: { value: new THREE.Color() }, uC3: { value: new THREE.Color() } };
     const uHeat = this.uHeat, mat = this.mat = sensorMat(new THREE.MeshPhongMaterial({ shininess: 0, specular: 0 }));
     mat.userData.shared = true; mat.userData.albK = 1.0;
     mat.userData.extend = shader => {
       Object.assign(shader.uniforms, u); shader.uniforms.uMatHeat = uHeat;   // (a shared object: the season changes it)
       shader.vertexShader = 'varying vec2 vW;\n' + shader.vertexShader.replace('#include <begin_vertex>', 'vW = position.xz;\n#include <begin_vertex>');
-      shader.fragmentShader = 'uniform sampler2D tMask, tDet; uniform vec3 uA, uB, uFld, uFrs; varying vec2 vW;\n' + shader.fragmentShader.replace('#include <color_fragment>', `
+      shader.fragmentShader = 'uniform sampler2D tMask, tDet, tLand; uniform vec3 uA, uB, uFld, uFrs, uYard, uC0, uC1, uC2, uC3; varying vec2 vW;\n' + shader.fragmentShader.replace('#include <color_fragment>', `
         vec4 mk = texture2D(tMask, (vW + ${MAP_HALF.toFixed(1)}) / ${(MAP_N * MAP_CELL).toFixed(1)} * ${(MAP_N / MAP_V).toFixed(6)} + ${(0.5 / MAP_V).toFixed(6)});
         vec4 d0 = texture2D(tDet, vW / 41.0), d1 = texture2D(tDet, vW / 133.0), d2 = texture2D(tDet, vW / 23.0);
         vec3 g = mix(uA, uB, smoothstep(0.34, 0.66, d1.g));
-        g = mix(g, uFld, mk.r * 0.75); g = mix(g, uFrs, mk.g);
+        g = mix(g, uFld, mk.r * 0.75); g = mix(g, uFrs, mk.g); g = mix(g, uYard, mk.b * 0.8);
+        vec4 lu = texture2D(tLand, (vW + ${MAP_HALF.toFixed(1)}) / ${(2 * MAP_HALF).toFixed(1)});
+        if (lu.r > 0.004) {      // a field: g and b are premultiplied by the coverage (an edge keeps its own crop and rows)
+          float ang = lu.g / lu.r * 3.14159265, cb = lu.b / lu.r;
+          vec3 cc = cb < 0.25 ? uC0 : cb < 0.5 ? uC1 : cb < 0.75 ? uC2 : uC3;
+          cc *= 0.86 + 0.14 * sin(dot(vW, vec2(cos(ang), sin(ang))) * 2.4);
+          g = mix(g, cc, lu.r);
+        }
         g *= 0.74 + d0.r * 0.34 + d2.b * 0.18 + (d1.r - 0.5) * 0.14;
         diffuseColor.rgb = g;`);
     };
@@ -125,7 +133,7 @@ const TERRAIN = {
   },
   setSeason(season) {
     const P = GROUND_PAL[season], u = this.u;
-    u.uA.value.setHex(P.a); u.uB.value.setHex(P.b); u.uFld.value.setHex(P.fld); u.uFrs.value.setHex(P.frs); this.uHeat.value = P.heat;
+    u.uA.value.setHex(P.a); u.uB.value.setHex(P.b); u.uFld.value.setHex(P.fld); u.uFrs.value.setHex(P.frs); u.uYard.value.setHex(P.yard); P.crops.forEach((c, i) => u['uC' + i].value.setHex(c)); this.uHeat.value = P.heat;
     seasonMats(season);
   },
   /* the vegetation: positions depend only on the map's seed, so a season keeps every tree where it was */
@@ -138,8 +146,11 @@ const TERRAIN = {
       for (let x = -MAP_HALF + SP / 2; x < MAP_HALF; x += SP) {
         const px = x + (rng() - 0.5) * SP * 0.9, pz = z + (rng() - 0.5) * SP * 0.9, a = rng(), b = rng(), c = rng(), d = rng(), e = rng();
         const f = MAP.sample(MAP.forest, px, pz), open = 0.012 + MAP.sample(MAP.dry, px, pz) * -0.008;
-        let role;
-        if (a < f * 0.94) role = MAP.sample(MAP.conifer, px, pz) > 0.5 ? (b < 0.85 ? 2 : c < 0.5 ? 0 : 1) : (b < 0.06 ? 2 : c < 0.5 ? 0 : 1);
+        let role; const o = occAt(px, pz), w = waterAt(px, pz);
+        if ((o & (OCC_WATER | OCC_ROAD | OCC_RAIL | OCC_BUILD | OCC_FIELD)) || w === 1 || w === 2) continue;   // nothing grows on what is used
+        if (o & OCC_HEDGE) { if (a > 0.55) continue; role = b < 0.6 ? 3 : c < 0.5 ? 0 : 1; }       // hedgerows between the fields
+        else if (o & OCC_YARD) { if (a > 0.06) continue; role = b < 0.5 ? 3 : 0; }                    // a garden tree now and then
+        else if (a < f * 0.94) role = MAP.sample(MAP.conifer, px, pz) > 0.5 ? (b < 0.85 ? 2 : c < 0.5 ? 0 : 1) : (b < 0.06 ? 2 : c < 0.5 ? 0 : 1);
         else if (f > 0.03 && f < 0.9 && a < 0.22 + f * 0.5) role = 3;                     // bushes at the forest's edge
         else if (a > 1 - open) role = b < 0.45 ? 3 : b < 0.72 ? 0 : b < 0.94 ? 1 : 2;     // a lone tree or bush in the open
         else continue;

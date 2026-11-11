@@ -35,6 +35,7 @@ const MAP = {
     const t = sample[Math.floor(sample.length * (1 - share))];
     let on = 0; for (let k = 0; k < f.length; k++) { f[k] = smoothstep(t - 0.012, t + 0.022, f[k]); c[k] = smoothstep(0.54, 0.62, c[k]); d[k] = smoothstep(0.5, 0.74, d[k]); on += f[k] > 0.5 ? 1 : 0; }
     this.forestShare = on / f.length;
+    this.naturalSlope = this.maxSlope();   // (before the layout carves roads, rail and the river into it)
     yield;
   },
   /* the value of a grid field at a world point (bilinear) */
@@ -55,7 +56,7 @@ const MAP = {
   /* a checksum of the map (tests: the same seed gives the same map) */
   hash() { let s = 0; for (let k = 0; k < this.h.length; k += 11) s = (Math.imul(s, 31) + Math.round(this.h[k] * 100) + Math.round(this.forest[k] * 100)) | 0; return s; },
   /* the steepest slope between neighbouring grid vertices (rise over run) */
-  maxSlope() { let m = 0; for (let j = 0; j < MAP_N; j++) for (let i = 0; i < MAP_N; i++) { const k = j * MAP_V + i; m = Math.max(m, Math.abs(this.h[k + 1] - this.h[k]) / MAP_CELL, Math.abs(this.h[k + MAP_V] - this.h[k]) / MAP_CELL); } return m; }
+  maxSlope(skipAbutments) { let m = 0; for (let j = 0; j < MAP_N; j++) for (let i = 0; i < MAP_N; i++) { const k = j * MAP_V + i; if (skipAbutments && MAP.water && (MAP.water[k] || MAP.water[k + 1] || MAP.water[k + MAP_V])) continue; m = Math.max(m, Math.abs(this.h[k + 1] - this.h[k]) / MAP_CELL, Math.abs(this.h[k + MAP_V] - this.h[k]) / MAP_CELL); } return m; }
 };
 /* the ground's height: exactly the mesh's triangles (each quad split along b-c: a b / c d), so nothing floats or sinks */
 function groundH(x, z) {

@@ -18,8 +18,9 @@ test('seed 0 picks a random seed of its own', async ({ wp }) => {
 for (const seed of [3, 11, 29]) {
   test(`gentle hills and a sensible forest share, seed ${seed}`, async ({ wp }) => {
     await wp.boot({ query: `?hour=12&seed=${seed}` });
-    const r = await wp.run(() => { let lo = 1e9, hi = -1e9; for (const v of MAP.h) { lo = Math.min(lo, v); hi = Math.max(hi, v); } return { slope: MAP.maxSlope(), span: hi - lo, share: MAP.forestShare, trees: TERRAIN.trees }; });
+    const r = await wp.run(() => { let lo = 1e9, hi = -1e9; for (const v of MAP.h) { lo = Math.min(lo, v); hi = Math.max(hi, v); } return { slope: MAP.naturalSlope, carved: MAP.maxSlope(true), span: hi - lo, share: MAP.forestShare, trees: TERRAIN.trees }; });
     expect(r.slope).toBeLessThan(0.3);          // no extreme mountains (under ~17 degrees)
+    expect(r.carved).toBeLessThan(0.9);         // cuts and embankments of roads, rail and the river (bridge abutments aside)
     expect(r.span).toBeGreaterThan(8);          // but not flat either
     expect(r.span).toBeLessThan(80);
     expect(r.share).toBeGreaterThan(0.12);

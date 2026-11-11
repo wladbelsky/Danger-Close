@@ -17,8 +17,8 @@ Update the status here when a stage is finished. The full approved design is sum
 
 1. **Sensor**: camera, test scene with a live and a knocked-out T-90, smoke and flash, 4 modes on one sheet — done.
 2. **Terrain and performance**: the whole map, forests, shadows; draw calls and generation time measured; a sheet of seeds — done.
-3. **Roads, rail, lakes, towns, occupancy** — **in progress**.
-4. **Gunship and HUD**: orbit, transit, slewing, clicks, friend-or-foe boxes on dummies — not started.
+3. **Roads, rail, lakes, towns, occupancy** — done.
+4. **Gunship and HUD**: orbit, transit, slewing, clicks, friend-or-foe boxes on dummies — in progress.
 5. **Units and allied patrols**: models, infantry, scale against the buildings — not started.
 6. **Combat**: arming on music, bases, the weapon table, the beat, wrecks, retreat — not started.
 7. **AA, flares, clouds, weather, day and night** — not started.
@@ -64,7 +64,7 @@ Update the status here when a stage is finished. The full approved design is sum
   bundled once with esbuild: `export * from "three"` → `esbuild --bundle --minify --format=iife --global-name=THREE --target=es2020`.
 - Code taken from FAB / Code 3 (r149) needs the r187 changes: `opaque_fragment` (was `output_fragment`), `ColorManagement.enabled = false` (core.js) and linear output, light
   intensities × π (legacy units), `addUpdateRange` (was `updateRange`), `PCFShadowMap` (`PCFSoftShadowMap` is gone), `InstancedMesh` can compute its own bounding sphere.
-- Load order: `core → sensor → models → armor → mapgen → terrain → effects → main`.
+- Load order: `core → sensor → models → armor → mapgen → layout → terrain → structures → effects → main`.
   Target order: core → sensor → models → armor → mapgen → terrain → effects → weather → infantry → units → weapons → battle → gunship → hud → main → properties → settings.
 
 | File | Contents |
@@ -74,12 +74,14 @@ Update the status here when a stage is finished. The full approved design is sum
 | `js/models.js` | mesh helpers (`M`, `HOT`, `box`, `cyl`, `taper`, `prism`, `strut`…), `mergeStatic` (bakes `aHeat`), `disposeTree`, seasonal materials |
 | `js/armor.js` | vehicle models facing +x, `WRECK_MATS`, `toWreck` |
 | `js/mapgen.js` | `MAP` (seeded heights and masks on a 4 m grid, built as a generator run in slices), `vnoise`, `groundH` (exactly the mesh's triangles), `groundN` |
+| `js/layout.js` | `LAYOUT`: lakes, the river, towns, the railway, roads (A* on a 16 m grid, profiles, carving into `MAP.h`), streets, building lots, the station, farms, tracks, fields; the occupancy grid `OCC` (2 m cells, `OCC_*` flags: `occAt`), `MAP.water` / `MAP.wl` (`waterAt`, `waterLevelAt`), the land-use canvas (fields as premultiplied rgb(coverage, row angle, crop)) |
 | `js/terrain.js` | `TERRAIN`: ground chunks (16×16 of 128 m), the ground material (mask + tiled detail in world space, `GROUND_PAL` per season), vegetation (one InstancedMesh per kind and chunk; roles fixed per seed, shapes per season) |
+| `js/structures.js` | `STRUCT`: water (lakes, river), road / rail ribbons draped on the carved ground (decal materials: no depth write, polygon offset, renderOrder), bridges, the station, buildings (`BUILDERS`) merged per town / farm |
 | `js/effects.js` | `Tracers`, `SpriteFX`, `Scorch`, `blast` |
 | `js/main.js` | scene init, camera, `VIEW`, `updateEnvironment`, `fitShadow`, main loop |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=4`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=5`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
@@ -90,6 +92,11 @@ Update the status here when a stage is finished. The full approved design is sum
 - No `FlashLights` / point lights for blasts: every light costs on every terrain fragment. Additive ground glows instead.
 - Never create geometry per spawn; pools and `disposeTree`. Anything in `mergeStatic` that moves must be listed as dynamic. Spawn by time accumulators.
 - Map generation uses its own `mulberry32`, never `Math.random`.
+
+## Notes for later
+- **Local files in Wallpaper Engine**: WE provides `window.wallpaperRequestRegisteredFile` to read a user's local file (e.g. a file
+  property). It does not exist in a normal browser: a browser fallback (a file `<input>` in the settings drawer, or `fetch` of a
+  bundled file) is still to be worked out if a feature needs it. (From the user, 2026-11-11.)
 
 ## Running & testing
 - Browser preview: `python -m http.server 8767` in this folder, URL params `?hour=22`, `?season=winter`, `?mode=wh`, `?zoom=150`, `?ts=N`.

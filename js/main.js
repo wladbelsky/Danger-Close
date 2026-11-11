@@ -53,7 +53,9 @@ function init() {
 function* buildWorld() {
   const t0 = performance.now();
   yield* MAP.generate(CFG.seed || (Math.random() * 2147483647 | 1));
+  yield* LAYOUT.plan(MAP.seed);
   yield* TERRAIN.buildGround();
+  yield* STRUCT.build();
   const season = seasonNow(); TERRAIN.setSeason(season);
   yield* TERRAIN.buildVeg(season);
   MAP.genMs = performance.now() - t0;
@@ -69,7 +71,7 @@ function runSlices(gen, done) {
   ch.port2.postMessage(0);
 }
 function finishInit() {
-  const p = MAP.startPoint();
+  const sp = LAYOUT.spots(), p = sp.town ? [sp.town[0] + 60, sp.town[1] + 40] : MAP.startPoint();
   CAM_TGT.set(QS.has('x') ? parseFloat(QS.get('x')) : p[0], 0, QS.has('z') ? parseFloat(QS.get('z')) : p[1]);
   CAM_TGT.y = groundH(CAM_TGT.x, CAM_TGT.z);
   if (QS.has('az')) camAz = parseFloat(QS.get('az')) * DEG;
@@ -149,6 +151,7 @@ function updateEnvironment() {
   ENV.dustTint.setHex(GROUND_PAL[season].a).lerp(k.smoke, 0.45);
   ENV.night = 1 - smoothstep(-10, 1, sp.elev);
   ENV.day = smoothstep(-6, 10, sp.elev);
+  WATER_HEAT.value = lerp(0.12, -0.1, ENV.day);   // water: cooler than the ground by day, warmer at night
   SENSOR.env();
   renderer.setClearColor(scene.fog.color);
   fitShadow();
