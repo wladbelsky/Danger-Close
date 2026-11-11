@@ -1,8 +1,16 @@
 html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 #c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-#modes { position: fixed; left: 28px; top: 28px; display: flex; gap: 6px; font: 600 13px/1 Consolas, "Courier New", monospace; }
-#modes button { font: inherit; letter-spacing: .12em; padding: 7px 12px; color: #d8e4e0; background: rgba(8, 14, 14, .62); border: 1px solid rgba(216, 228, 224, .28); cursor: pointer; }
-#modes button.on { color: #0b1212; background: #d8e4e0; border-color: #d8e4e0; }
+:root { --hs: 1; --sb: 48px; }
+#hud { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+#modes { position: fixed; left: calc(28px * var(--hs)); top: calc(26px * var(--hs)); z-index: 6; display: flex; gap: calc(6px * var(--hs)); font: 600 calc(13px * var(--hs))/1 Consolas, "Courier New", monospace; }
+#modes button, #arms button { font: inherit; letter-spacing: .12em; color: #e2ebe6; background: rgba(6, 10, 10, .5); border: 1px solid rgba(226, 235, 230, .32); cursor: pointer; }
+#modes button { padding: .55em .9em; }
+#modes button.on, #arms button.on { color: #0b1212; background: #e2ebe6; border-color: #e2ebe6; }
+#arms { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--sb) + 18px * var(--hs)); z-index: 6; display: flex; gap: calc(6px * var(--hs)); font: 600 calc(13px * var(--hs))/1 Consolas, "Courier New", monospace; }
+#arms button { display: grid; grid-template-columns: auto auto; gap: .35em .7em; padding: .55em .7em .45em; min-width: 7.5em; text-align: left; white-space: nowrap; }
+#arms b { font-size: 1.15em; font-weight: 600; } #arms i { font-style: normal; opacity: .6; font-size: .85em; justify-self: end; align-self: end; }
+#arms .am { grid-column: 1 / 3; font-size: .9em; opacity: .85; }
+#arms s { grid-column: 1 / 3; display: block; height: 2px; background: rgba(226, 235, 230, .2); } #arms s u { display: block; height: 100%; width: 100%; background: currentColor; }
 #splash { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #060909; color: #d8e4e0; font: 600 34px/1 Consolas, "Courier New", monospace; letter-spacing: .34em; transition: opacity .6s; animation: splashFailsafe .6s 45s forwards; }
 #splash .s { font-size: 13px; letter-spacing: .3em; opacity: .55; }
 #splash.off { opacity: 0; pointer-events: none; }

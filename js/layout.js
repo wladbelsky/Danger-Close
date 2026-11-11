@@ -376,14 +376,20 @@ const LAYOUT = {
     let k0 = 0, best = 1e9; for (let i = 0; i < R.pts.length; i++) { const d = Math.hypot(R.pts[i][0] - R.wp[0], R.pts[i][1] - R.wp[1]); if (d < best) { best = d; k0 = i; } }
     const t = this.towns[0], P = R.pts;
     // the nearest place along the line (either side, the town's side first) where the platform and the building stand on free ground
-    for (let step = 0; step < 60; step++) {
+    for (let step = 0; step < 160; step++) {
       const k = clamp(k0 + (step % 2 ? 1 : -1) * Math.ceil(step / 2) * 3, 10, P.length - 11);
       const dx = P[k + 1][0] - P[k - 1][0], dz = P[k + 1][1] - P[k - 1][1], L = Math.hypot(dx, dz), ux = dx / L, uz = dz / L, a = Math.atan2(uz, ux);
+      let bend = 0; for (let i = k - 10; i <= k + 10; i++) bend = Math.max(bend, Math.abs((P[i][0] - P[k][0]) * -uz + (P[i][1] - P[k][1]) * ux));
+      if (bend > 3) continue;   // (no tight curve; the platform follows the line in 8 m pieces)
       const town = Math.sign((t.x - P[k][0]) * -uz + (t.z - P[k][1]) * ux) || 1;
       for (const sgn of [town, -town]) {
         const nx = -uz * sgn, nz = ux * sgn, S = { x: P[k][0] + nx * 5.2, z: P[k][1] + nz * 5.2, a, y: R.h[k], nx, nz, bx: P[k][0] + nx * 15, bz: P[k][1] + nz * 15 };
         if (R.br.slice(k - 10, k + 11).some(Boolean)) continue;
         if (!rectFree(S.x - nx * 4, S.z - nz * 4, 96, 14, a, OCC_ROAD | OCC_BUILD | OCC_WATER) || !rectFree(S.bx, S.bz, 20, 11, a, OCC_ROAD | OCC_BUILD | OCC_WATER | OCC_RAIL)) continue;
+        S.segs = []; for (let i = k - 8; i < k + 8; i += 2) {   // the platform's pieces, each along its own stretch of the line
+          const p0 = P[i], p1 = P[i + 2], L2 = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), vx = (p1[0] - p0[0]) / L2, vz = (p1[1] - p0[1]) / L2, mx = (p0[0] + p1[0]) / 2, mz = (p0[1] + p1[1]) / 2, qx = -vz * sgn, qz = vx * sgn;
+          S.segs.push({ x: mx + qx * 5.2, z: mz + qz * 5.2, a: Math.atan2(vz, vx), y: (R.h[i] + R.h[i + 2]) / 2, L: L2 });
+        }
         this.station = S;
         carveRect(S.bx, S.bz, 18, 9, a, S.y, 4); stampRect(S.x - nx * 4, S.z - nz * 4, 96, 14, a, OCC_BUILD);   // the platform, both tracks and a clearance: no crossing or road next to it stampRect(S.bx, S.bz, 20, 12, a, OCC_BUILD);
         return;

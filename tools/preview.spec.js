@@ -109,3 +109,55 @@ test('metrics', async ({ wp }) => {
   }
   fs.mkdirSync(OUT, { recursive: true }); fs.writeFileSync(path.join(OUT, 'layout-metrics.json'), JSON.stringify(out, null, 1));
 });
+
+/* stage 4: the HUD over the town with the dummies' brackets, in four modes (whole-page screenshots: the HUD is canvas + DOM) */
+async function sheet(wp, shots, cols, name) {
+  save(name, await wp.run(async ([shots, cols]) => {
+    const ims = []; for (const s of shots) { const im = new Image(); im.src = 'data:image/png;base64,' + s; await im.decode(); ims.push(im); }
+    const W = ims[0].width, H = ims[0].height, c = document.createElement('canvas'); c.width = W * cols; c.height = H * Math.ceil(ims.length / cols);
+    const g = c.getContext('2d'); ims.forEach((im, i) => g.drawImage(im, (i % cols) * W, Math.floor(i / cols) * H)); return c.toDataURL('image/png');
+  }, [shots, cols]));
+}
+const aimAtDummies = () => {
+  const t = TRACKS.filter(t => Math.hypot(t.obj.position.x - GUNSHIP.home.x, t.obj.position.z - GUNSHIP.home.z) < 300).sort((a, b) => (a.side === 'enemy') - (b.side === 'enemy'))[0];
+  const e = TRACKS.find(o => o.side === 'enemy' && Math.hypot(o.obj.position.x - t.obj.position.x, o.obj.position.z - t.obj.position.z) < 160);
+  const p = e ? t.obj.position.clone().lerp(e.obj.position, 0.5) : t.obj.position;
+  GUNSHIP.look.copy(p); GUNSHIP.aim.copy(p); GUNSHIP.aimS.copy(p); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.nextWander = 1e9; CFG.zoom = e ? 60 : 100; __t.sim(2);
+};
+test('hud in four modes', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1600, height: 900 });
+  await wp.boot({ query: '?hour=11&seed=11&spot=town&transit=0&season=summer&weapons=all' });
+  await wp.run(`(${aimAtDummies})()`);
+  const shots = [];
+  for (const [m, h, wpn] of [['tv', 11, 'g25'], ['wh', 11, 'h105'], ['nv', 23.5, 'hf'], ['bh', 23.5, 'rail']]) {
+    await wp.run(([m, h, wpn]) => { CFG.fixedHour = h; SENSOR.set(m); HUD.markModes(); ARMS.select(wpn); HUD.markArms(); updateEnvironment(); __t.sim(3); HUD.domT = 0; __t.render(); }, [m, h, wpn]);
+    shots.push((await wp.page.screenshot()).toString('base64'));
+  }
+  await sheet(wp, shots, 2, 'hud-modes.png');
+});
+test('transit', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  await wp.boot({ query: '?hour=15&seed=11&spot=town&transit=0&season=summer' });
+  await wp.run(() => { GUNSHIP.startTransit(); });
+  const shots = [];
+  for (let i = 0; i < 6; i++) { await wp.run((i) => { if (i) __t.sim(GUNSHIP.tr ? GUNSHIP.tr.dur / 5 : 3); __t.render(); }, i); shots.push((await wp.page.screenshot()).toString('base64')); }
+  await sheet(wp, shots, 3, 'hud-transit.png');
+});
+test('stations', async ({ wp }) => {
+  const tiles = [];
+  for (const s of [5, 8, 13, 21, 34, 55]) {
+    if (!tiles.length) await wp.boot({ query: Q(s) + '&transit=0' }); else await wp.goto(Q(s) + '&transit=0');
+    tiles.push(await wp.run(() => {
+      const S = LAYOUT.station; if (!S) return null; let bend = 0; for (const g of S.segs) bend = Math.max(bend, Math.abs(angleWrap(g.a - S.a)));
+      GUNSHIP.look.set(S.x, 0, S.z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.nextWander = 1e9; CFG.zoom = 120; __t.sim(3); renderFrame();
+      const c = document.createElement('canvas'); c.width = 640; c.height = 360; const g = c.getContext('2d'); g.drawImage(renderer.domElement, 0, 0, 640, 360);
+      g.font = '600 15px Consolas, monospace'; g.fillStyle = '#000'; g.fillRect(8, 8, 230, 24); g.fillStyle = '#fff'; g.fillText(`seed ${MAP.seed} bend ${(bend / DEG).toFixed(1)}°`, 14, 25);
+      return c.toDataURL('image/png');
+    }));
+  }
+  save('stations.png', await wp.run(async (tiles) => {
+    const c = document.createElement('canvas'); c.width = 1920; c.height = 720; const g = c.getContext('2d');
+    for (let i = 0; i < tiles.length; i++) if (tiles[i]) { const im = new Image(); im.src = tiles[i]; await im.decode(); g.drawImage(im, (i % 3) * 640, (i / 3 | 0) * 360); }
+    return c.toDataURL('image/png');
+  }, tiles));
+});

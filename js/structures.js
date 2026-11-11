@@ -171,8 +171,12 @@ const STRUCT = {
     }
     if (LAYOUT.station) {
       const S = LAYOUT.station, g = new THREE.Group(); groups.set('station', g);
-      const p = new THREE.Group(); p.position.set(S.x, S.y, S.z); p.rotation.y = -S.a; g.add(p);
-      box(p, 70, 1.1, 4.2, 0x9a968e, 0, 0.15, 0); for (let x = -24; x <= 24; x += 8) box(p, 0.3, 3, 0.3, 0x4a4e52, x, 1.9, 0.8); box(p, 52, 0.2, 3.2, 0x5a6066, 0, 3.4, 0.6);
+      S.segs.forEach((s, n) => {   // the platform in pieces along the line (curved where it is), a canopy over the middle six
+        const q = new THREE.Group(); q.position.set(s.x, s.y, s.z); q.rotation.y = -s.a; g.add(q); const fl = s.L + 0.35;
+        const out = (S.nx * -Math.sin(s.a) + S.nz * Math.cos(s.a)) > 0 ? 1 : -1;   // (the side away from the track, in the piece's frame)
+        box(q, fl, 1.1, 4.2, 0x9a968e, 0, 0.15, 0);
+        if (n > 0 && n < S.segs.length - 1) { box(q, 0.3, 3, 0.3, 0x4a4e52, 0, 1.9, out * 0.8); box(q, fl, 0.2, 3.2, 0x5a6066, 0, 3.4, out * 0.6); }
+      });
       const h = new THREE.Group(); h.position.set(S.bx, S.y, S.bz); h.rotation.y = -S.a; g.add(h);
       const cs = rectCorners(S.bx, S.bz, 18, 9, S.a).map(c => groundH(c[0], c[1])); box(h, 18.4, S.y - Math.min(...cs) + 0.8, 9.4, 0x8a8478, 0, (Math.min(...cs) - S.y) / 2 + 0.2, 0);
       BUILDERS.house(h, { w: 18, d: 9, floors: 2, tint: 0.8, roof: 0.4, seed: 0.3 });

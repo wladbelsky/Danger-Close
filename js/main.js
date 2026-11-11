@@ -13,6 +13,8 @@ if (QS.has('zoom')) CFG.zoom = parseFloat(QS.get('zoom'));
 if (QS.has('season')) CFG.season = QS.get('season');
 if (QS.has('mode')) CFG.vision = QS.get('mode');
 if (QS.has('seed')) CFG.seed = parseInt(QS.get('seed'), 10) || 0;
+if (QS.has('weapons')) CFG.weapons = QS.get('weapons') === 'all' ? WEAPONS.map(w => w.id) : QS.get('weapons').split(',');
+if (QS.has('transit')) CFG.transitMin = parseFloat(QS.get('transit'));
 
 /* ---- Wallpaper Engine properties ---- */
 window.wallpaperPropertyListener = {
@@ -71,34 +73,21 @@ function runSlices(gen, done) {
   ch.port2.postMessage(0);
 }
 function finishInit() {
-  const sp = LAYOUT.spots(), p = sp.town ? [sp.town[0] + 60, sp.town[1] + 40] : MAP.startPoint();
-  CAM_TGT.set(QS.has('x') ? parseFloat(QS.get('x')) : p[0], 0, QS.has('z') ? parseFloat(QS.get('z')) : p[1]);
-  CAM_TGT.y = groundH(CAM_TGT.x, CAM_TGT.z);
   if (QS.has('az')) camAz = parseFloat(QS.get('az')) * DEG;
+  ARMS.init();
+  GUNSHIP.init();                      // a random district to start over
+  if (QS.get('dummies') !== '0') placeDummies();
   window.addEventListener('resize', resize);
+  HUD.build();
   resize();
   updateEnvironment();
-  buildModeStrip();
-  SENSOR.set(SENSOR.initial());
+  SENSOR.set(SENSOR.initial()); HUD.markModes();
   updateEnvironment();
   renderer.setRenderTarget(SENSOR.rt); renderer.compile(scene, camera); renderer.setRenderTarget(null);   // under the splash: no compile stalls later
   ready = true;
   const s = document.getElementById('splash'); if (s) { s.classList.add('off'); setTimeout(() => s.remove(), 700); }
   requestAnimationFrame(frame);
 }
-
-/* ---- a temporary mode switch (the real HUD comes in stage 4) ---- */
-function buildModeStrip() {
-  const el = document.getElementById('modes'); if (!el) return;
-  if (QS.get('hud') === '0') { el.style.display = 'none'; return; }
-  for (const m of SENSOR_MODES) {
-    const b = document.createElement('button'); b.textContent = SENSOR_LABEL[m]; b.dataset.m = m;
-    b.onclick = () => { SENSOR.set(m); updateEnvironment(); markModes(); };
-    el.appendChild(b);
-  }
-  markModes();
-}
-function markModes() { for (const b of document.querySelectorAll('#modes button')) b.classList.toggle('on', b.dataset.m === SENSOR.mode); }
 
 /* ---- camera: perspective with a narrow lens from far away; ~95 m of screen height at 100 % zoom ---- */
 const VIEW_H = 95, CAM_D = 340, CAM_ELEV = 45 * DEG, CAM_TGT = new V3(0, 0, 0);
@@ -107,19 +96,30 @@ function resize() {
   if (!window.innerWidth || !window.innerHeight) return;   // a hidden pane / window at start: a zero-sized target is an incomplete framebuffer
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   SENSOR.resize(renderer);
+  HUD.resize();
   updateCamera();
 }
 function updateCamera() {
-  const viewH = VIEW_H * 100 / CFG.zoom;
+  const viewH = VIEW_H * 100 / Math.max(30, CFG.zoom * GUNSHIP.zm);   // (the zoom setting × the weapon's × the transit's)
   camera.aspect = Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight);
   camera.fov = 2 * Math.atan(viewH * 0.5 / CAM_D) / DEG;
   camera.updateProjectionMatrix();
   updateCameraPose();
 }
-function updateCameraPose() {
+function updateCameraPose(again) {
   camera.position.set(CAM_TGT.x + Math.cos(CAM_ELEV) * Math.cos(camAz) * CAM_D, CAM_TGT.y + Math.sin(CAM_ELEV) * CAM_D, CAM_TGT.z + Math.cos(CAM_ELEV) * Math.sin(camAz) * CAM_D);
   camera.lookAt(CAM_TGT);
   camera.updateMatrixWorld();
+  if (!again && clampFrame()) updateCameraPose(true);   // (moving the look-at point moves the whole frame: once is enough)
+}
+/* keep the whole frame on the map: shift the look-at point back by however far a corner of the frame overshoots the edge */
+function clampFrame() {
+  const E = MAP_HALF - 2; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  if (MAP.lo === undefined) { MAP.lo = Infinity; for (const v of MAP.h) MAP.lo = Math.min(MAP.lo, v); }   // (the corner rays measured down to the map's lowest ground: no hollow lets them reach past the edge)
+  for (const c of SCREEN_CORNERS) { const p = VIEW.groundAt(c[0], c[1], MAP.lo - 1, _shc); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+  const dx = Math.max(0, x1 - E) - Math.max(0, -E - x0), dz = Math.max(0, z1 - E) - Math.max(0, -E - z0);
+  if (Math.abs(dx) < 0.01 && Math.abs(dz) < 0.01) return false;
+  CAM_TGT.x -= dx; CAM_TGT.z -= dz; return true;
 }
 /* screen helpers (perspective camera) */
 const _nd = new V3(), _rd = new V3();
@@ -186,11 +186,12 @@ function frame(ms) {
   for (let i = 0; i < n * TIME_SCALE; i++) step(dt);
   renderFrame();
 }
-function renderFrame() { if (CFG.shadows) fitShadow(); SENSOR.render(); }
+function renderFrame() { if (CFG.shadows) fitShadow(); SENSOR.render(); HUD.draw(); }
 const TIME_SCALE = Math.max(1, Math.round(parseFloat(QS.get('ts') || '1')));
 function step(dt) {
   T += dt;
-  if (!QS.has('az')) { camAz -= 0.03 * dt; updateCameraPose(); }   // (a plain turn until the gunship comes in stage 4)
+  GUNSHIP.update(dt);
+  ARMS.update(dt);
   FX.tracers.update(dt);
   FX.flash.update(dt);
   FX.fire.update(dt);

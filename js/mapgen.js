@@ -13,7 +13,7 @@ const MAP = {
   seed: 0, h: null, forest: null, conifer: null, dry: null, forestShare: 0, genMs: 0,
   /* heights (m) and the 0..1 masks at every grid vertex */
   *generate(seed) {
-    this.seed = seed;
+    this.seed = seed; this.lo = undefined;
     const rng = mulberry32(seed), s = rng() * 900 + 10, relief = lerp(0.7, 1.25, rng()), share = lerp(0.2, 0.34, rng());
     const h = this.h = new Float32Array(MAP_V * MAP_V), f = this.forest = new Float32Array(MAP_V * MAP_V);
     const c = this.conifer = new Float32Array(MAP_V * MAP_V), d = this.dry = new Float32Array(MAP_V * MAP_V);

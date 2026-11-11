@@ -28,7 +28,13 @@ const CFG = {
   vision: 'tv',       // default vision mode: tv / wh / bh / nv / auto (TV by day, white-hot at night)
   shadows: true,
   seed: 0,            // map seed, 0 = a new map on each launch
-  msaa: 4             // render target samples (0 = off)
+  msaa: 4,            // render target samples (0 = off)
+  weapons: ['g25', 'g30', 'h105'],   // the enabled weapons (js/weapons.js)
+  callsign: 'GHOSTRIDER 31',
+  hudScale: 1,
+  hudBottom: 48,      // px kept free at the bottom for the Windows taskbar (a wallpaper lies under it)
+  orbit: 100,         // orbit speed, %
+  transitMin: 4       // minutes between transits to another district (in silence)
 };
 
 /* ===== Ground & wind =====

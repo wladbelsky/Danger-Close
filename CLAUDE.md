@@ -18,8 +18,8 @@ Update the status here when a stage is finished. The full approved design is sum
 1. **Sensor**: camera, test scene with a live and a knocked-out T-90, smoke and flash, 4 modes on one sheet — done.
 2. **Terrain and performance**: the whole map, forests, shadows; draw calls and generation time measured; a sheet of seeds — done.
 3. **Roads, rail, lakes, towns, occupancy** — done.
-4. **Gunship and HUD**: orbit, transit, slewing, clicks, friend-or-foe boxes on dummies — in progress.
-5. **Units and allied patrols**: models, infantry, scale against the buildings — not started.
+4. **Gunship and HUD**: orbit, transit, slewing, clicks, friend-or-foe boxes on dummies — done.
+5. **Units and allied patrols**: models, infantry, scale against the buildings — in progress.
 6. **Combat**: arming on music, bases, the weapon table, the beat, wrecks, retreat — not started.
 7. **AA, flares, clouds, weather, day and night** — not started.
 8. **Big guns in frame**: the barrels of the big guns (105 mm and the railgun at least; the others are optional) visible at the edge of the frame while selected, with a firing animation (recoil, muzzle flash, gases) on every shot — not started.
@@ -31,7 +31,7 @@ Update the status here when a stage is finished. The full approved design is sum
 - **Vision**: TV, WH, BH, NVG; a clickable switch on the HUD that is NOT persisted; a property for the default (tv / wh / bh /
   nv / auto = TV by day, WH at night).
 - **HUD**: mode label, callsign (property, default `GHOSTRIDER 31`), compass, altitude ladder, PC clock, crosshair per weapon;
-  at the bottom a clickable selector of the enabled weapons with cosmetic ammo / reload. Screen-fixed corner brackets: allies blue,
+  at the bottom a clickable selector of the enabled weapons with cosmetic ammo / reload, kept `CFG.hudBottom` (48 px) above the bottom edge for the Windows taskbar. Screen-fixed corner brackets: allies blue,
   enemies white.
 - **Map**: ~2×2 km generated at start under the splash; seed property (0 = new each launch). Gentle hills, lakes, roads with
   bridges, rail, towns, fields, forests. Ordinary buildings are indestructible; only enemy base structures blow up.
@@ -64,7 +64,7 @@ Update the status here when a stage is finished. The full approved design is sum
   bundled once with esbuild: `export * from "three"` → `esbuild --bundle --minify --format=iife --global-name=THREE --target=es2020`.
 - Code taken from FAB / Code 3 (r149) needs the r187 changes: `opaque_fragment` (was `output_fragment`), `ColorManagement.enabled = false` (core.js) and linear output, light
   intensities × π (legacy units), `addUpdateRange` (was `updateRange`), `PCFShadowMap` (`PCFSoftShadowMap` is gone), `InstancedMesh` can compute its own bounding sphere.
-- Load order: `core → sensor → models → armor → mapgen → layout → terrain → structures → effects → main`.
+- Load order: `core → sensor → models → armor → mapgen → layout → terrain → structures → effects → weapons → gunship → hud → main`.
   Target order: core → sensor → models → armor → mapgen → terrain → effects → weather → infantry → units → weapons → battle → gunship → hud → main → properties → settings.
 
 | File | Contents |
@@ -78,10 +78,13 @@ Update the status here when a stage is finished. The full approved design is sum
 | `js/terrain.js` | `TERRAIN`: ground chunks (16×16 of 128 m), the ground material (mask + tiled detail in world space, `GROUND_PAL` per season), vegetation (one InstancedMesh per kind and chunk; roles fixed per seed, shapes per season) |
 | `js/structures.js` | `STRUCT`: water (lakes, river), road / rail ribbons draped on the carved ground (decal materials: no depth write, polygon offset, renderOrder), bridges, the station, buildings (`BUILDERS`) merged per town / farm |
 | `js/effects.js` | `Tracers`, `SpriteFX`, `Scorch`, `blast` |
-| `js/main.js` | scene init, camera, `VIEW`, `updateEnvironment`, `fitShadow`, main loop |
+| `js/weapons.js` | `WEAPONS` (name, zoom factor, reticle, cosmetic rounds / magazine / reload), `ARMS` (the selected weapon, ammunition state) |
+| `js/gunship.js` | `GUNSHIP`: districts (towns, spots, farms, roads in the country; `GS_MARGIN` from the edge), a random start, the left orbit, the slew (eased aim + critically damped spring), transits (smootherstep, zoom-out arc), `track(p)` for combat; `TRACKS` (what the HUD brackets); `placeDummies` (temporary until stage 5) |
+| `js/hud.js` | `HUD`: a 2D canvas over the picture (compass, altitude ladder, clock, grid, reticle per weapon, fixed-size brackets) + DOM for the clicks (`#modes`, `#arms`); sizes follow window height × `CFG.hudScale` (`--hs` in CSS) |
+| `js/main.js` | scene init, camera (`clampFrame`: the whole frame stays on the map, measured down to `MAP.lo`), `VIEW`, `updateEnvironment`, `fitShadow`, main loop |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=5`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=12`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
@@ -101,4 +104,4 @@ Update the status here when a stage is finished. The full approved design is sum
 ## Running & testing
 - Browser preview: `python -m http.server 8767` in this folder, URL params `?hour=22`, `?season=winter`, `?mode=wh`, `?zoom=150`, `?ts=N`.
 - Tests: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 [file / -g pattern]` (Playwright in Docker, SwiftShader; `$env:SEED = N`).
-- Review sheets: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 -c tools/preview.config.js` → `test-results/*.png`, `terrain-metrics.json`. URL params also `?seed=N`, `?x=&z=` (view point), `?az=` (fixed camera azimuth, deg).
+- Review sheets: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 -c tools/preview.config.js` → `test-results/*.png`, `terrain-metrics.json`. URL params also `?seed=N`, `?x=&z=` (view point), `?az=` (fixed camera azimuth, deg), `?spot=town` (start district by name), `?transit=N` (minutes between transits, 0 = never), `?weapons=all` or `g25,h105`, `?dummies=0`, `?hud=0`.

@@ -36,6 +36,9 @@ for (const seed of SEEDS) test(`layout invariants, seed ${seed}`, async ({ wp })
       for (const o of [-K.w / 2, 0, K.w / 2]) { const ya = roadY(a[0] + nx * o, a[1] + nz * o), yb = roadY(b[0] + nx * o, b[1] + nz * o), mx = (a[0] + b[0]) / 2 + nx * o, mz = (a[1] + b[1]) / 2 + nz * o; if ((ya + yb) / 2 - groundH(mx, mz) < -0.02) out.under++; } } }
     // lakes: the water stands below the shore all round
     out.leak = 0; for (const L of LAYOUT.lakes) for (let k = 0; k < 72; k++) { const a = k / 72 * TAU, r = L.shape(a) + 4, x = L.x + Math.cos(a) * r, z = L.z + Math.sin(a) * r; if (waterAt(x, z) >= 2) continue; if (groundH(x, z) < L.W + 0.02) out.leak++; }   // (where the river leaves it, the water goes on)
+    // the platform runs along the track: both its ends at the same distance from the line
+    out.platform = 0; const S = LAYOUT.station;
+    if (S) for (const sg of S.segs) for (const e of [-sg.L / 2, 0, sg.L / 2]) { const x = sg.x + Math.cos(sg.a) * e, z = sg.z + Math.sin(sg.a) * e; let d = 1e9; for (const p of LAYOUT.rail.pts) d = Math.min(d, Math.hypot(p[0] - x, p[1] - z)); if (Math.abs(d - 5.2) > 0.6) out.platform++; }
     out.counts = { towns: LAYOUT.towns.length, buildings: B.length, roads: roads.length, fields: LAYOUT.fields.length, rail: !!LAYOUT.rail, station: !!LAYOUT.station };
     return out;
   });
@@ -46,6 +49,7 @@ for (const seed of SEEDS) test(`layout invariants, seed ${seed}`, async ({ wp })
   expect(r.roadGrade).toBeLessThan(0.2);
   expect(r.railGrade).toBeLessThan(0.04);
   expect(r.under, 'road ribbon points under the ground').toBe(0);
+  expect(r.platform, 'platform points off their distance from the track').toBe(0);
   expect(r.leak, 'lake shore points below the water').toBe(0);
   expect(r.counts.towns).toBeGreaterThanOrEqual(3);
   expect(r.counts.buildings).toBeGreaterThan(100);
