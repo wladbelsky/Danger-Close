@@ -161,3 +161,47 @@ test('stations', async ({ wp }) => {
     return c.toDataURL('image/png');
   }, tiles));
 });
+
+/* stage 5: every model of both sides in a row along a street next to the houses (the scale), in TV and white-hot */
+const lookAt = (x, z, zoom) => { GUNSHIP.look.set(x, groundH(x, z), z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.nextWander = 1e9; CFG.zoom = zoom; __t.sim(2.5); };
+test('units lineup', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1600, height: 900 });
+  await wp.boot({ query: '?hour=11&seed=11&spot=town&transit=0&season=summer&az=120' });
+  await wp.run(`(${lookAt.toString()}, 0)`);
+  await wp.run(() => {
+    ALLIES.update = () => {};
+    const T0 = LAYOUT.towns[0], r = LAYOUT.roads.filter(r => r.kind === 'street').sort((a, b) => Math.hypot(a.pts[0][0] - T0.x, a.pts[0][1] - T0.z) - Math.hypot(b.pts[0][0] - T0.x, b.pts[0][1] - T0.z))[0];
+    const P = r.pts, i0 = Math.min(6, P.length - 1), list = [];
+    for (const side of ['ally', 'enemy']) for (const k of ['tank', 'apc', 'car', 'heli']) for (const b of [].concat(UNIT_TYPES[side][k])) list.push([side, k, b]);
+    window.__L = { pts: P.slice(i0, i0 + list.length * 3 + 6) };
+    list.forEach(([side, k, b], n) => {
+      const p = P[Math.min(P.length - 2, i0 + n * 3)], q = P[Math.min(P.length - 1, i0 + n * 3 + 1)], g = b(); if (k !== 'heli') g.scale.setScalar(ARMOR_SCALE);
+      const nx = -(q[1] - p[1]), nz = q[0] - p[0], L = Math.hypot(nx, nz), off = side === 'ally' ? 2 : -2;
+      g.position.set(p[0] + nx / L * off * (k === 'heli' ? 4 : 1), 0, p[1] + nz / L * off * (k === 'heli' ? 4 : 1)); g.position.y = groundH(g.position.x, g.position.z); g.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); scene.add(g); TRACKS.push({ obj: g, side, inf: false, h: 2 });
+    });
+    const e = P[Math.min(P.length - 1, i0 + list.length * 3)];
+    for (let i = 0; i < 8; i++) { const s = INF.add(i < 4 ? 'ally' : 'enemy', e[0] + (i % 4) * 1.2, e[1] + (i < 4 ? 3 : -3)); s.a = 0.6; }
+    const m = P[Math.min(P.length - 1, i0 + Math.floor(list.length * 1.5))]; window.__L.c = m;
+  });
+  const shots = [];
+  for (const [m, zoom] of [['tv', 70], ['wh', 70], ['tv', 220], ['wh', 220]]) {
+    await wp.run(([m, zoom]) => { const c = window.__L.c; SENSOR.set(m); HUD.markModes(); updateEnvironment(); GUNSHIP.look.set(c[0], groundH(c[0], c[1]), c[1]); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); CFG.zoom = zoom; __t.sim(2.5); __t.render(); }, [m, zoom]);
+    shots.push((await wp.page.screenshot()).toString('base64'));
+  }
+  await sheet(wp, shots, 2, 'units-lineup.png');
+});
+/* stage 5: the patrols — an outpost, a column on the road, a helicopter up, the fireteam, night vision and white-hot */
+test('patrols', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  await wp.boot({ query: '?hour=11&seed=11&spot=outpost&transit=0&season=summer' });
+  const shots = [], at = async (fn, arg) => { await wp.run(fn, arg); shots.push((await wp.page.screenshot()).toString('base64')); };
+  const follow = (o) => { const p = o.position || o; GUNSHIP.look.set(p.x, groundH(p.x, p.z), p.z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.nextWander = 1e9; };
+  await wp.run(`window.__follow = ${follow.toString()}`);
+  await at(() => { CFG.zoom = 70; const o = LAYOUT.outposts[0]; __follow({ x: o.x, z: o.z }); __t.sim(2); __t.render(); });
+  await at(() => { const P = ALLIES.posts[0]; P.timer = 0; __t.sim(40, {}); CFG.zoom = 100; __follow(P.col.u[0].obj); __t.sim(0.05); __t.render(); });
+  await at(() => { const h = ALLIES.helis[0]; h.timer = 0; for (let i = 0; i < 200 && h.state !== 'fly'; i++) __t.sim(0.5); __t.sim(4); CFG.zoom = 90; const up = h.pos.y - groundH(h.pos.x, h.pos.z); __follow({ x: h.pos.x - Math.cos(camAz) * up, z: h.pos.z - Math.sin(camAz) * up }); __t.sim(0.05); __t.render(); });
+  await at(() => { const s = ALLIES.squads[0].m[1]; CFG.zoom = 230; __follow(s); __t.sim(0.05); __t.render(); });
+  await at(() => { CFG.fixedHour = 23.5; SENSOR.set('nv'); HUD.markModes(); updateEnvironment(); const o = LAYOUT.outposts[0]; CFG.zoom = 80; __follow({ x: o.x, z: o.z }); __t.sim(0.05); __t.render(); });
+  await at(() => { SENSOR.set('wh'); HUD.markModes(); updateEnvironment(); const P = ALLIES.posts[0]; CFG.zoom = 110; __follow(P.col.u[0].obj); __t.sim(0.05); __t.render(); });
+  await sheet(wp, shots, 3, 'units-patrols.png');
+});

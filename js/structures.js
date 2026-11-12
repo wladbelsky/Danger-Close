@@ -181,6 +181,7 @@ const STRUCT = {
       const cs = rectCorners(S.bx, S.bz, 18, 9, S.a).map(c => groundH(c[0], c[1])); box(h, 18.4, S.y - Math.min(...cs) + 0.8, 9.4, 0x8a8478, 0, (Math.min(...cs) - S.y) / 2 + 0.2, 0);
       BUILDERS.house(h, { w: 18, d: 9, floors: 2, tint: 0.8, roof: 0.4, seed: 0.3 });
     }
+    for (const o of LAYOUT.outposts) { const g = new THREE.Group(); groups.set(o, g); OUTPOST_BUILD(g, o); }
     for (const g of groups.values()) {
       mergeStatic(g, []);
       for (const c of g.children.slice()) if (c.isGroup && !c.children.length) g.remove(c);   // the per-building groups are empty now (one keeps a mesh no other shares a material with)
@@ -219,3 +220,22 @@ const SHOULDER_MAT = decalMat({}, 0.05, 0), ROAD_MAT = decalMat({}, 0.06, 1), MA
 const RAIL_BED_MAT = decalMat({ map: sleeperTex() }, 0.03, 0);
 const RAIL_MAT = sensorMat(new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 50, specular: 0x666666 }), 0.04); RAIL_MAT.userData.shared = true;
 const BRIDGE_MAT = sensorMat(new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: true, shininess: 4, specular: 0x111111 }), 0.04); BRIDGE_MAT.userData.shared = true;
+
+/* an allied outpost: a gravel yard, a wall of earth-filled barriers, two watch towers, containers, tents, a helipad */
+function OUTPOST_BUILD(root, o) {
+  const g = new THREE.Group(); g.position.set(o.x, o.y, o.z); g.rotation.y = -o.a; root.add(g);
+  box(g, OP_W - 1, 0.12, OP_D - 1, 0x625e52, 0, 0.0, 0).castShadow = false;                 // gravel
+  const at = (part, fn) => { const q = new THREE.Group(); q.position.set(part.u, 0, part.v * o.side); g.add(q); fn(q, part); };   // (rotation.y = -a turns +x onto u and +z onto ±v: the side the outpost lies on)
+  for (const p of o.parts) at(p, (q, p) => {
+    if (p.type === 'wall') {                                    // barriers in 1.1 m cells along the long side
+      const long = p.w > p.d, L = long ? p.w : p.d, n = Math.max(1, Math.round(L / 1.12));
+      for (let i = 0; i < n; i++) { const t = (i + 0.5) / n * L - L / 2, c = i % 3 === 1 ? 0x8f8062 : 0x9c8d6c; box(q, long ? 1.06 : 1.1, 2.1, long ? 1.1 : 1.06, c, long ? t : 0, 1.05, long ? 0 : t); }
+    } else if (p.type === 'tower') {
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(q, 0.25, 5, 0.25, 0x5a5448, sx * 1.4, 2.5, sz * 1.4);
+      box(q, 3.4, 1.3, 3.4, 0x8a7c5e, 0, 5.6, 0); box(q, 3.8, 0.2, 3.8, 0x5c5a52, 0, 7.4, 0); for (const sx of [-1, 1]) box(q, 0.2, 1.1, 0.2, 0x5a5448, sx * 1.6, 6.8, 1.6), box(q, 0.2, 1.1, 0.2, 0x5a5448, sx * 1.6, 6.8, -1.6);
+    } else if (p.type === 'container') box(q, p.w, 2.55, p.d, [0x66705c, 0x8a7a58, 0x5c6470][Math.abs(Math.round(p.u + p.v)) % 3], 0, 1.3, 0);
+    else if (p.type === 'tent') { box(q, p.w, 1.5, p.d, 0x8e8466, 0, 0.75, 0); gable(q, p.w, p.d, 1.4, M(0x857b5e), 1.5); }
+    else if (p.type === 'sandbag') { box(q, p.w, 1.1, 0.8, 0x857552, 0, 0.55, -(p.d / 2 - 0.4) * o.side); for (const sx of [-1, 1]) box(q, 0.8, 1.1, p.d, 0x857552, sx * (p.w / 2 - 0.4), 0.55, 0); }
+    else if (p.type === 'pad') { box(q, p.w, 0.2, p.d, 0x6e6c66, 0, 0.1, 0).castShadow = false; box(q, 0.8, 0.04, 6, 0xd8d6cc, -1.6, 0.22, 0); box(q, 0.8, 0.04, 6, 0xd8d6cc, 1.6, 0.22, 0); box(q, 2.4, 0.04, 0.8, 0xd8d6cc, 0, 0.22, 0); }
+  });
+}

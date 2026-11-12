@@ -66,9 +66,10 @@ test('a click on a mode switches the vision and recompiles nothing', async ({ wp
 });
 
 test('brackets keep their size at any zoom: allies blue, enemies white', async ({ wp }) => {
-  await wp.boot({ query: '?hour=12&seed=11&spot=town&transit=0' });
+  await wp.boot({ query: '?hour=12&seed=11&spot=outpost&transit=0' });
   const r = await wp.run(() => {
-    const t = TRACKS.find(t => t.side === 'ally' && Math.hypot(t.obj.position.x - GUNSHIP.home.x, t.obj.position.z - GUNSHIP.home.z) < 250);
+    ALLIES.update = () => {};   // (everyone stands still)
+    const t = TRACKS.find(t => t.side === 'ally' && !t.inf), e = buildT90(); e.scale.setScalar(ARMOR_SCALE); e.position.copy(t.obj.position).add(new THREE.Vector3(8, 0, 8)); scene.add(e); TRACKS.push({ obj: e, side: 'enemy', inf: false, h: 2 });
     GUNSHIP.look.copy(t.obj.position); GUNSHIP.aim.copy(t.obj.position); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.nextWander = 1e9;
     const sizes = [];
     for (const z of [60, 200]) { CFG.zoom = z; __t.sim(3); __t.render(); const b = HUD.boxes.find(b => b.side === 'ally'); sizes.push(b ? b.s : 0); }

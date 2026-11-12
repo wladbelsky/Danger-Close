@@ -4,7 +4,7 @@
    basin, the river a channel, lots a flat pad), rasterised into the occupancy grid OCC (2 m cells: what is where — the
    vegetation, the buildings and later the units read it) and painted into the land-use texture (fields).
    Everything comes from the map's seed (its own mulberry32). Run as a generator in slices, like the rest of the world. */
-const OCC_N = 1024, OCC_CELL = 2;
+const OCC_N = 1024, OCC_CELL = 2, OP_W = 60, OP_D = 50;   // (an outpost's size: along the road, away from it)
 const OCC_WATER = 1, OCC_ROAD = 2, OCC_RAIL = 4, OCC_BUILD = 8, OCC_YARD = 16, OCC_FIELD = 32, OCC_HEDGE = 64, OCC_NEAR = 128;   // NEAR: within ~7 m of a road's edge
 const ROAD_KINDS = {
   highway: { w: 8, grade: 0.08, asphalt: 0x343537, mark: true },
@@ -128,11 +128,11 @@ function rectFree(cx, cz, w, d, a, mask) {
 function rectCorners(cx, cz, w, d, a) { const ca = Math.cos(a), sa = Math.sin(a), o = []; for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) o.push([cx + u * w / 2 * ca - v * d / 2 * sa, cz + u * w / 2 * sa + v * d / 2 * ca]); return o; }
 
 const LAYOUT = {
-  occ: null, lakes: [], rivers: [], towns: [], roads: [], junctions: [], rail: null, buildings: [], fields: [], farms: [], station: null, landuse: null, ms: 0,
+  occ: null, lakes: [], rivers: [], towns: [], roads: [], junctions: [], rail: null, buildings: [], fields: [], farms: [], outposts: [], station: null, landuse: null, ms: 0,
   *plan(seed) {
     const t0 = performance.now(), rng = this.rng = mulberry32((seed * 7 + 3) >>> 0);
     this.occ = new Uint8Array(OCC_N * OCC_N); MAP.water = new Uint8Array(MAP_V * MAP_V); MAP.wl = new Float32Array(MAP_V * MAP_V);
-    Object.assign(this, { lakes: [], rivers: [], towns: [], roads: [], junctions: [], rail: null, buildings: [], fields: [], farms: [], station: null });
+    Object.assign(this, { lakes: [], rivers: [], towns: [], roads: [], junctions: [], rail: null, buildings: [], fields: [], farms: [], outposts: [], station: null });
     this.planLakes(rng); yield;
     this.planRiver(rng); yield;
     this.planTowns(rng); yield;
@@ -142,6 +142,7 @@ const LAYOUT = {
     this.planTracks(rng); yield;
     for (const t of this.towns) { this.planLots(t, rng); yield; }
     this.planFarms(rng); yield;
+    this.planOutposts(rng); yield;
     for (const t of this.towns) this.planFields(t, rng);
     yield;
     this.clearForest(); this.paintLanduse();
@@ -415,6 +416,35 @@ const LAYOUT = {
       const lane = resample([[x + nx * ROAD_KINDS[r.kind].w * 0.3, z + nz * ROAD_KINDS[r.kind].w * 0.3], [cx - nx * 19, cz - nz * 19]], 4); this.addRoad(lane, 'track');   // (to the yard's edge)
     }
   },
+  /* the allies' outposts: a walled compound beside a country road (away from the towns), a lane to its gate. Local frame:
+     u along the road, v away from it (the gate at v = -OP_D / 2); at(u, v) gives the world point */
+  planOutposts(rng) {
+    const want = 2 + (rng() < 0.4 ? 1 : 0), cand = [];   // (every few samples of the country roads and tracks)
+    for (const r of this.roads) if (r.kind !== 'street' && r.pts.length >= 12) for (let i = 4; i < r.pts.length - 4; i += 5) cand.push([r, i]);
+    for (let tries = 0; tries < 600 && cand.length && this.outposts.length < want; tries++) {
+      const [r, i] = cand[Math.floor(rng() * cand.length)], [x, z] = r.pts[i];
+      if (r.br.slice(i - 4, i + 5).some(Boolean) || this.towns.some(t => Math.hypot(t.x - x, t.z - z) < t.R + 120) || this.farms.some(f => Math.hypot(f.x - x, f.z - z) < 160) || this.outposts.some(o => Math.hypot(o.x - x, o.z - z) < 550)) continue;
+      const dx = r.pts[i + 2][0] - r.pts[i - 2][0], dz = r.pts[i + 2][1] - r.pts[i - 2][1], L = Math.hypot(dx, dz), side = rng() < 0.5 ? 1 : -1, ux = dx / L, uz = dz / L, nx = -uz * side, nz = ux * side, a = Math.atan2(uz, ux);
+      const off = ROAD_KINDS[r.kind].w / 2 + 12 + OP_D / 2, cx = x + nx * off, cz = z + nz * off;
+      if (Math.abs(cx) > MAP_HALF - 120 || Math.abs(cz) > MAP_HALF - 120) continue;
+      const cs = rectCorners(cx, cz, OP_W, OP_D, a).map(c => groundH(c[0], c[1]));
+      if (Math.max(...cs) - Math.min(...cs) > 5 || !rectFree(cx, cz, OP_W + 8, OP_D + 8, a, OCC_ROAD | OCC_RAIL | OCC_WATER | OCC_BUILD | OCC_YARD)) continue;
+      const h = cs.reduce((s, v) => s + v, 0) / 4, at = (u, v) => [cx + u * ux + v * nx, cz + u * uz + v * nz];
+      carveRect(cx, cz, OP_W + 4, OP_D + 4, a, h, 8);
+      const o = { x: cx, z: cz, a, y: h, side, ux, uz, nx, nz, at, gate: at(0, -OP_D / 2 - 3), inner: at(0, OP_D / 2 - 9), pad: at(18, 6), parts: [] };
+      const part = (type, u, v, w, d, flag) => { const [px, pz] = at(u, v); o.parts.push({ type, u, v, w, d }); stampRect(px, pz, w, d, a, flag === undefined ? OCC_BUILD : flag); };
+      // the wall (a gap for the gate), two towers, containers, tents, a sandbag post at the gate
+      part('wall', 0, OP_D / 2, OP_W, 1.6); part('wall', -OP_W / 2, 0, 1.6, OP_D); part('wall', OP_W / 2, 0, 1.6, OP_D);
+      part('wall', -(OP_W / 4 + 3), -OP_D / 2, OP_W / 2 - 6, 1.6); part('wall', OP_W / 4 + 3, -OP_D / 2, OP_W / 2 - 6, 1.6);
+      part('tower', -OP_W / 2 + 3, OP_D / 2 - 3, 4, 4); part('tower', OP_W / 2 - 3, -OP_D / 2 + 3, 4, 4);
+      part('container', -19, 18, 6.1, 2.5); part('container', -19, 13.5, 6.1, 2.5); part('container', -9, 19, 6.1, 2.5);
+      part('tent', -19, -3, 9, 5.5); part('tent', -19, -12, 9, 5.5);
+      part('sandbag', -8, -OP_D / 2 + 3, 4, 2); part('sandbag', 8, -OP_D / 2 + 3, 4, 2);
+      part('pad', 18, 6, 15, 15, 0);
+      stampRect(cx, cz, OP_W + 4, OP_D + 4, a, OCC_YARD); this.outposts.push(o);
+      const lane = resample([[x + nx * ROAD_KINDS[r.kind].w * 0.3, z + nz * ROAD_KINDS[r.kind].w * 0.3], o.gate], 4); this.addRoad(lane, 'track');
+    }
+  },
   /* dirt tracks off the roads into the fields and the forests (dead ends) */
   planTracks(rng) {
     for (let k = 0, made = 0; k < 40 && made < 4; k++) {
@@ -469,6 +499,7 @@ const LAYOUT = {
     if (this.lakes[0]) { const L = this.lakes[0]; s.lake = [L.x + L.shape(0.6) * Math.cos(0.6), L.z + L.shape(0.6) * Math.sin(0.6)]; }
     if (this.fields.length) { const f = this.fields[Math.floor(this.fields.length / 2)]; s.fields = [f.x, f.z]; }
     if (this.farms[0]) s.farm = [this.farms[0].x, this.farms[0].z];
+    if (this.outposts[0]) s.outpost = [this.outposts[0].x, this.outposts[0].z];
     if (this.rail) { const P = this.rail.pts, i = Math.floor(P.length * 0.25); s.rail = P[i]; }
     return s;
   }

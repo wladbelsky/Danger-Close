@@ -149,7 +149,7 @@ const TERRAIN = {
         let role; const o = occAt(px, pz), w = waterAt(px, pz);
         if ((o & (OCC_WATER | OCC_ROAD | OCC_RAIL | OCC_BUILD | OCC_FIELD)) || w === 1 || w === 2) continue;   // nothing grows on what is used
         if (o & OCC_HEDGE) { if (a > 0.55) continue; role = b < 0.6 ? 3 : c < 0.5 ? 0 : 1; }       // hedgerows between the fields
-        else if (o & OCC_YARD) { if (a > 0.06) continue; role = b < 0.5 ? 3 : 0; }                    // a garden tree now and then
+        else if (o & OCC_YARD) { if (a > 0.06 || LAYOUT.outposts.some(q => Math.abs(q.x - px) < 45 && Math.abs(q.z - pz) < 45)) continue; role = b < 0.5 ? 3 : 0; }                    // a garden tree now and then (none in an outpost)
         else if (a < f * 0.94) role = MAP.sample(MAP.conifer, px, pz) > 0.5 ? (b < 0.85 ? 2 : c < 0.5 ? 0 : 1) : (b < 0.06 ? 2 : c < 0.5 ? 0 : 1);
         else if (f > 0.03 && f < 0.9 && a < 0.22 + f * 0.5) role = 3;                     // bushes at the forest's edge
         else if (a > 1 - open) role = b < 0.45 ? 3 : b < 0.72 ? 0 : b < 0.94 ? 1 : 2;     // a lone tree or bush in the open

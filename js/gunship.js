@@ -6,12 +6,13 @@ const GS_MARGIN = 260;          // districts keep this far from the map's edge (
 const _gsa = new V3();
 const GUNSHIP = {
   state: 'orbit', list: [], home: null, look: new V3(), aim: new V3(), aimS: new V3(), vel: new V3(),
-  zm: 1, nextTransit: 0, nextWander: 0, tr: null, ao: 0,
+  zm: 1, applied: 0, nextTransit: 0, nextWander: 0, tr: null, ao: 0,
   /* the districts worth orbiting: towns, the station, a bridge, lakes, farms, fields and roads out in the country */
   districts() {
     const out = [], sp = LAYOUT.spots(), M = MAP_HALF - GS_MARGIN;
     const add = (n, x, z) => { x = clamp(x, -M, M); z = clamp(z, -M, M); if (!out.some(d => Math.hypot(d.x - x, d.z - z) < 280)) out.push({ n, x, z }); };
     for (const t of LAYOUT.towns) add('town', t.x, t.z);
+    for (const o of LAYOUT.outposts) add('outpost', o.x, o.z);
     for (const k in sp) add(k, sp[k][0], sp[k][1]);
     for (const f of LAYOUT.farms) add('farm', f.x, f.z);
     for (let z = -600; z <= 600; z += 400) for (let x = -600; x <= 600; x += 400) {   // open country: on a road out there (not just a forest's roof)
@@ -70,37 +71,11 @@ const GUNSHIP = {
       if (t.p >= 1) { this.state = 'orbit'; this.home = t.to; this.ao = this.list.indexOf(t.to) + 1; this.aim.copy(this.look); this.aimS.copy(this.look); this.vel.set(0, 0, 0); this.nextTransit = T + this.interval(); this.nextWander = T + rand(6, 10); }
     }
     this.look.y = groundH(this.look.x, this.look.z);
-    const zt = this.zoomTarget(), zm0 = this.zm; this.zm += (zt - this.zm) * Math.min(1, dt * 1.6);
+    const zt = this.zoomTarget(); this.zm += (zt - this.zm) * Math.min(1, dt * 1.6);
     CAM_TGT.x = this.look.x; CAM_TGT.z = this.look.z; CAM_TGT.y += (this.look.y - CAM_TGT.y) * Math.min(1, dt * 2.5);   // (the height eased: bumps don't shake the picture)
-    if (Math.abs(this.zm - zm0) > 1e-5) updateCamera(); else updateCameraPose();
+    if (Math.abs(this.zm * CFG.zoom - this.applied) > 1e-3) { this.applied = this.zm * CFG.zoom; updateCamera(); } else updateCameraPose();   // (the weapon's, the transit's or the setting's zoom changed)
   }
 };
 
 /* ===== What the HUD brackets: { obj, side: 'ally' | 'enemy', inf, h (the bracket's centre above the object's origin) } ===== */
 const TRACKS = [];
-/* dummies until the units come in stage 5: allied armour on a road in every district, enemy armour in every other one */
-function placeDummies() {
-  const roads = LAYOUT.roads.filter(r => r.kind !== 'track');
-  const nearRoad = (x, z, avoid) => {
-    let best = null, d = 220;
-    for (const r of roads) for (let i = 4; i < r.pts.length - 8; i += 3) {
-      const p = r.pts[i], e = Math.hypot(p[0] - x, p[1] - z);
-      if (e < d && !r.br[i] && !r.br[i + 8] && !(avoid && Math.hypot(p[0] - avoid[0], p[1] - avoid[1]) < 70)) { d = e; best = [r, i]; }
-    }
-    return best;
-  };
-  const put = (side, at) => {
-    const [r, i0] = at; let k = 0;
-    for (const build of [buildT90, buildBTR]) {
-      const i = i0 + k * 4, p = r.pts[i], q = r.pts[i + 1], g = build(); k++;
-      g.scale.setScalar(ARMOR_SCALE); g.position.set(p[0], groundH(p[0], p[1]), p[1]); g.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]);
-      scene.add(g); TRACKS.push({ obj: g, side, inf: false, h: 2 });
-    }
-    return r.pts[i0];
-  };
-  GUNSHIP.list.forEach((d, n) => {
-    const a = nearRoad(d.x, d.z); if (!a) return;
-    const pa = put('ally', a);
-    if (n % 2 === 0) { const b = nearRoad(d.x + 30, d.z - 30, pa); if (b) put('enemy', b); }
-  });
-}

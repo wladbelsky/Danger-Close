@@ -76,7 +76,7 @@ function finishInit() {
   if (QS.has('az')) camAz = parseFloat(QS.get('az')) * DEG;
   ARMS.init();
   GUNSHIP.init();                      // a random district to start over
-  if (QS.get('dummies') !== '0') placeDummies();
+  ROADNET.build(); INF.build(); ALLIES.init();   // the allies' garrisons at their outposts
   window.addEventListener('resize', resize);
   HUD.build();
   resize();
@@ -186,10 +186,11 @@ function frame(ms) {
   for (let i = 0; i < n * TIME_SCALE; i++) step(dt);
   renderFrame();
 }
-function renderFrame() { if (CFG.shadows) fitShadow(); SENSOR.render(); HUD.draw(); }
+function renderFrame() { INF.update(); if (CFG.shadows) fitShadow(); SENSOR.render(); HUD.draw(); }
 const TIME_SCALE = Math.max(1, Math.round(parseFloat(QS.get('ts') || '1')));
 function step(dt) {
   T += dt;
+  ALLIES.update(dt);
   GUNSHIP.update(dt);
   ARMS.update(dt);
   FX.tracers.update(dt);
