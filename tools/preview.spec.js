@@ -237,3 +237,22 @@ test('weapons firing', async ({ wp }) => {
   }
   await sheet(wp, shots, 5, 'battle-weapons.png');
 });
+
+/* stage 7: clouds, weather, night, anti-aircraft fire and flares */
+test('weather', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  const shots = [], snap = async () => shots.push((await wp.page.screenshot()).toString('base64'));
+  const view = async (q, fn) => { const url = '?seed=11&transit=0&spot=town&' + q; if (!shots.length) await wp.boot({ query: url }); else await wp.goto(url); await wp.run(fn || (() => { __t.sim(20); __t.render(); })); await snap(); };
+  await view('hour=11&season=summer&weather=clear&clouds=70', () => { __t.sim(20); const c = WEATHER.clouds[0], d = new THREE.Vector3().subVectors(camera.position, CAM_TGT).normalize(); c.x = CAM_TGT.x + d.x * 150 + 25; c.z = CAM_TGT.z + d.z * 150; __t.sim(0.05); __t.render(); });   // (a cloud drifting across the frame)
+  await view('hour=11&season=summer&weather=rain');
+  await view('hour=11&season=winter&weather=snow');
+  await view('hour=9&season=autumn&weather=fog&clouds=0');
+  await view('hour=9&season=autumn&weather=fog&clouds=0&mode=wh');
+  await view('hour=23&season=summer&weather=clear&clouds=0');
+  const fight = () => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(4, { audio: true }); };
+  await wp.goto('?seed=11&hour=11&season=summer&weather=clear'); await wp.run(`(${fight})()`);
+  await wp.run(() => { AA.nextGun = 0; for (let i = 0; i < 400 && !AA.bursts.length; i++) __t.sim(0.05, { audio: true }); __t.sim(0.75, { audio: true }); __t.render(); }); await snap();
+  await wp.run(() => { const u = AA.source(true) || AA.source(false); AA.launch(u); __t.sim(1.5, { audio: true }); __t.render(); }); await snap();
+  await wp.run(() => { __t.sim(0.9, { audio: true }); SENSOR.set('wh'); HUD.markModes(); updateEnvironment(); __t.render(); }); await snap();
+  await sheet(wp, shots, 3, 'weather.png');
+});

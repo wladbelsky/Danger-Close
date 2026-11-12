@@ -37,6 +37,9 @@ const CFG = {
   transitMin: 4,      // minutes between transits to another district (in silence)
   fire: 100,          // how often the gunship fires on a fitting beat, %
   enemies: 100,       // how many enemies come, %
+  weather: 'auto',    // auto (drawn for the season every few minutes) / clear / rain / snow / fog
+  clouds: 35,         // cloud cover under the aircraft, %
+  aa: true,           // enemy anti-aircraft fire and the flares in reply (looks only)
   autoArms: true      // switch the weapon to suit the targets and the music (a click on one holds it for 30 s)
 };
 

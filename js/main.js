@@ -15,6 +15,9 @@ if (QS.has('mode')) CFG.vision = QS.get('mode');
 if (QS.has('seed')) CFG.seed = parseInt(QS.get('seed'), 10) || 0;
 if (QS.has('weapons')) CFG.weapons = QS.get('weapons') === 'all' ? WEAPONS.map(w => w.id) : QS.get('weapons').split(',');
 if (QS.has('transit')) CFG.transitMin = parseFloat(QS.get('transit'));
+if (QS.has('weather')) CFG.weather = QS.get('weather');
+if (QS.has('clouds')) CFG.clouds = parseFloat(QS.get('clouds'));
+if (QS.has('aa')) CFG.aa = QS.get('aa') !== '0';
 if (QS.has('auto')) CFG.autoArms = QS.get('auto') !== '0';
 if (QS.has('enemies')) CFG.enemies = parseFloat(QS.get('enemies'));
 
@@ -51,6 +54,8 @@ function init() {
   FX.smoke = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, 420, true, 0.14);
   FX.dust = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, 240, true, 0.46);
   FX.scorch = new Scorch(scene, 60);
+  FX.flare = new SpriteFX(scene, TEX.flash, THREE.AdditiveBlending, 120, false, 1); FX.flare.mesh.renderOrder = 10;   // flares and missiles near the lens: over the clouds
+  WEATHER.init();
 
   runSlices(buildWorld(), finishInit);
 }
@@ -86,7 +91,12 @@ function finishInit() {
   updateEnvironment();
   SENSOR.set(SENSOR.initial()); HUD.markModes();
   updateEnvironment();
+  const hid = []; scene.traverse(o => { if (!o.visible) { hid.push(o); o.visible = true; } });   // (what is hidden now is compiled too: effect pools, the beam)
   renderer.setRenderTarget(SENSOR.rt); renderer.compile(scene, camera); renderer.setRenderTarget(null);   // under the splash: no compile stalls later
+  const cull = []; scene.traverse(o => { if (o.frustumCulled) { cull.push(o); o.frustumCulled = false; } });
+  if (CFG.shadows) fitShadow(); SENSOR.render();   // one whole frame of everything: the shadow pass's programs are only made when something is first drawn into it
+  for (const o of cull) o.frustumCulled = true;
+  for (const o of hid) o.visible = false;
   ready = true;
   const s = document.getElementById('splash'); if (s) { s.classList.add('off'); setTimeout(() => s.remove(), 700); }
   requestAnimationFrame(frame);
@@ -156,6 +166,9 @@ function updateEnvironment() {
   ENV.dustTint.setHex(GROUND_PAL[season].a).lerp(k.smoke, 0.45);
   ENV.night = 1 - smoothstep(-10, 1, sp.elev);
   ENV.day = smoothstep(-6, 10, sp.elev);
+  WIN_MAT.emissive.setHex(0xffc27a).multiplyScalar(0.5 * (1 - smoothstep(-3, 5, sp.elev)));   // lit windows after dusk
+  if (CFG.vision === 'auto' && !SENSOR.manual && ready) { const m = ENV.night > 0.5 ? 'wh' : 'tv'; if (m !== SENSOR.mode) { SENSOR.mode = m; SENSOR.post.uniforms.uMode.value = SENSOR_INDEX[m]; SU.uThermal.value = m === 'wh' ? 1 : 0; HUD.markModes(); } }   // (auto: TV by day, white-hot at night, until a mode is clicked)
+  WEATHER.light();
   WATER_HEAT.value = lerp(0.12, -0.1, ENV.day);   // water: cooler than the ground by day, warmer at night
   SENSOR.env();
   renderer.setClearColor(scene.fog.color);
@@ -206,6 +219,8 @@ function step(dt) {
   FX.smoke.update(dt, null, camera);
   FX.dust.update(dt, null, camera);
   FX.scorch.update(dt);
+  FX.flare.update(dt);
+  WEATHER.update(dt); AA.update(dt);
   envTimer -= dt; if (envTimer <= 0) { envTimer = 2; updateEnvironment(); }
 }
 

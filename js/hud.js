@@ -14,7 +14,7 @@ const HUD = {
     this.cv = document.createElement('canvas'); this.cv.id = 'hud'; document.body.insertBefore(this.cv, modes); this.g = this.cv.getContext('2d');
     for (const m of SENSOR_MODES) {
       const b = document.createElement('button'); b.textContent = SENSOR_LABEL[m]; b.dataset.m = m;
-      b.onclick = () => { SENSOR.set(m); updateEnvironment(); this.markModes(); };   // (never saved: the property gives the default at every start)
+      b.onclick = () => { SENSOR.manual = true; SENSOR.set(m); updateEnvironment(); this.markModes(); };   // (never saved: the property gives the default at every start)
       modes.appendChild(b);
     }
     this.armsEl = document.getElementById('arms');

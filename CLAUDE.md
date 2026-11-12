@@ -21,9 +21,11 @@ Update the status here when a stage is finished. The full approved design is sum
 4. **Gunship and HUD**: orbit, transit, slewing, clicks, friend-or-foe boxes on dummies — done.
 5. **Units and allied patrols**: models, infantry, scale against the buildings — **done**.
 6. **Combat**: arming on music, bases, the weapon table, the beat, wrecks, retreat — done.
-7. **AA, flares, clouds, weather, day and night** — not started.
-8. **Big guns in frame**: the barrels of the big guns (105 mm and the railgun at least; the others are optional) visible at the edge of the frame while selected, with a firing animation (recoil, muzzle flash, gases) on every shot — not started.
-9. **Splash, all properties, README, preview, soak** — not started.
+7. **AA, flares, clouds, weather, day and night** — done.
+8. **Physically based lighting and colour**: three.js r187's own light units and colour management instead of the emulated legacy look (`ColorManagement.enabled = false`, intensities × π, linear output): sRGB-authored colours, sRGB output through the post pass, every palette re-tuned (ground per season, sky per sun elevation, models, effects), the thermal and night-vision thresholds re-checked; before / after sheets in all four modes, day and night — not started.
+9. **Night lights**: headlights on the allies' and the enemies' vehicles at night, green and red navigation lights on every helicopter, light in the houses at night (not every window, not every house) — not started.
+10. **Big guns in frame**: the barrels of the big guns (105 mm and the railgun at least; the others are optional) visible at the edge of the frame while selected, with a firing animation (recoil, muzzle flash, gases) on every shot — not started.
+11. **Splash, all properties, README, preview, soak**; `renderer.compileAsync` at start so the splash does not freeze while the shaders compile (the warm-up frame for the shadow pass stays) — not started.
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -64,7 +66,7 @@ Update the status here when a stage is finished. The full approved design is sum
   bundled once with esbuild: `export * from "three"` → `esbuild --bundle --minify --format=iife --global-name=THREE --target=es2020`.
 - Code taken from FAB / Code 3 (r149) needs the r187 changes: `opaque_fragment` (was `output_fragment`), `ColorManagement.enabled = false` (core.js) and linear output, light
   intensities × π (legacy units), `addUpdateRange` (was `updateRange`), `PCFShadowMap` (`PCFSoftShadowMap` is gone), `InstancedMesh` can compute its own bounding sphere.
-- Load order: `core → sensor → models → armor → helis → mapgen → layout → terrain → structures → effects → infantry → units → weapons → battle → gunship → hud → audio → main`.
+- Load order: `core → sensor → models → armor → helis → mapgen → layout → terrain → structures → effects → infantry → units → weapons → battle → weather → gunship → hud → audio → main`.
   Target order: core → sensor → models → armor → mapgen → terrain → effects → weather → infantry → units → weapons → battle → gunship → hud → main → properties → settings.
 
 | File | Contents |
@@ -83,13 +85,14 @@ Update the status here when a stage is finished. The full approved design is sum
 | `js/units.js` | `UNIT_TYPES`, `ROADNET` (a node per road sample, ends joined to other roads, A*), `Path` (lane to the right), `Vehicle`, `Column` (leader + gap; `follow` turns round on a reversed path), `Heli` (pad → up → fly a round → home → down), `Squad` (file along the leader's trail; `flee`), `walkable` / `patrolLoop`, `ALLIES` (a garrison per outpost; sorties to the enemy base in a fight, losses replaced out of sight); combatants: `UNITS`, `enlist` / `delist` / `hurt`, `unitModel` (a prototype per model, cloned: no geometry per spawn), `Column.reroute` (from where it stands; the rear leads if the way goes back) |
 | `js/weapons.js` | `WEAPONS` (name, zoom factor, reticle, `hits` = the kinds it may hit, `band` = the beat that fires it, `use`, cosmetic rounds / magazine / reload), `ARMS` (the selected weapon, ammunition state) |
 | `js/battle.js` | `BATTLE`: the fight's life cycle (start on arming: a base on one of `LAYOUT.sites` + garrison, the camera goes there; waves of columns / squads / helicopters out of sight; stand-down: retreat, removal out of sight), units shooting each other (`FIRE`, `VS`), the gunship's fire on the beat (`GUN`: guns, missiles landing on the next beat, laser, railgun; `strike` damages only `hits`; fires only at what is under the reticle), the camera in a fight, the auto-switching (`PREF`), `WRECKS` (cooling stages, sinking), the base's structures (`BASE_MODELS`, `BASE_PLAN`), `BATTLE.log` / `BATTLE.stat` for the tests |
+| `js/weather.js` | `WEATHER`: the kind (clear / rain / snow / fog; auto draws one for the season every 8–15 min) fading in `WEATHER.k`, `light()` (overcast sun, grey haze, fog distances; called from `updateEnvironment`), rain / snow streaks (`drops`, a cold `Tracers` pool round the sensor's point), clouds (clusters of soft sprites wrapped in a square round the sensor's point, filled into `fx.live` + `SpriteFX.flush`; none in a fight); `AA`: tracer bursts and missiles from enemies near the sensor's point up past the lens, flares in reply (`FX.flare`), looks only |
 | `js/audio.js` | `AUD` (level, `heavy`, the arming latch: `combat`, `holding`, `fighting`), `BANDS` beat detection → `BATTLE.onBeat(band, strength)`, `updateArming`, the demo beat (`?demo=124`, `&pause=0`) |
 | `js/gunship.js` | `GUNSHIP`: districts (towns, spots, farms, roads in the country; `GS_MARGIN` from the edge), a random start, the left orbit, the slew (eased aim + critically damped spring), transits (smootherstep, zoom-out arc), `track(p)` for combat; `TRACKS` (what the HUD brackets); the outposts are districts too |
 | `js/hud.js` | `HUD`: a 2D canvas over the picture (compass, altitude ladder, clock, grid, reticle per weapon, fixed-size brackets) + DOM for the clicks (`#modes`, `#arms`); sizes follow window height × `CFG.hudScale` (`--hs` in CSS) |
 | `js/main.js` | scene init, camera (the aircraft circles `CAM_CTR`, the sensor looks at `CAM_TGT`: slewing turns the line of sight, the lens keeps the frame's size at any range; `clampFrame`: the whole frame stays on the map, measured down to `MAP.lo`), `VIEW`, `updateEnvironment`, `fitShadow`, main loop |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=29`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=32`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
@@ -100,6 +103,8 @@ Update the status here when a stage is finished. The full approved design is sum
 - No `FlashLights` / point lights for blasts: every light costs on every terrain fragment. Additive ground glows instead.
 - Never create geometry per spawn; pools and `disposeTree`. Anything in `mergeStatic` that moves must be listed as dynamic. Spawn by time accumulators.
 - Map generation uses its own `mulberry32`, never `Math.random`.
+- At start one whole frame is drawn with nothing hidden and nothing culled (`finishInit`): `renderer.compile` does not make the shadow pass's programs, and hidden effect pools would compile on first use.
+- Vision `auto` follows day and night live (TV / white-hot) until a mode is clicked (`SENSOR.manual`). Windows (`WIN_MAT`) are lit after dusk.
 
 ## Notes for later
 - **Local files in Wallpaper Engine**: WE provides `window.wallpaperRequestRegisteredFile` to read a user's local file (e.g. a file
@@ -109,5 +114,5 @@ Update the status here when a stage is finished. The full approved design is sum
 ## Running & testing
 - Browser preview: `python -m http.server 8767` in this folder, URL params `?hour=22`, `?season=winter`, `?mode=wh`, `?zoom=150`, `?ts=N`.
 - Tests: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 [file / -g pattern]` (Playwright in Docker, SwiftShader; `$env:SEED = N`).
-- Review sheets: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 -c tools/preview.config.js` → `test-results/*.png`, `terrain-metrics.json`. URL params also `?seed=N`, `?x=&z=` (view point), `?az=` (fixed camera azimuth, deg), `?spot=town` (start district by name), `?transit=N` (minutes between transits, 0 = never), `?weapons=all` or `g25,h105`, `?hud=0`, `?demo=124` (a synthetic beat: the fight in a browser; `&pause=0` without silent bars), `?auto=0` (no auto-switching), `?enemies=N` (%).
+- Review sheets: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 -c tools/preview.config.js` → `test-results/*.png`, `terrain-metrics.json`. URL params also `?seed=N`, `?x=&z=` (view point), `?az=` (fixed camera azimuth, deg), `?spot=town` (start district by name), `?transit=N` (minutes between transits, 0 = never), `?weapons=all` or `g25,h105`, `?hud=0`, `?demo=124` (a synthetic beat: the fight in a browser; `&pause=0` without silent bars), `?auto=0` (no auto-switching), `?enemies=N` (%), `?weather=rain` (clear / rain / snow / fog / auto), `?clouds=N` (%), `?aa=0`.
 - Tests feed music with `wp.sim(sec, { audio: true })`.

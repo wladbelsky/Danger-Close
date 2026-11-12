@@ -2,10 +2,10 @@
 /* ===== Effects: tracers, sprites (flashes/smoke), scorch marks, blasts ===== */
 
 class Tracers {
-  constructor(scene, n) {
+  constructor(scene, n, heat) {
     this.n = n;
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(-0.5, 0, 0);
-    const mat = sensorMat(new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), 1);   // white-hot on the thermal sensor
+    const mat = sensorMat(new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), heat != null ? heat : 1);   // white-hot on the thermal sensor (rain and snow: cold)
     this.mesh = new THREE.InstancedMesh(geo, mat, n);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false; this.mesh.renderOrder = 6;
@@ -109,6 +109,11 @@ class SpriteFX {
       if (it.tintWithSmoke && smokeTint) it.col.copy(smokeTint);
       live.push(it);
     }
+    this.flush(cam);
+  }
+  /* this.live into the instance buffers (sorted back to front for a normal-blended pool); weather.js fills live itself for the clouds */
+  flush(cam) {
+    const live = this.live;
     if (this.sorted && cam && live.length > 1) {
       cam.getWorldDirection(_sfxFwd);
       for (const it of live) it.depth = it.p.dot(_sfxFwd);
