@@ -34,7 +34,10 @@ const CFG = {
   hudScale: 1,
   hudBottom: 48,      // px kept free at the bottom for the Windows taskbar (a wallpaper lies under it)
   orbit: 100,         // orbit speed, %
-  transitMin: 4       // minutes between transits to another district (in silence)
+  transitMin: 4,      // minutes between transits to another district (in silence)
+  fire: 100,          // how often the gunship fires on a fitting beat, %
+  enemies: 100,       // how many enemies come, %
+  autoArms: true      // switch the weapon to suit the targets and the music (a click on one holds it for 30 s)
 };
 
 /* ===== Ground & wind =====

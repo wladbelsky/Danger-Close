@@ -15,6 +15,8 @@ if (QS.has('mode')) CFG.vision = QS.get('mode');
 if (QS.has('seed')) CFG.seed = parseInt(QS.get('seed'), 10) || 0;
 if (QS.has('weapons')) CFG.weapons = QS.get('weapons') === 'all' ? WEAPONS.map(w => w.id) : QS.get('weapons').split(',');
 if (QS.has('transit')) CFG.transitMin = parseFloat(QS.get('transit'));
+if (QS.has('auto')) CFG.autoArms = QS.get('auto') !== '0';
+if (QS.has('enemies')) CFG.enemies = parseFloat(QS.get('enemies'));
 
 /* ---- Wallpaper Engine properties ---- */
 window.wallpaperPropertyListener = {
@@ -76,7 +78,8 @@ function finishInit() {
   if (QS.has('az')) camAz = parseFloat(QS.get('az')) * DEG;
   ARMS.init();
   GUNSHIP.init();                      // a random district to start over
-  ROADNET.build(); INF.build(); ALLIES.init();   // the allies' garrisons at their outposts
+  ROADNET.build(); INF.build(); BATTLE.init(); ALLIES.init();   // the allies' garrisons at their outposts
+  initAudio();
   window.addEventListener('resize', resize);
   HUD.build();
   resize();
@@ -90,7 +93,9 @@ function finishInit() {
 }
 
 /* ---- camera: perspective with a narrow lens from far away; ~95 m of screen height at 100 % zoom ---- */
-const VIEW_H = 95, CAM_D = 340, CAM_ELEV = 45 * DEG, CAM_TGT = new V3(0, 0, 0);
+/* The aircraft flies a circle round CAM_CTR (CAM_D away, CAM_ELEV up: 240 m out, 240 m above); the sensor looks from it at CAM_TGT.
+   Slewing moves CAM_TGT only: the line of sight turns, the aircraft stays on its orbit. The lens keeps the frame's size at any range. */
+const VIEW_H = 95, CAM_D = 340, CAM_ELEV = 45 * DEG, CAM_TGT = new V3(0, 0, 0), CAM_CTR = new V3(0, 0, 0);
 let camAz = 135 * DEG;
 function resize() {
   if (!window.innerWidth || !window.innerHeight) return;   // a hidden pane / window at start: a zero-sized target is an incomplete framebuffer
@@ -102,15 +107,15 @@ function resize() {
 function updateCamera() {
   const viewH = VIEW_H * 100 / Math.max(30, CFG.zoom * GUNSHIP.zm);   // (the zoom setting × the weapon's × the transit's)
   camera.aspect = Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight);
-  camera.fov = 2 * Math.atan(viewH * 0.5 / CAM_D) / DEG;
-  camera.updateProjectionMatrix();
   updateCameraPose();
+  camera.fov = 2 * Math.atan(viewH * 0.5 / camera.position.distanceTo(CAM_TGT)) / DEG;
+  camera.updateProjectionMatrix();
+  for (let i = 0; i < 3 && clampFrame(); i++) updateCameraPose();   // (moving the look-at point turns the line of sight: a few passes settle it)
 }
-function updateCameraPose(again) {
-  camera.position.set(CAM_TGT.x + Math.cos(CAM_ELEV) * Math.cos(camAz) * CAM_D, CAM_TGT.y + Math.sin(CAM_ELEV) * CAM_D, CAM_TGT.z + Math.cos(CAM_ELEV) * Math.sin(camAz) * CAM_D);
+function updateCameraPose() {
+  camera.position.set(CAM_CTR.x + Math.cos(CAM_ELEV) * Math.cos(camAz) * CAM_D, CAM_CTR.y + Math.sin(CAM_ELEV) * CAM_D, CAM_CTR.z + Math.cos(CAM_ELEV) * Math.sin(camAz) * CAM_D);
   camera.lookAt(CAM_TGT);
   camera.updateMatrixWorld();
-  if (!again && clampFrame()) updateCameraPose(true);   // (moving the look-at point moves the whole frame: once is enough)
 }
 /* keep the whole frame on the map: shift the look-at point back by however far a corner of the frame overshoots the edge */
 function clampFrame() {
@@ -183,6 +188,7 @@ function frame(ms) {
   }
   const el = clamp((ms - lastMs) / 1000, 0, 0.25); lastMs = ms;
   const n = Math.max(1, Math.ceil(el / 0.05)), dt = el / n;
+  if (DEMO.on) onAudio(demoSpectrum(RT(), DEMO.bpm, DEMO.pauses));
   for (let i = 0; i < n * TIME_SCALE; i++) step(dt);
   renderFrame();
 }
@@ -191,6 +197,7 @@ const TIME_SCALE = Math.max(1, Math.round(parseFloat(QS.get('ts') || '1')));
 function step(dt) {
   T += dt;
   ALLIES.update(dt);
+  BATTLE.update(dt);
   GUNSHIP.update(dt);
   ARMS.update(dt);
   FX.tracers.update(dt);

@@ -61,8 +61,8 @@ function buildAH64() {
 /* Mi-24 Hind — the enemies': tandem bubble cockpits, a troop cabin, stub wings, five blades */
 function buildMi24() {
   const g = new THREE.Group(), C = HOT(0x6a6648, 0.2), C2 = HOT(0x5a5640, 0.62), D = HOT(0x26292a, 0.3), CAN = HCAN();
-  taper(g, 0.6, 0.22, 0.2, C, 0.05, 0.18, 0, 0.9, 0.85); taper(g, 0.28, 0.16, 0.16, C, 0.48, 0.14, 0, 0.6, 0.8, -0.04);
-  for (const [x, y, s] of [[0.58, 0.22, 0.06], [0.4, 0.29, 0.07]]) { const c = shade(new THREE.Mesh(new THREE.SphereGeometry(s, 8, 6, 0, TAU, 0, Math.PI / 2), CAN)); c.position.set(x, y, 0); c.scale.set(1.4, 1, 1); g.add(c); }
+  taper(g, 0.6, 0.22, 0.2, C, 0.05, 0.18, 0, 0.9, 0.85); taper(g, 0.34, 0.16, 0.16, C, 0.5, 0.14, 0, 0.75, 0.8, -0.03); box(g, 0.2, 0.07, 0.13, C, 0.4, 0.25, 0);   // (the nose, and the step the rear cockpit sits on)
+  for (const [x, y, s] of [[0.5, 0.2, 0.06], [0.37, 0.27, 0.07]]) { const c = shade(new THREE.Mesh(new THREE.SphereGeometry(s, 8, 6, 0, TAU, 0, Math.PI / 2), CAN)); c.position.set(x, y, 0); c.scale.set(1.4, 1, 1); g.add(c); }
   for (const s of [-1, 1]) { tube(g, -0.2, 0.15, 0.05, 0.05, C2, 0.33, s * 0.11, 8); box(g, 0.24, 0.02, 0.3, C, -0.05, 0.2, s * 0.22).rotation.x = s * -0.2; tube(g, -0.15, 0.08, 0.03, 0.03, D, 0.13, s * 0.3, 8); }
   const tb = taper(g, 0.1, 0.7, 0.08, C, -0.62, 0.24, 0, 0.45, 0.5, 0.04); tb.rotation.z = Math.PI / 2;
   taper(g, 0.14, 0.26, 0.025, C, -0.98, 0.36, 0, 0.6, 0.8, -0.05);

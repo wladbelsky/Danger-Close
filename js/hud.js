@@ -26,7 +26,7 @@ const HUD = {
     for (const w of ARMS.enabled()) {
       const b = document.createElement('button'); b.dataset.id = w.id;
       b.innerHTML = `<b>${w.name}</b><i>${w.sub}</i><span class="am"></span><s><u></u></s>`;
-      b.onclick = () => { ARMS.select(w.id); this.markArms(); };
+      b.onclick = () => { ARMS.select(w.id); BATTLE.manualUntil = T + 30; BATTLE.focus = null; BATTLE.seekT = 0; BATTLE.fTick = 0; this.markArms(); };   // (the auto-switching resumes 30 s later)
       el.appendChild(b);
     }
     this.markArms();
@@ -51,13 +51,13 @@ const HUD = {
   /* a stroke with a dark edge under it (readable over white-hot snow as well as night) */
   stroke(lw, col) { const g = this.g; g.lineWidth = lw + 2 * this.u; g.strokeStyle = HUD_DARK; g.stroke(); g.lineWidth = lw; g.strokeStyle = col || HUD_COL; g.stroke(); },
   text(s, x, y, size, align, col) { const g = this.g; g.font = `600 ${Math.round(size * this.u)}px Consolas, "Courier New", monospace`; g.textAlign = align || 'left'; g.lineWidth = 3 * this.u; g.strokeStyle = HUD_DARK; g.strokeText(s, x, y); g.fillStyle = col || HUD_COL; g.fillText(s, x, y); },
-  heading() { return ((Math.atan2(-Math.cos(camAz), Math.sin(camAz)) / DEG) % 360 + 360) % 360; },   // (where the sensor looks: north is -z, east +x)
+  heading() { return ((Math.atan2(CAM_TGT.x - camera.position.x, camera.position.z - CAM_TGT.z) / DEG) % 360 + 360) % 360; },   // (where the sensor looks: north is -z, east +x)
   altitude() { const t = GUNSHIP.tr; return 9400 + 180 * Math.sin(T * 0.031) + 90 * Math.sin(T * 0.11) + (GUNSHIP.state === 'transit' ? 400 * Math.sin(Math.PI * t.p) : 0); },
   draw() {
     if (!this.on) return;
     const g = this.g, W = this.W, H = this.H, u = this.u;
     g.clearRect(0, 0, W, H); g.lineCap = 'butt'; g.textBaseline = 'middle';
-    this.brackets(); this.compass(W / 2, 52 * u); this.ladder(W - 64 * u, (H - this.sb) / 2); this.reticle(W / 2, H / 2);
+    this.brackets(); this.designate(); this.compass(W / 2, 52 * u); this.ladder(W - 64 * u, (H - this.sb) / 2); this.reticle(W / 2, H / 2);
     // the clock and the sensor point at the top right
     const now = getNow(), p2 = n => String(n).padStart(2, '0'), x = W - 40 * u;
     this.text(`${p2(now.getHours())}:${p2(now.getMinutes())}:${p2(now.getSeconds())}`, x, 44 * u, 26, 'right');
@@ -69,7 +69,7 @@ const HUD = {
     this.text(`ELEV ${Math.round(CAM_TGT.y * 3.28 + 1460)} FT`, x, 144 * u, 14, 'right');
     // the callsign and what the gunship is doing at the top left (under the mode buttons)
     this.text(CFG.callsign, 30 * u, 92 * u, 18);
-    const T_ = GUNSHIP.tr, st = GUNSHIP.state === 'transit' ? `TRANSIT  AO-${GUNSHIP.list.indexOf(T_.to) + 1}  ${(Math.hypot(T_.to.x - CAM_TGT.x, T_.to.z - CAM_TGT.z) / 1000).toFixed(1)} KM` : `ORBIT  AO-${GUNSHIP.ao}`;
+    const T_ = GUNSHIP.tr, ao = k => k ? 'AO-' + k : 'OBJ', st = GUNSHIP.state === 'transit' ? `TRANSIT  ${ao(GUNSHIP.list.indexOf(T_.to) + 1)}  ${(Math.hypot(T_.to.x - CAM_TGT.x, T_.to.z - CAM_TGT.z) / 1000).toFixed(1)} KM` : `${AUD.fighting ? 'ENGAGING' : AUD.holding ? 'CEASE FIRE' : 'ORBIT'}  ${ao(GUNSHIP.ao)}`;
     this.text(st, 30 * u, 116 * u, 14);
     // the lens at the bottom left
     const fov = camera.fov, yb = H - this.sb;
@@ -120,6 +120,13 @@ const HUD = {
       case 'rail': line(-140, 0, -16, 0); line(16, 0, 140, 0); for (const s of [-1, 1]) for (const d of [40, 80, 120]) line(s * d, -6, s * d, 6); line(0, -24, 0, -10); line(0, 10, 0, 24); break;
     }
     this.stroke(1.6 * u);
+  },
+  /* a diamond on what the gunship is firing at */
+  designate() {
+    const f = BATTLE.focus; if (!f || !f.alive || GUNSHIP.state !== 'orbit') return;
+    _hp.copy(f.pos); _hp.y += f.ah; _hp.project(camera); if (_hp.z > 1 || Math.abs(_hp.x) > 1 || Math.abs(_hp.y) > 1) return;
+    const g = this.g, u = this.u, x = (_hp.x + 1) / 2 * this.W, y = (1 - _hp.y) / 2 * this.H, s = 44 * u;
+    g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s, y); g.lineTo(x, y + s); g.lineTo(x - s, y); g.closePath(); this.stroke(1.4 * u);
   },
   /* corner brackets of a fixed screen size: allies blue, enemies white */
   brackets() {

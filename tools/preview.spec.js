@@ -62,7 +62,7 @@ test('junctions', async ({ wp }) => {
     const W = 640, H = 360, T0 = LAYOUT.towns[0], J = LAYOUT.junctions.filter(j => j.paved).sort((a, b) => Math.hypot(a.x - T0.x, a.z - T0.z) - Math.hypot(b.x - T0.x, b.z - T0.z));
     const pick = [J[0], J[3], J[7], J[12], J[J.length >> 1], J[J.length - 1]].filter(Boolean), c = document.createElement('canvas'); c.width = W * 3; c.height = H * 2; const g = c.getContext('2d');
     CFG.zoom = 220; updateCamera();
-    pick.forEach((j, i) => { CAM_TGT.set(j.x, groundH(j.x, j.z), j.z); updateCameraPose(); renderFrame(); g.drawImage(renderer.domElement, (i % 3) * W, (i / 3 | 0) * H, W, H); });
+    pick.forEach((j, i) => { CAM_TGT.set(j.x, groundH(j.x, j.z), j.z); CAM_CTR.copy(CAM_TGT); updateCameraPose(); renderFrame(); g.drawImage(renderer.domElement, (i % 3) * W, (i / 3 | 0) * H, W, H); });
     return c.toDataURL('image/png');
   }));
 });
@@ -73,7 +73,7 @@ test('crossings', async ({ wp }) => {
     const W = 640, H = 360, R = LAYOUT.rail, hits = [];
     for (const r of LAYOUT.roads) { if (r.kind === 'track') continue; for (const p of r.pts) if (R.pts.some(q => Math.hypot(q[0] - p[0], q[1] - p[1]) < 3) && !hits.some(h => Math.hypot(h[0] - p[0], h[1] - p[1]) < 40)) hits.push(p); }
     const c = document.createElement('canvas'); c.width = W * 3; c.height = H * 2; const g = c.getContext('2d'); CFG.zoom = 220; updateCamera();
-    hits.slice(0, 6).forEach(([x, z], i) => { CAM_TGT.set(x, groundH(x, z), z); updateCameraPose(); renderFrame(); g.drawImage(renderer.domElement, (i % 3) * W, (i / 3 | 0) * H, W, H); });
+    hits.slice(0, 6).forEach(([x, z], i) => { CAM_TGT.set(x, groundH(x, z), z); CAM_CTR.copy(CAM_TGT); updateCameraPose(); renderFrame(); g.drawImage(renderer.domElement, (i % 3) * W, (i / 3 | 0) * H, W, H); });
     g.font = '600 15px Consolas, monospace'; g.fillStyle = '#000'; g.fillRect(8, 8, 160, 24); g.fillStyle = '#fff'; g.fillText(`${hits.length} crossings`, 14, 25);
     return c.toDataURL('image/png');
   }));
@@ -149,7 +149,7 @@ test('stations', async ({ wp }) => {
     if (!tiles.length) await wp.boot({ query: Q(s) + '&transit=0' }); else await wp.goto(Q(s) + '&transit=0');
     tiles.push(await wp.run(() => {
       const S = LAYOUT.station; if (!S) return null; let bend = 0; for (const g of S.segs) bend = Math.max(bend, Math.abs(angleWrap(g.a - S.a)));
-      GUNSHIP.look.set(S.x, 0, S.z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.nextWander = 1e9; CFG.zoom = 120; __t.sim(3); renderFrame();
+      GUNSHIP.look.set(S.x, 0, S.z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.ctr.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.nextWander = 1e9; CFG.zoom = 120; __t.sim(3); renderFrame();
       const c = document.createElement('canvas'); c.width = 640; c.height = 360; const g = c.getContext('2d'); g.drawImage(renderer.domElement, 0, 0, 640, 360);
       g.font = '600 15px Consolas, monospace'; g.fillStyle = '#000'; g.fillRect(8, 8, 230, 24); g.fillStyle = '#fff'; g.fillText(`seed ${MAP.seed} bend ${(bend / DEG).toFixed(1)}°`, 14, 25);
       return c.toDataURL('image/png');
@@ -163,7 +163,7 @@ test('stations', async ({ wp }) => {
 });
 
 /* stage 5: every model of both sides in a row along a street next to the houses (the scale), in TV and white-hot */
-const lookAt = (x, z, zoom) => { GUNSHIP.look.set(x, groundH(x, z), z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.nextWander = 1e9; CFG.zoom = zoom; __t.sim(2.5); };
+const lookAt = (x, z, zoom) => { GUNSHIP.look.set(x, groundH(x, z), z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.ctr.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.nextWander = 1e9; CFG.zoom = zoom; __t.sim(2.5); };
 test('units lineup', async ({ wp }) => {
   await wp.page.setViewportSize({ width: 1600, height: 900 });
   await wp.boot({ query: '?hour=11&seed=11&spot=town&transit=0&season=summer&az=120' });
@@ -185,7 +185,7 @@ test('units lineup', async ({ wp }) => {
   });
   const shots = [];
   for (const [m, zoom] of [['tv', 70], ['wh', 70], ['tv', 220], ['wh', 220]]) {
-    await wp.run(([m, zoom]) => { const c = window.__L.c; SENSOR.set(m); HUD.markModes(); updateEnvironment(); GUNSHIP.look.set(c[0], groundH(c[0], c[1]), c[1]); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); CFG.zoom = zoom; __t.sim(2.5); __t.render(); }, [m, zoom]);
+    await wp.run(([m, zoom]) => { const c = window.__L.c; SENSOR.set(m); HUD.markModes(); updateEnvironment(); GUNSHIP.look.set(c[0], groundH(c[0], c[1]), c[1]); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.ctr.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); CFG.zoom = zoom; __t.sim(2.5); __t.render(); }, [m, zoom]);
     shots.push((await wp.page.screenshot()).toString('base64'));
   }
   await sheet(wp, shots, 2, 'units-lineup.png');
@@ -195,7 +195,7 @@ test('patrols', async ({ wp }) => {
   await wp.page.setViewportSize({ width: 1280, height: 720 });
   await wp.boot({ query: '?hour=11&seed=11&spot=outpost&transit=0&season=summer' });
   const shots = [], at = async (fn, arg) => { await wp.run(fn, arg); shots.push((await wp.page.screenshot()).toString('base64')); };
-  const follow = (o) => { const p = o.position || o; GUNSHIP.look.set(p.x, groundH(p.x, p.z), p.z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.nextWander = 1e9; };
+  const follow = (o) => { const p = o.position || o; GUNSHIP.look.set(p.x, groundH(p.x, p.z), p.z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.ctr.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.nextWander = 1e9; };
   await wp.run(`window.__follow = ${follow.toString()}`);
   await at(() => { CFG.zoom = 70; const o = LAYOUT.outposts[0]; __follow({ x: o.x, z: o.z }); __t.sim(2); __t.render(); });
   await at(() => { const P = ALLIES.posts[0]; P.timer = 0; __t.sim(40, {}); CFG.zoom = 100; __follow(P.col.u[0].obj); __t.sim(0.05); __t.render(); });
@@ -204,4 +204,36 @@ test('patrols', async ({ wp }) => {
   await at(() => { CFG.fixedHour = 23.5; SENSOR.set('nv'); HUD.markModes(); updateEnvironment(); const o = LAYOUT.outposts[0]; CFG.zoom = 80; __follow({ x: o.x, z: o.z }); __t.sim(0.05); __t.render(); });
   await at(() => { SENSOR.set('wh'); HUD.markModes(); updateEnvironment(); const P = ALLIES.posts[0]; CFG.zoom = 110; __follow(P.col.u[0].obj); __t.sim(0.05); __t.render(); });
   await sheet(wp, shots, 3, 'units-patrols.png');
+});
+
+/* stage 6: the fight as the camera sees it (the music armed it; the frames are whatever the gunship looks at) */
+const afterShot = () => { const n = BATTLE.stat.shots; for (let i = 0; i < 400 && BATTLE.stat.shots === n; i++) __t.sim(0.05, { audio: true }); __t.sim(0.4, { audio: true }); __t.render(); };
+test('battle', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  await wp.boot({ query: '?hour=11&seed=11&season=summer' });
+  const shots = [], snap = async () => shots.push((await wp.page.screenshot()).toString('base64')), at = async (fn, arg) => { await wp.run(fn, arg); await snap(); };
+  await wp.run(`window.__shot = ${afterShot.toString()}`);
+  await at(() => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(1.5, { audio: true }); __shot(); });
+  await at(() => { __t.sim(8, { audio: true }); SENSOR.set('wh'); HUD.markModes(); updateEnvironment(); __shot(); });
+  await at(() => { __t.sim(25, { audio: true }); SENSOR.set('tv'); HUD.markModes(); updateEnvironment(); __shot(); });
+  await at(() => { __t.sim(60, { audio: true }); SENSOR.set('bh'); HUD.markModes(); updateEnvironment(); __shot(); });
+  await at(() => { __t.sim(40, { audio: true }); CFG.fixedHour = 23.5; SENSOR.set('nv'); HUD.markModes(); updateEnvironment(); __shot(); });
+  await at(() => { CFG.fixedHour = 11; SENSOR.set('tv'); HUD.markModes(); updateEnvironment(); __t.sim(30, { audio: true }); __t.sim(9); __t.render(); });   // the music has stopped: they leave
+  await sheet(wp, shots, 3, 'battle.png');
+});
+test('weapons firing', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 960, height: 540 });
+  const shots = [];
+  for (const id of ['g25', 'g30', 'h105', 'b40', 'hf', 'apk', 'gbu', 'aim', 'las', 'rail']) {
+    const q = `?hour=11&seed=11&season=summer&weapons=${id}&auto=0`;
+    if (!shots.length) await wp.boot({ query: q }); else await wp.goto(q);
+    await wp.run((id) => {
+      __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
+      const hit = () => id === 'las' ? BATTLE.beam.visible : BATTLE.missiles.some(m => m.p > 0.5) || BATTLE.stat.shots > (window.__n || 0);
+      window.__n = 0; for (let k = 0; k < (id === 'aim' ? 1 : 3); k++) { window.__n = BATTLE.stat.shots; for (let i = 0; i < 3000 && !hit(); i++) __t.sim(0.05, { audio: true }); }
+      __t.sim(BATTLE.missiles.length || id === 'las' ? 0.1 : 0.35, { audio: true }); __t.render();
+    }, id);
+    shots.push((await wp.page.screenshot()).toString('base64'));
+  }
+  await sheet(wp, shots, 5, 'battle-weapons.png');
 });

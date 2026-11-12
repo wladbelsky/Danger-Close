@@ -9,6 +9,18 @@ const UNIT_TYPES = {
 const UNIT_SPEED = { tank: 8, apc: 9.5, car: 12 };   // m/s on a road
 const GAP = 16;                                          // metres between vehicles in a column
 
+/* ---- combatants: every vehicle, helicopter, soldier and base structure is in UNITS with { side, kind, pos, hp, alive, tgt,
+   ah (where to aim above pos), die(), remove() }; js/battle.js makes them fight ---- */
+const UNITS = [];
+const UNIT_HP = { inf: 1, car: 3, apc: 7, tank: 14, heli: 6, struct: 8 };
+function enlist(u, side, kind, pos, ah) { u.side = side; u.kind = kind; u.pos = pos; u.hp = UNIT_HP[kind]; u.alive = true; u.tgt = null; u.cool = rand(1, 4); u.think = rand(0, 1); u.ah = ah; u.retreat = false; UNITS.push(u); return u; }
+function delist(u) { u.alive = false; u.tgt = null; const i = UNITS.indexOf(u); if (i >= 0) UNITS.splice(i, 1); }
+function untrack(obj) { const k = TRACKS.findIndex(t => t.obj === obj); if (k >= 0) TRACKS.splice(k, 1); }
+function hurt(u, d) { if (!u.alive || d <= 0) return; u.hp -= d; if (u.hp <= 0) u.die(); else if (u.onHit) u.onHit(); }
+/* a model of a type: built once, cloned after that (clones share the geometry and the materials: nothing to dispose) */
+const PROTO = {};
+function unitModel(side, type, variant) { const b = UNIT_TYPES[side][type], fn = Array.isArray(b) ? b[variant || 0] : b; return (PROTO[fn.name] || (PROTO[fn.name] = fn())).clone(); }
+
 /* ---- the road graph: a node per road sample (4 m), edges along each road and where a road's end meets another road ---- */
 const ROADNET = {
   n: 0, X: null, Z: null, Y: null, BR: null, HW: null, RID: null, adj: [], cell: new Map(),
@@ -75,9 +87,10 @@ class Path {
 const _va = new V3(), _vb = new V3(), _vc = new V3();
 class Vehicle {
   constructor(type, side) {
-    this.type = type; this.side = side; this.obj = UNIT_TYPES[side][type](); this.obj.scale.setScalar(ARMOR_SCALE); scene.add(this.obj);
+    this.type = type; this.obj = unitModel(side, type); this.obj.scale.setScalar(ARMOR_SCALE); scene.add(this.obj);
     this.turret = this.obj.getObjectByName('turret'); this.ph = Math.random() * TAU;
-    this.path = null; this.s = 0; this.v = 0; this.yaw = 0; this.laneK = 1; this.vmax = UNIT_SPEED[type];
+    this.path = null; this.s = 0; this.v = 0; this.yaw = 0; this.laneK = 1; this.vmax = UNIT_SPEED[type]; this.col = null;
+    enlist(this, side, type, this.obj.position, type === 'car' ? 1.3 : 1.9);
     TRACKS.push({ obj: this.obj, side, inf: false, h: type === 'car' ? 1.5 : 2.2 });
   }
   setPath(path, s, snap) { this.path = path; this.s = s; if (snap) { this.pose(0, true); } }
@@ -96,13 +109,34 @@ class Vehicle {
     const c = Math.cos(this.yaw), s = Math.sin(this.yaw), f = groundH(_vc.x + c * 2.5, _vc.z + s * 2.5), b = groundH(_vc.x - c * 2.5, _vc.z - s * 2.5);
     const pitch = _vc.y > groundH(_vc.x, _vc.z) + 0.3 ? 0 : Math.atan2(f - b, 5);   // (on a bridge deck: level)
     this.obj.rotation.set(0, -this.yaw, pitch, 'YZX');
-    if (this.turret) this.turret.rotation.y = this.v > 1 ? this.turret.rotation.y * (1 - Math.min(1, dt)) : lerp(this.turret.rotation.y, Math.sin(T * 0.15 + this.ph) * 0.8, Math.min(1, dt));
+    if (this.turret && this.tgt) this.turret.rotation.y = approachAngle(this.turret.rotation.y, this.yaw - Math.atan2(this.tgt.pos.z - _vc.z, this.tgt.pos.x - _vc.x), dt * 1.6);   // (onto its target)
+    else if (this.turret) this.turret.rotation.y = this.v > 1 ? this.turret.rotation.y * (1 - Math.min(1, dt)) : lerp(this.turret.rotation.y, Math.sin(T * 0.15 + this.ph) * 0.8, Math.min(1, dt));
   }
+  /* knocked out: a burning wreck where it stood */
+  die() { this.gone(); blast(this.pos, 1.7); if (this.turret) this.turret.rotation.set(rand(-0.12, 0.12), rand(0, TAU), rand(-0.1, 0.1)); WRECKS.add(this.obj, 1.5); }
+  /* taken away (out of sight) */
+  remove() { this.gone(); scene.remove(this.obj); }
+  gone() { delist(this); untrack(this.obj); if (this.col) this.col.drop(this); }
 }
 
 /* ---- a column: vehicles on one path, the first leading, the rest keeping their gap ---- */
 class Column {
-  constructor(units) { this.u = units; }
+  constructor(units) { this.u = units; this.alarm = 0; for (const v of units) v.col = this; }   // (alarm: under the gunship's fire until then: it drives on, faster)
+  drop(v) { const i = this.u.indexOf(v); if (i >= 0) this.u.splice(i, 1); }
+  get engaged() { return this.u.some(v => v.tgt && Math.hypot(v.tgt.pos.x - v.pos.x, v.tgt.pos.z - v.pos.z) < 75); }   // (halts only close in: it fires on the move from further out)
+  /* onto a path from where the column is now: its head runs through the vehicles' own positions, so nobody jumps. If the way
+     leads back, the rear vehicle leads (everyone turns round where he stands) */
+  reroute(dest, tail) {
+    const N = ROADNET, U = this.u, plan = v => { const k = N.nearest(v.pos.x, v.pos.z, 60); let n = k < 0 ? null : N.route(k, dest); while (n && n.length > 2 && Math.hypot(N.X[n[0]] - v.pos.x, N.Z[n[0]] - v.pos.z) < 9) n = n.slice(1); return n; };   // (no kink back to a node just behind)
+    let nodes = plan(U[0]); if (!nodes) return false;
+    const j = nodes[Math.min(nodes.length - 1, 3)], back = U.length > 1 && (N.X[j] - U[0].pos.x) * (U[0].pos.x - U[U.length - 1].pos.x) + (N.Z[j] - U[0].pos.z) * (U[0].pos.z - U[U.length - 1].pos.z) < 0;
+    if (back) { nodes = plan(U[U.length - 1]); if (!nodes) return false; }
+    const order = back ? U.slice() : U.slice().reverse();   // (rear to front on the new way)
+    const head = order.map(v => ({ x: v.pos.x, z: v.pos.z, y: v.pos.y > groundH(v.pos.x, v.pos.z) + 0.3 ? v.pos.y : NaN, hw: 0 }));
+    const path = Path.fromNodes(nodes, head, tail); let d = 0;
+    order.forEach((v, i) => { if (i) d += Math.hypot(v.pos.x - order[i - 1].pos.x, v.pos.z - order[i - 1].pos.z); v.setPath(path, Math.min(d, path.L)); });
+    this.path = path; this.sort(); return true;
+  }
   /* units ordered front first (largest s) */
   sort() { this.u.sort((a, b) => b.s - a.s); }
   place(path) { this.path = path; this.u.forEach((v, i) => v.setPath(path, Math.max(0, (this.u.length - 1 - i) * GAP), true)); }
@@ -113,9 +147,10 @@ class Column {
     for (const v of this.u) { v.setPath(path, clamp(back ? o.L - v.s : v.s, 0, path.L)); if (back) v.laneK = -v.laneK; }
     this.path = path; this.sort();
   }
-  get done() { return this.u[0].s >= this.path.L - 0.5 && this.u.every(v => v.v < 0.3); }
+  get done() { return !this.u.length || (this.u[0].s >= this.path.L - 0.5 && this.u.every(v => v.v < 0.3)); }
   update(dt, go) {
-    const vmax = Math.min(...this.u.map(v => v.vmax)), lead = this.u[0], P = this.path;
+    if (!this.u.length) return;
+    const vmax = Math.min(...this.u.map(v => v.vmax)) * (this.alarm > T ? 1.35 : 1), lead = this.u[0], P = this.path;
     // the leader: slower in bends (the heading change over the next 25 m) and braking to stop at the end
     let vt = 0;
     if (go) { const bend = Math.abs(angleWrap(lead.dirAt(lead.s + 25) - lead.dirAt(lead.s))); vt = Math.min(lerp(vmax, 4, clamp(bend / 1.2, 0, 1)), Math.sqrt(Math.max(0, 2 * 2.2 * (P.L - lead.s - 0.3)))); }
@@ -131,30 +166,44 @@ class Column {
 /* ---- a helicopter: sits on its pad, takes off, flies a round of waypoints, comes back and lands ---- */
 const _hv = new V3();
 class Heli {
-  constructor(build, side, pad) {
-    this.side = side; this.pad = pad; this.obj = build(); scene.add(this.obj);
+  /* pad: where it lives (the allies'); without one it starts in the air at `start` and never lands (the enemies') */
+  constructor(variant, side, pad, start) {
+    this.side = side; this.pad = pad; this.obj = unitModel(side, 'heli', variant); scene.add(this.obj);
     this.rotors = []; this.obj.traverse(o => { if (o.name === 'rotor' || o.name === 'rotor2' || o.name === 'trotor') this.rotors.push(o); });
-    this.pos = new V3(pad.x, pad.y, pad.z); this.yaw = pad.a; this.v = 0; this.bank = 0; this.spin = 0; this.state = 'pad'; this.timer = rand(15, 60); this.wps = [];
+    this.pos = pad ? new V3(pad.x, pad.y, pad.z) : start.clone(); this.yaw = pad ? pad.a : Math.atan2(-start.z, -start.x); this.v = pad ? 0 : 30; this.bank = 0; this.spin = pad ? 0 : 26; this.state = pad ? 'pad' : 'fly'; this.timer = rand(15, 60);
+    this.out = false;   // (crashed or flown away: its owner drops it)
+    enlist(this, side, 'heli', this.pos, 1.5); this.wps = pad ? [] : this.round();
     TRACKS.push({ obj: this.obj, side, inf: false, h: 2.5 });
     this.pose(0);
   }
   agl(x, z) { let h = groundH(x, z); const c = Math.cos(this.yaw), s = Math.sin(this.yaw); for (const d of [40, 90]) h = Math.max(h, groundH(x + c * d, z + s * d)); return h; }
   update(dt) {
     const p = this.pos;
+    if (this.state === 'crash') {                                      // shot down: spinning into the ground
+      this.vy = Math.min(26, (this.vy || 0) + 9 * dt); p.y -= this.vy * dt; this.yaw += 2.6 * dt; this.spin = Math.max(6, this.spin - dt * 5); p.x += Math.cos(this.dir) * this.v * dt; p.z += Math.sin(this.dir) * this.v * dt;
+      if ((this.puff = (this.puff || 0) - dt) <= 0) { this.puff = 0.05; FX.smoke.spawn(p, { s0: 3, s1: 9, life: rand(1.5, 2.5), a0: 0.5, color: 0x1c1a18, rise: 0.5, drag: 1 }); }
+      if (p.y <= groundH(p.x, p.z) + 0.8) { p.y = groundH(p.x, p.z) + 0.3; this.obj.position.copy(p); this.obj.rotation.set(rand(-0.3, 0.3), -this.yaw, rand(-0.25, 0.25), 'YZX'); blast(p, 2.4); if (waterAt(p.x, p.z)) scene.remove(this.obj); else WRECKS.add(this.obj, 1.8); this.out = true; return; }
+      this.pose(dt); return;
+    }
+    if (this.state === 'leave') {                                      // flying off the map: taken away once out of sight
+      if (!this.wps.length) { const d = Math.hypot(p.x - CAM_TGT.x, p.z - CAM_TGT.z) || 1; this.wps = [[p.x + (p.x - CAM_TGT.x) / d * 3000, p.z + (p.z - CAM_TGT.z) / d * 3000]]; }
+      if (!VIEW.onScreen(p, 0.3)) { BATTLE.seen('out', p); this.remove(); return; }
+    }
     if (this.state === 'pad') { this.spin = Math.max(0, this.spin - dt * 4); if ((this.timer -= dt) <= 0) this.state = 'up'; }
     else if (this.state === 'up') {
       this.spin = Math.min(26, this.spin + dt * 6);
       if (this.spin > 20) p.y += Math.min(4, 1 + (p.y - this.pad.y)) * dt;
       if (p.y > this.pad.y + 30) { this.state = 'fly'; this.wps = this.round(); }
-    } else if (this.state === 'fly' || this.state === 'home') {
+    } else if (this.state === 'fly' || this.state === 'home' || this.state === 'leave') {
       const w = this.wps[0], dx = w[0] - p.x, dz = w[1] - p.z, d = Math.hypot(dx, dz);
-      const last = this.state === 'home', vt = last ? Math.min(30, Math.max(2, d * 0.18)) : 30;
+      const last = this.state === 'home', vt = last ? Math.min(30, Math.max(2, d * 0.18)) : this.tgt ? 8 : 30;   // (slow over what it is shooting at)
       const want = Math.atan2(dz, dx), turn = clamp(angleWrap(want - this.yaw), -0.45 * dt, 0.45 * dt); this.yaw += turn;
       this.v += clamp(vt * clamp(1.2 - Math.abs(angleWrap(want - this.yaw)), 0.3, 1) - this.v, -4 * dt, 3 * dt);
       this.bank += (clamp(turn / dt * 1.4, -0.45, 0.45) - this.bank) * Math.min(1, dt * 2);
       p.x += Math.cos(this.yaw) * this.v * dt; p.z += Math.sin(this.yaw) * this.v * dt;
       const yt = (last ? this.pad.y + 30 : this.agl(p.x, p.z) + 60); p.y += clamp(yt - p.y, -4 * dt, 5 * dt);
-      if (d < (last ? 3 : 60)) { this.wps.shift(); if (!this.wps.length) { if (last) this.state = 'down'; else { this.state = 'home'; this.wps = [[this.pad.x, this.pad.z]]; } } }
+      if (this.state === 'fly' && !this.pad && this.retreat) { this.state = 'leave'; this.wps = []; }
+      else if (this.state !== 'leave' && d < (last ? 3 : 60)) { this.wps.shift(); if (!this.wps.length) { if (last) this.state = 'down'; else if (!this.pad || AUD.combat) this.wps = this.round(); else { this.state = 'home'; this.wps = [[this.pad.x, this.pad.z]]; } } }
     } else if (this.state === 'down') {
       this.v = Math.max(0, this.v - 4 * dt); this.bank *= 1 - Math.min(1, dt * 2); this.yaw = approachAngle(this.yaw, this.pad.a, dt * 0.4);
       p.x += (this.pad.x - p.x) * Math.min(1, dt); p.z += (this.pad.z - p.z) * Math.min(1, dt);
@@ -164,8 +213,11 @@ class Heli {
     if (this.state === 'pad' || this.state === 'down') this.bank *= 1 - Math.min(1, dt * 2);
     this.pose(dt);
   }
-  /* a round: 3–4 districts or outposts, not too near the edge */
+  die() { delist(this); untrack(this.obj); this.state = 'crash'; this.dir = this.yaw; }
+  remove() { delist(this); untrack(this.obj); scene.remove(this.obj); this.out = true; }
+  /* a round: 3–4 districts or outposts, not too near the edge; in a fight: round the enemies' base */
   round() {
+    const B = BATTLE.base; if (B && AUD.combat) { const out = []; for (let i = 0; i < 3; i++) { const a = rand(0, TAU), r = rand(20, 90); out.push([clamp(B.x + Math.cos(a) * r, -900, 900), clamp(B.z + Math.sin(a) * r, -900, 900)]); } return out; }
     const c = GUNSHIP.list.map(d => [d.x, d.z]).concat(LAYOUT.outposts.map(o => [o.x, o.z])), out = [];
     for (let i = 0; i < randi(3, 4); i++) { const q = pick(c); out.push([clamp(q[0] + rand(-120, 120), -850, 850), clamp(q[1] + rand(-120, 120), -850, 850)]); }
     return out;
@@ -180,16 +232,29 @@ class Heli {
 class Squad {
   constructor(side, n, x, z, wps) {
     this.side = side; this.wps = wps; this.wi = 0; this.wait = rand(2, 8);
-    this.m = []; for (let i = 0; i < n; i++) { const s = INF.add(side, x, z); if (s) this.m.push(s); }
+    this.m = []; this.flee = false; for (let i = 0; i < n; i++) this.join(x, z);
     this.trail = [[x, z, 0]]; this.D = 0;
     for (const s of this.m) s.position.set(x, groundH(x, z), z);
+  }
+  join(x, z) { const s = INF.add(this.side, x, z); if (!s) return; enlist(s, this.side, 'inf', s.position, 1.1); s.die = () => { puffDust(s.position); this.lose(s); }; s.remove = () => this.lose(s); this.m.push(s); }
+  lose(s) { delist(s); INF.remove(s); const i = this.m.indexOf(s); if (i >= 0) this.m.splice(i, 1); }
+  /* running from the camera's point, each for himself, round what is in the way; taken away once out of sight */
+  run(dt) {
+    for (const s of this.m.slice()) {
+      const p = s.position, away = Math.atan2(p.z - CAM_TGT.z, p.x - CAM_TGT.x);
+      for (const da of [0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9]) { const a = away + da, x = p.x + Math.cos(a) * 3, z = p.z + Math.sin(a) * 3; if ((occAt(x, z) & (OCC_BUILD | OCC_WATER)) || waterAt(x, z)) continue; p.x += Math.cos(a) * 3.4 * dt; p.z += Math.sin(a) * 3.4 * dt; s.a = approachAngle(s.a, a, dt * 6); break; }
+      p.y = groundH(p.x, p.z); s.phase += 3.4 * dt * 3.4; s.stride += (1 - s.stride) * Math.min(1, dt * 5);
+      if (!VIEW.onScreen(p, 0.2) || Math.abs(p.x) > MAP_HALF - 6 || Math.abs(p.z) > MAP_HALF - 6) { BATTLE.seen('out', p); this.lose(s); }
+    }
   }
   /* where the trail was at distance d (members walk it: never through a wall the leader went round) */
   trailAt(d) { const T_ = this.trail; let i = T_.length - 1; while (i > 0 && T_[i - 1][2] > d) i--; if (i === 0) return T_[0]; const a = T_[i - 1], b = T_[i], t = clamp((d - a[2]) / (b[2] - a[2] || 1), 0, 1); return [lerp(a[0], b[0], t), lerp(a[1], b[1], t)]; }
   update(dt) {
     const L = this.m[0]; if (!L) return;
-    let step = 0;
-    if (this.wait > 0) this.wait -= dt;
+    if (this.flee) { this.run(dt); return; }
+    let step = 0; const fight = this.m.some(s => s.tgt);
+    if (fight) { for (const s of this.m) if (s.tgt) s.a = approachAngle(s.a, Math.atan2(s.tgt.pos.z - s.position.z, s.tgt.pos.x - s.position.x), dt * 5); }   // (halted, facing what they shoot at)
+    else if (this.wait > 0) this.wait -= dt;
     else {
       const [wx, wz] = this.wps[this.wi], dx = wx - L.position.x, dz = wz - L.position.z, d = Math.hypot(dx, dz);
       if (d < 1) { this.wi = (this.wi + 1) % this.wps.length; this.wait = rand(3, 10); }
@@ -197,7 +262,8 @@ class Squad {
     }
     if (step > 0) { this.D += step; const last = this.trail[this.trail.length - 1]; if (this.D - last[2] > 0.5) { this.trail.push([L.position.x, L.position.z, this.D]); if (this.trail.length > 200) this.trail.shift(); } }
     this.m.forEach((s, i) => {
-      if (i) {   // in file, 4 m apart, along the trail
+      if (fight) s.moved = 0;
+      else if (i) {   // in file, 4 m apart, along the trail
         const [tx, tz] = this.trailAt(this.D - i * 4), dx = tx - s.position.x, dz = tz - s.position.z, d = Math.hypot(dx, dz);
         if (d > 0.05) { const mv = Math.min(d, 1.9 * dt); s.position.x += dx / d * mv; s.position.z += dz / d * mv; s.a = approachAngle(s.a, Math.atan2(dz, dx), dt * 4); s.moved = mv; } else s.moved = 0;
       } else s.moved = step;
@@ -225,22 +291,26 @@ function patrolLoop(cx, cz, r0, r1, start) {
   return out.length > 2 ? out : [start, start];
 }
 
-/* ---- the allies: a garrison per outpost ---- */
+/* ---- the allies: a garrison per outpost. In a fight the columns drive to the enemies' base and the helicopters fly round it;
+   afterwards they come home. Losses are replaced at the outpost, out of sight ---- */
+const POST_TYPES = [['tank', 'apc'], ['apc', 'car', 'car'], ['tank', 'car']];
 const ALLIES = {
   posts: [], helis: [], squads: [],
   init() {
     LAYOUT.outposts.forEach((o, k) => {
-      const types = [['tank', 'apc'], ['apc', 'car', 'car'], ['tank', 'car']][k % 3], drive = [{ x: o.inner[0], z: o.inner[1], y: NaN, hw: 0 }, { x: o.gate[0], z: o.gate[1], y: NaN, hw: 0 }];
-      const col = new Column(types.map(t => new Vehicle(t, 'ally'))); col.place(new Path(drive));
-      this.posts.push({ o, col, drive, state: 'park', timer: k === 0 ? rand(4, 10) : rand(20, 70) });
-      this.helis.push(new Heli(UNIT_TYPES.ally.heli[k % 2], 'ally', { x: o.pad[0], z: o.pad[1], y: o.y + 0.25, a: o.a + (o.side > 0 ? Math.PI / 2 : -Math.PI / 2) }));
-      const g = [o.gate[0] + (o.gate[0] - o.x) * 0.25, o.gate[1] + (o.gate[1] - o.z) * 0.25];
-      this.squads.push(new Squad('ally', 4, g[0], g[1], patrolLoop(o.x, o.z, 50, 110, g)));
+      const drive = [{ x: o.inner[0], z: o.inner[1], y: NaN, hw: 0 }, { x: o.gate[0], z: o.gate[1], y: NaN, hw: 0 }];
+      const P = { o, k, col: null, drive, state: 'park', timer: k === 0 ? rand(4, 10) : rand(20, 70), refill: 0, heli: null, heliAt: 0, squad: null, gateNode: ROADNET.nearest(o.gate[0], o.gate[1], 20) };
+      P.pad = { x: o.pad[0], z: o.pad[1], y: o.y + 0.25, a: o.a + (o.side > 0 ? Math.PI / 2 : -Math.PI / 2) };
+      P.sq = [o.gate[0] + (o.gate[0] - o.x) * 0.25, o.gate[1] + (o.gate[1] - o.z) * 0.25];
+      this.posts.push(P); this.garrison(P); this.fly(P);
+      P.squad = new Squad('ally', 4, P.sq[0], P.sq[1], patrolLoop(o.x, o.z, 50, 110, P.sq)); this.squads.push(P.squad);
     });
   },
+  garrison(P) { P.col = new Column(POST_TYPES[P.k % 3].map(t => new Vehicle(t, 'ally'))); P.col.place(new Path(P.drive)); P.full = P.col.u.length; P.state = 'park'; },
+  fly(P) { P.heli = new Heli(P.k % 2, 'ally', P.pad); this.helis.push(P.heli); },
   /* a district to drive to: 350–1200 m off, reached along the roads */
   outbound(post) {
-    const o = post.o, g = ROADNET.nearest(o.gate[0], o.gate[1], 20); if (g < 0) return null;
+    const o = post.o, g = post.gateNode; if (g < 0) return null;
     for (let t = 0; t < 12; t++) {
       const d = pick(GUNSHIP.list), dist = Math.hypot(d.x - o.x, d.z - o.z); if (dist < 350 || dist > 1200) continue;
       const k = ROADNET.nearest(d.x, d.z, 160); if (k < 0) continue;
@@ -248,21 +318,32 @@ const ALLIES = {
     }
     return null;
   },
+  seen(o) { _va.set(o.x, o.y, o.z); return VIEW.onScreen(_va, 0.6); },
   update(dt) {
+    const war = AUD.combat && BATTLE.base;
     for (const P of this.posts) {
-      const c = P.col;
+      const c = P.col, away = !this.seen(P.o);
+      // losses: the column's (once what is left of it is home, or none is) and the helicopter's, replaced out of sight
+      if (c.u.length < P.full && !P.refill) P.refill = T + rand(50, 100);
+      if (P.refill && T > P.refill && away && !war && (P.state === 'park' || !c.u.length)) { for (const v of c.u.slice()) v.remove(); this.garrison(P); P.timer = rand(20, 60); P.refill = 0; }
+      if (P.heli.out) { const i = this.helis.indexOf(P.heli); if (i >= 0) { this.helis.splice(i, 1); P.heliAt = T + rand(70, 130); } if (T > P.heliAt && away) this.fly(P); }
+      if (P.squad.m.length < 4 && away && !war) P.squad.join(P.sq[0], P.sq[1]);
+      if (!c.u.length) continue;
+      if (war && P.state !== 'sortie') { if (c.reroute(BATTLE.base.node)) P.state = 'sortie'; }
+      else if (!war && P.state === 'sortie') { if (P.gateNode >= 0 && c.reroute(P.gateNode, P.drive.slice().reverse())) P.state = 'back'; else { P.state = 'hold'; P.timer = 20; } }
+      if (P.state === 'sortie') { c.update(dt, !c.engaged); continue; }
       if (P.state === 'park' || P.state === 'hold') {
         c.update(dt, false);
         if ((P.timer -= dt) <= 0) {
           if (P.state === 'park') { const p = this.outbound(P); if (p) { c.follow(p); P.state = 'out'; } else P.timer = 30; }
-          else { c.follow(c.path.reversed()); P.state = 'back'; }
+          else if (P.gateNode >= 0 && c.reroute(P.gateNode, P.drive.slice().reverse())) P.state = 'back'; else P.timer = 30;
         }
       } else {
         c.update(dt, true);
         if (c.done) { if (P.state === 'out') { P.state = 'hold'; P.timer = rand(15, 35); } else { P.state = 'park'; P.timer = rand(30, 90); } }
       }
     }
-    for (const h of this.helis) h.update(dt);
+    for (const h of this.helis) { if (war && h.state === 'pad') h.timer = Math.min(h.timer, 8); h.update(dt); }
     for (const s of this.squads) s.update(dt);
   }
 };
