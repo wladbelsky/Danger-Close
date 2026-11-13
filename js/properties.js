@@ -276,12 +276,6 @@ const WE_PROPERTIES = {
   "type": "bool",
   "value": true
  },
- "sensorpulse": {
-  "order": 35,
-  "text": "Sensor pulses with the bass",
-  "type": "bool",
-  "value": true
- },
  "seed": {
   "order": 40,
   "text": "Map seed (0 = a new map every start)",

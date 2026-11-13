@@ -48,7 +48,7 @@ function onAudio(arr) {
     const fluxHit = e > thr * 0.6 && flux > fm + fs * (1.6 / sens) && flux > 0.02 / sens;
     if ((energyHit || fluxHit) && RT() - b.last > b.gap) {
       b.last = RT(); const st = clamp(Math.max(e / Math.max(avg, 0.01), 1 + flux / Math.max(fm, 0.005) * 0.15), 1, 3);
-      BATTLE.onBeat(key, st); if (key === 'low') { kick = st; SENSOR.kick(st); }
+      BATTLE.onBeat(key, st); if (key === 'low') kick = st;
     }
     b.peak = Math.max(e, b.peak * 0.9985, 0.05); b.norm = e / b.peak;   // automatic gain: the loudness per band
     b.prev = e; b.val = e; tot += e;

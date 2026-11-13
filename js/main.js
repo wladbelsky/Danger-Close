@@ -18,7 +18,6 @@ if (QS.has('transit')) CFG.transitMin = parseFloat(QS.get('transit'));
 if (QS.has('weather')) CFG.weather = QS.get('weather');
 if (QS.has('clouds')) CFG.clouds = parseFloat(QS.get('clouds'));
 if (QS.has('aa')) CFG.aa = QS.get('aa') !== '0';
-if (QS.has('pulse')) CFG.pulse = QS.get('pulse') !== '0';
 if (QS.has('auto')) CFG.autoArms = QS.get('auto') !== '0';
 if (QS.has('enemies')) CFG.enemies = parseFloat(QS.get('enemies'));
 
@@ -50,7 +49,6 @@ window.wallpaperPropertyListener = {
     if (has('enemies') && !url('enemies')) CFG.enemies = v('enemies');
     if (has('allies')) CFG.allies = v('allies');
     if (has('aa') && !url('aa')) CFG.aa = !!v('aa');
-    if (has('sensorpulse') && !url('pulse')) CFG.pulse = !!v('sensorpulse');
     if (has('shadows')) { CFG.shadows = !!v('shadows'); if (sunLight) sunLight.castShadow = CFG.shadows; }
     if (has('quality')) { CFG.quality = v('quality'); applyQuality(); }
     if (has('seed') && !url('seed')) { const s = Math.max(0, Math.round(v('seed'))); if (s !== CFG.seed) { CFG.seed = s; if (s && worldSeed && s !== worldSeed) location.reload(); } }

@@ -417,7 +417,7 @@ test('laser', async ({ wp }) => {
   await sheet(wp, shots, 3, 'laser.png');
 });
 
-/* stage 13: the music drives it — the sensor on a kick and just before the next one (TV by day, white-hot at night), a drop's surge */
+/* stage 13: the music drives it — a fight on a kick and just before the next one (TV by day, white-hot at night), a drop's surge */
 test('music', async ({ wp }) => {
   await wp.page.setViewportSize({ width: 1280, height: 720 });
   await wp.boot({ query: '?hour=11&seed=11&season=summer&weather=clear&clouds=0&transit=0' });

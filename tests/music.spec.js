@@ -1,5 +1,5 @@
 // The music drives the fight: units fire on the beats of their band, at a pace set by how dense the music is (the same damage a
-// second), quiet parts and drops, the AA on the beat, the sensor's pulse with the kick
+// second), quiet parts and drops and the AA on the beat
 const { test, expect } = require('./support/harness');
 
 test('the units fire on the beats, mostly of their own band', async ({ wp }) => {
@@ -70,22 +70,4 @@ test('a quiet part, then the kick back: one drop each time, a surge; the AA burs
   for (const d of r.drops) { expect(d.fighting).toBe(true); expect(d.surge).toBeGreaterThan(3.5); }
   expect(r.aaBeat).toBeGreaterThan(3);
   expect(r.aaLate, 'AA bursts that found no beat').toBeLessThanOrEqual(r.aaBeat / 4);
-});
-
-test('the sensor pulses with the kick, settles in silence, never with the property off; no new programs', async ({ wp }) => {
-  await wp.boot({ query: '?hour=12&seed=11' });
-  const r = await wp.run(() => {
-    __t.render(); const p0 = renderer.info.programs.length;
-    let max = 0; for (let i = 0; i < 60; i++) { __t.sim(0.05, { audio: true }); __t.render(); max = Math.max(max, SENSOR.post.uniforms.uPulse.value); }
-    for (const m of ['wh', 'nv', 'tv']) { SENSOR.set(m); __t.sim(0.05, { audio: true }); __t.render(); }
-    const p1 = renderer.info.programs.length;
-    for (let i = 0; i < 40; i++) { __t.sim(0.05); __t.render(); }
-    const settled = SENSOR.post.uniforms.uPulse.value;
-    CFG.pulse = false; let off = 0; for (let i = 0; i < 40; i++) { __t.sim(0.05, { audio: true }); __t.render(); off = Math.max(off, SENSOR.post.uniforms.uPulse.value); }
-    return { max, settled, off, p0, p1 };
-  });
-  expect(r.max).toBeGreaterThan(0.25);
-  expect(r.settled).toBe(0);
-  expect(r.off).toBe(0);
-  expect(r.p1).toBe(r.p0);
 });
