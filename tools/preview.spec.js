@@ -416,3 +416,20 @@ test('laser', async ({ wp }) => {
   }
   await sheet(wp, shots, 3, 'laser.png');
 });
+
+/* stage 13: the music drives it — the sensor on a kick and just before the next one (TV by day, white-hot at night), a drop's surge */
+test('music', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  await wp.boot({ query: '?hour=11&seed=11&season=summer&weather=clear&clouds=0&transit=0' });
+  const shots = [], at = async (fn) => { await wp.run(fn); shots.push((await wp.page.screenshot()).toString('base64')); };
+  const onKick = () => { for (let i = 0; i < 60; i++) { const was = BANDS.low.last; __t.sim(0.05, { audio: true }); if (BANDS.low.last !== was && BANDS.low.last - was > 0.4) break; } __t.render(); };
+  await wp.run(`window.__kick = ${onKick.toString()}`);
+  await at(() => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 1200 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(12, { audio: true }); __kick(); });
+  await at(() => { __t.sim(0.4, { audio: true }); __t.render(); });
+  await at(() => { CFG.fixedHour = 23.5; SENSOR.set('wh'); HUD.markModes(); updateEnvironment(); __t.sim(3, { audio: true }); __kick(); });
+  await at(() => { __t.sim(0.4, { audio: true }); __t.render(); });
+  await at(() => { CFG.fixedHour = 11; SENSOR.set('tv'); HUD.markModes(); updateEnvironment(); const n = BATTLE.stat.drops; for (let i = 0; i < 1600 && BATTLE.stat.drops === n; i++) __t.sim(0.05, { audio: true, pauses: true }); __t.sim(0.3, { audio: true, pauses: true }); __t.render(); });
+  await at(() => { __t.sim(0.9, { audio: true, pauses: true }); __t.render(); });
+  console.log('music stat', JSON.stringify(await wp.run(() => BATTLE.stat)));
+  await sheet(wp, shots, 2, 'music.png');
+});

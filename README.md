@@ -64,6 +64,10 @@ fullscreen apps by default.
 
   The first three are on by default; each is a property. Automatic switching picks one for the targets and the music;
   a click on one holds it for 30 s, or until nothing it may hit is left round where the aircraft is.
+- **Everything plays to the music**: the soldiers and the technicals fire on the hats, the APCs and helicopters on the snare,
+  the tanks on the kick, and a strong beat is a volley; denser music, faster fire (at the same damage); the gunship's bursts
+  grow with the beat. A quiet part calms the fight, the drop after it sets everything off at once. The AA fires on the beat,
+  the flares go on the strong ones, and the sensor's picture pulses with the kick (**Sensor pulses with the bass**).
 - **The music stops**: 5 s later fire ceases, the enemy pulls back out of the frame and vanishes; the base is removed
   once it is out of view. Infantry vanish in a puff of dust, vehicles lie as wrecks and sink. No civilians, no blood.
 

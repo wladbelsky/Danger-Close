@@ -9,7 +9,7 @@
   H.setup = () => { window.RT = () => rt; CFG.lon = 0; };
   H.sim = (sec, o = {}) => {
     const n = Math.round(sec / DT); let steps = 0;
-    for (let i = 0; i < n; i++) { rt += DT; if (o.audio) window.__audio(demoSpectrum(rt, o.bpm || 124, false)); step(DT); steps++; if (o.until && o.until()) break; }   // (audio: music playing)
+    for (let i = 0; i < n; i++) { rt += DT; if (o.audio) window.__audio(o.spec ? o.spec(rt) : demoSpectrum(rt, o.bpm || 124, !!o.pauses)); step(DT); steps++; if (o.until && o.until()) break; }   // (audio: music playing)
     return { steps, t: T };
   };
   H.render = () => { renderFrame(); };

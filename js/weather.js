@@ -78,7 +78,7 @@ const _wcol = new THREE.Color();
    and then a missile on a smoke trail. They all pass the lens: the tracers wide of it, the missile drawn off by the flares the
    aircraft drops (bright, falling away below it).                                                                    */
 const AA = {
-  nextGun: 0, nextSam: 0, bursts: [], sams: [], flares: [], shots: 0, launched: 0,
+  nextGun: 0, nextSam: 0, bursts: [], sams: [], flares: [], shots: 0, launched: 0, gunDue: 0, samDue: 0, nextFlare: 0, onBeatN: 0, late: 0,
   basis() { const e = camera.matrixWorld.elements; _wr.set(e[0], e[1], e[2]); _wu.set(e[4], e[5], e[6]); _wf.set(-e[8], -e[9], -e[10]); },
   /* an enemy near the sensor's point that could be shooting up: the base's gun before the vehicles, those before the rest */
   source(sam) {
@@ -97,10 +97,13 @@ const AA = {
       const d = ((want - u.obj.rotation.y + Math.PI) % TAU + TAU) % TAU - Math.PI;
       u.obj.rotation.y += clamp(d, -1.4 * dt, 1.4 * dt); u.aimOff = Math.abs(d);
     }
+    // (the timers only make a burst or a missile due: it goes on the next beat, or 1.5 s later in music with no beats; none in a quiet part)
     if (CFG.aa && AUD.fighting && GUNSHIP.state === 'orbit') {
-      if (T > this.nextGun) { this.nextGun = T + rand(2.5, 6) / (0.6 + AUD.heavy); const u = this.source(false); if (u) { this.basis(); this.bursts.push({ u, n: u.type === 'aa' ? randi(10, 16) : randi(4, 8), tick: 0, col: Math.random() < 0.6 ? 0xa8ff8a : 0xff8850, ox: rand(9, 24) * (Math.random() < 0.5 ? -1 : 1), oy: rand(-12, 14) }); if (Math.random() < 0.15) this.drop(3); } }
-      if (T > this.nextSam) { this.nextSam = T + rand(18, 36); const u = this.source(true); if (u) this.launch(u); }
-    }
+      if (T > this.nextGun && !this.gunDue && !AUD.calm) { this.nextGun = T + rand(2.5, 6) / (0.6 + AUD.heavy); this.gunDue = T; }
+      if (T > this.nextSam && !this.samDue && !AUD.calm) { this.nextSam = T + rand(18, 36); this.samDue = T; }
+      if (this.gunDue && T - this.gunDue > 1.5) { this.late++; this.burst(); }
+      if (this.samDue && T - this.samDue > 1.5) this.sam();
+    } else this.gunDue = this.samDue = 0;
     for (let i = this.bursts.length - 1; i >= 0; i--) {
       const b = this.bursts[i]; if (!b.u.alive || b.n <= 0) { this.bursts.splice(i, 1); continue; }
       if ((b.tick -= dt) > 0) continue; b.tick = 0.07; b.n--; this.shots++;
@@ -127,6 +130,20 @@ const AA = {
       if ((f.puff -= dt) <= 0) { f.puff = 0.06; FX.smoke.spawn(f.p, { s0: 0.6, s1: 2.6, life: 1.2, a0: 0.28, color: 0xe8e8e8 }); }
     }
   },
+  /* a beat in a fight (js/battle.js): a due burst starts, a due missile goes on a kick or a strong beat; flares on some strong beats */
+  onBeat(band, st) {
+    if (!CFG.aa) return;
+    if (this.gunDue) { this.onBeatN++; this.burst(); }
+    if (this.samDue && (band === 'low' || st > 1.5)) this.sam();
+    if (st > 1.7 && T > this.nextFlare && GUNSHIP.state === 'orbit' && Math.random() < 0.3) { this.nextFlare = T + 5; this.drop(3); }
+  },
+  /* a burst of tracers from an enemy near the sensor's point (big: a longer one) */
+  burst(big) {
+    this.gunDue = 0; const u = this.source(false); if (!u) return;
+    this.basis(); this.bursts.push({ u, n: (u.type === 'aa' ? randi(10, 16) : randi(4, 8)) + (big ? 6 : 0), tick: 0, col: Math.random() < 0.6 ? 0xa8ff8a : 0xff8850, ox: rand(9, 24) * (Math.random() < 0.5 ? -1 : 1), oy: rand(-12, 14) });
+    if (Math.random() < 0.15) this.drop(3);
+  },
+  sam() { this.samDue = 0; const u = this.source(true); if (u) this.launch(u); },
   /* a missile from u: up towards the aircraft, then off to one side after the flares; some burst in the air on the way */
   launch(u) {
     this.basis(); this.launched++;

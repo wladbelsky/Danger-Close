@@ -7,14 +7,17 @@
    into rubble. When the music stops everybody holds fire; after the hold the enemies leave the frame and are taken away out of
    sight, the base too.                                                                                              */
 
-/* ---- how each kind of unit shoots: range, reload, tracers per shot and their look, accuracy, damage, where the muzzle is ---- */
+/* ---- how each kind of unit shoots: range, reload, tracers per shot and their look, accuracy, damage, where the muzzle is, and the
+   beat it fires on (reloaded, it waits for a beat of its band: rifles and technicals the hats, APCs and helicopters the snare, tanks
+   the kick; after 1.2 s any beat will do, after 3 s with none it fires anyway) ---- */
 const FIRE = {
-  inf:  { range: 90,  reload: [1.5, 3.5], n: 1, v: 320, len: 2.2, w: 0.07, acc: 0.3,  dmg: 0.5, mh: 1.3 },
-  car:  { range: 150, reload: [1.6, 3],   n: 3, v: 340, len: 3,   w: 0.1,  acc: 0.35, dmg: 0.6, mh: 2 },
-  apc:  { range: 180, reload: [2, 4],     n: 3, v: 380, len: 3.5, w: 0.14, acc: 0.4,  dmg: 1.4, mh: 2.6, blast: 0.35 },
-  tank: { range: 230, reload: [5, 8],     n: 1, v: 520, len: 5,   w: 0.3,  acc: 0.45, dmg: 7,   mh: 2.2, blast: 1.2, flash: 2.2 },
-  heli: { range: 260, reload: [1.4, 2.8], n: 2, v: 260, len: 4,   w: 0.2,  acc: 0.4,  dmg: 2.5, mh: 0,   blast: 0.8 }
+  inf:  { range: 90,  reload: [1.5, 3.5], n: 1, v: 320, len: 2.2, w: 0.07, acc: 0.3,  dmg: 0.5, mh: 1.3, band: 'high' },
+  car:  { range: 150, reload: [1.6, 3],   n: 3, v: 340, len: 3,   w: 0.1,  acc: 0.35, dmg: 0.6, mh: 2,   band: 'high' },
+  apc:  { range: 180, reload: [2, 4],     n: 3, v: 380, len: 3.5, w: 0.14, acc: 0.4,  dmg: 1.4, mh: 2.6, band: 'mid', blast: 0.35 },
+  tank: { range: 230, reload: [5, 8],     n: 1, v: 520, len: 5,   w: 0.3,  acc: 0.45, dmg: 7,   mh: 2.2, band: 'low', blast: 1.2, flash: 2.2 },
+  heli: { range: 260, reload: [1.4, 2.8], n: 2, v: 260, len: 4,   w: 0.2,  acc: 0.4,  dmg: 2.5, mh: 0,   band: 'mid', blast: 0.8 }
 };
+const UNIT_BEAT_MAX = 24;   // unit shots on one beat at most (a volley)
 /* the allies fire this many times as often (their helicopters most of all), each round doing less: their damage a second is only
    ALLY_DPS × the enemy's, so the fight looks busier without the allies clearing it before the gunship gets a word in */
 const ALLY_RATE = { inf: 1.6, car: 1.6, apc: 1.6, tank: 1.3, heli: 2.8 }, ALLY_DPS = 1.2;
@@ -28,6 +31,8 @@ const VS = {
 };
 /* ---- the gunship's weapons' ballistics: n rounds a trigger (step apart, spread in metres), damage and its radius, the blast's
    size, the tracer; missile: seconds of flight (it lands on the next beat once past halfway, or at its deadline) ---- */
+/* rounds a trigger by the beat's strength (from a weak beat to the strongest), and the light guns that fire on any beat in dense music */
+const BURST = { g25: [5, 14], b40: [2, 5], apk: [2, 6] }, LIGHT_ARMS = new Set(['g25', 'g30', 'b40']);
 const GUN = {
   g25:  { n: 8, step: 0.024, spread: 2.2, dmg: 0.45, r: 2.4, fx: 0.35, tw: 0.16, tl: 7, gap: 0.16 },
   g30:  { n: 1, step: 0,     spread: 1.6, dmg: 3.2,  r: 3.4, fx: 0.8,  tw: 0.28, tl: 8, gap: 0.34 },   // (single aimed rounds, three a second at most)
@@ -116,7 +121,7 @@ function baseModel(type) {
 const RET_ON = 0.07;   // the reticle is "on" a target within this of the frame's centre (in half frame heights): no shot before that
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0);
 const BATTLE = {
-  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0 },
+  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0 }, surgeUntil: 0, forceUntil: 0,
   pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, nextHop: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0,
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
@@ -291,25 +296,44 @@ const BATTLE = {
     if (!fight || u.retreat || u.state === 'pad' || u.state === 'crash') { u.tgt = null; return; }
     if (u.tgt && !u.tgt.alive) u.tgt = null;
     if ((u.think -= dt) <= 0) { u.think = rand(0.7, 1.3); u.tgt = this.pickTarget(u, F); }
-    if (u.tgt && (u.cool -= dt) <= 0) { u.cool = rand(F.reload[0], F.reload[1]) / (u.side === 'ally' ? ALLY_RATE[u.kind] : 1); this.unitFire(u, u.tgt, F); }
+    if (u.tgt && (u.cool -= dt) <= 0) { if (!u.ready) u.ready = T; else if (T - u.ready > 3) { this.stat.uLate++; this.unitShot(u); } }   // (reloaded: it waits for a beat; with none, it fires anyway)
+  },
+  /* the pace of the units' fire: up to twice as often in dense music, half in a quiet part, twice more in a drop's surge; each round
+     does that much less, so the damage a second (and how long a fight lasts) stays the same */
+  pace() { let r = 0.75 + 1.25 * AUD.drive; if (AUD.calm) r /= 1.5; if (T < this.surgeUntil) r *= 2; return r; },
+  unitShot(u) {
+    const F = FIRE[u.kind], r = this.pace(); u.ready = 0;
+    u.cool = rand(F.reload[0], F.reload[1]) / (u.side === 'ally' ? ALLY_RATE[u.kind] : 1) / r; this.stat.uShots++;
+    this.unitFire(u, u.tgt, F, r);
+  },
+  /* a beat: the units that have reloaded and whose band it is fire (any that waited 1.2 s too); a strong one (or a drop) is a volley of
+     every unit in the frame that has reloaded */
+  unitsOnBeat(band, st, volley) {
+    const all = volley || st > 1.6; let n = 0;
+    for (let i = 0; i < UNITS.length && n < UNIT_BEAT_MAX; i++) {
+      const u = UNITS[i]; if (!u.ready || !u.tgt || !u.tgt.alive) continue;
+      const mine = FIRE[u.kind].band === band;
+      if (mine || T - u.ready > 1.2 || (all && this.inFrame(u.pos))) { this.stat.uBeat++; if (mine) this.stat.uBand++; this.unitShot(u); n++; }
+    }
+    if (all && n > 2) this.stat.volleys++;
   },
   pickTarget(u, F) {
     const V = VS[u.kind]; let best = null, bd = F.range;
     for (const o of UNITS) { if (o.side === u.side || !V[o.kind]) continue; const d = Math.hypot(o.pos.x - u.pos.x, o.pos.z - u.pos.z); if (d < bd) { bd = d; best = o; } }
     return best;
   },
-  unitFire(u, t, F) {
+  unitFire(u, t, F, pace) {
     _bm.set(u.pos.x, u.pos.y + F.mh, u.pos.z);
     const hit = Math.random() < F.acc, off = hit ? 0.5 : rand(3, 7), a = rand(0, TAU), air = t.kind === 'heli', x = t.pos.x + Math.cos(a) * off, z = t.pos.z + Math.sin(a) * off, y = air ? t.pos.y + rand(-3, 3) : groundH(x, z) + (hit ? t.ah * 0.6 : 0);
     _bd.set(x - _bm.x, y - _bm.y, z - _bm.z); const d = _bd.length() || 1, fl = d / F.v, col = u.side === 'ally' ? 0xffb060 : 0xa8ff8a;
     _bd.multiplyScalar(F.v / d);
     for (let i = 0; i < F.n; i++) { _bt.copy(_bd); if (i) { _bt.x += rand(-6, 6); _bt.y += rand(-4, 4); _bt.z += rand(-6, 6); _bt.multiplyScalar(1 - i * 0.07); } FX.tracers.spawn(_bm, _bt, { life: fl, len: F.len, w: F.w, color: col }); }
     if (F.flash) FX.flash.spawn(_bm, { s0: F.flash * 2, s1: F.flash * 4, life: 0.12 });
-    const dmg = F.dmg * VS[u.kind][t.kind] * (u.side === 'ally' ? ALLY_DPS / ALLY_RATE[u.kind] : 1), side = u.side;
+    const dmg = F.dmg * VS[u.kind][t.kind] * (u.side === 'ally' ? ALLY_DPS / ALLY_RATE[u.kind] : 1) / (pace || 1), side = u.side;
     this.after(fl, () => {
       if (F.blast) hitFx(x, y, z, F.blast, air);
-      if (hit) hurt(t, dmg);
-      if (F.blast >= 1) for (let i = UNITS.length - 1; i >= 0; i--) { const o = UNITS[i]; if (o.kind === 'inf' && o.side !== side && Math.hypot(o.pos.x - x, o.pos.z - z) < 5) hurt(o, 1); }
+      if (hit) { hurt(t, dmg); this.stat.uDmg += dmg; }
+      if (F.blast >= 1 && Math.random() < 1 / (pace || 1)) for (let i = UNITS.length - 1; i >= 0; i--) { const o = UNITS[i]; if (o.kind === 'inf' && o.side !== side && Math.hypot(o.pos.x - x, o.pos.z - z) < 5) hurt(o, 1); }   // (at a faster pace, as deadly a second)
     });
   },
 
@@ -325,15 +349,41 @@ const BATTLE = {
   },
   onBeat(band, st) {
     if (!ready || !AUD.fighting || paused) return;
+    this.unitsOnBeat(band, st, false); AA.onBeat(band, st);
     for (const m of this.missiles) if (m.p > 0.55) m.rush = true;                     // what is in flight lands on this beat
+    this.gunOnBeat(band, st, false);
+  },
+  /* the gunship on a beat: the selected weapon, if the beat suits it (force: a drop, at once) */
+  gunOnBeat(band, st, force) {
     if (GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled) return;                     // (flying to another place, or just arrived: the sensor is not on anything yet)
     const w = ARMS.w, f = CFG.fire / 100; if (!w || f <= 0) return;
-    if (w.band === 'hold') { const t = this.target(w); if (t && this.onReticle(t)) this.laserUntil = T + 0.5; return; }
+    force = force || T < this.forceUntil;   // (a drop's shot waits up to 1.5 s for the reticle to come onto a target)
+    if (w.band === 'hold') { const t = this.target(w); if (t && this.onReticle(t)) { this.laserUntil = T + (force ? 1.5 : 0.5); if (force) this.forceUntil = 0; } return; }
     const idle = T - this.lastShot, strong = st > 1.45 || (band === 'low' && AUD.heavy > 0.45);
-    const ok = w.band === 'strong' ? (strong || (band === 'low' && idle > w.reload + 2.5)) : (w.band === band || idle > 1.4 / Math.min(2, f));   // (music with no such beats: any beat will do after a while)
-    if (!ok || idle < GUN[w.id].gap || Math.random() > f) return;
+    let ok = w.band === 'strong' ? (strong || (band === 'low' && idle > w.reload + 2.5)) : (w.band === band || idle > 1.4 / Math.min(2, f) || (LIGHT_ARMS.has(w.id) && AUD.drive > 0.6));   // (music with no such beats: any beat will do after a while; dense music: any beat for the light guns)
+    if (AUD.calm && st <= 1.45) ok = false;                                            // (a quiet part: only the strong beats)
+    if (!force && (!ok || idle < GUN[w.id].gap || (f < 1 && Math.random() > f))) return;
     const t = this.target(w); if (!t || !this.onReticle(t) || !ARMS.shoot()) return;   // (only at what the reticle is on)
-    this.lastShot = T; this.stat.shots++; this.fire(w, t);
+    if (force) this.forceUntil = 0;
+    this.lastShot = T; this.stat.shots++; this.fire(w, t, st);
+  },
+  /* a drop (js/audio.js): for 4 s everybody fires twice as often; a volley now, the AA and the flares, and the heaviest weapon there is */
+  onDrop() {
+    if (!ready || !AUD.fighting || paused) return;
+    this.surgeUntil = T + 4; this.stat.drops++;
+    for (const u of UNITS) if (u.tgt && !u.ready && u.cool > 0.6) u.cool = rand(0, 0.6);
+    this.unitsOnBeat('low', 3, true);
+    if (CFG.aa && GUNSHIP.state === 'orbit') { AA.burst(true); AA.drop(6); }
+    if (CFG.autoArms && T >= this.manualUntil) {   // (a weapon picked by hand stays)
+      let best = null, bs = 0;
+      for (const w of ARMS.enabled()) {
+        if (!HEAVY_ARMS.has(w.id) || !ARMS.ready(w)) continue;
+        let s = 0; for (const u of UNITS) if (u.side === 'enemy' && w.hitSet.has(u.kind) && this.inFrame(u.pos)) s += (PREF[w.id] && PREF[w.id][u.kind]) || 1;
+        if (s > bs) { bs = s; best = w; }
+      }
+      if (best && best.id !== ARMS.cur) { ARMS.select(best.id); this.focus = null; HUD.markArms(); this.nextSwitch = T + rand(7, 12); }
+    }
+    this.forceUntil = T + 1.5; this.gunOnBeat('low', 3, true);
   },
   /* is the target under the reticle (within 0.13 of the frame's height from the centre)? */
   onReticle(u) { return this.onAim(u) || this.offT > 5; },   // (or it could not be brought there for a while)
@@ -351,17 +401,20 @@ const BATTLE = {
     GUNSHIP.track(_bp);
   },
   velOf(u, out) { const v = u.v || 0, a = u.yaw || 0; return u.kind === 'inf' ? out.set(0, 0, 0) : out.set(Math.cos(a) * v, 0, Math.sin(a) * v); },
-  fire(w, t) {
+  /* a trigger pull at t; the beat's strength st sets how many rounds (BURST) and how big the blasts look (not their damage) */
+  fire(w, t, st) {
     const G = GUN[w.id]; GUNS.shot(w.id);
     if (w.id === 'rail') { this.rail(w, G, t); return; }
-    for (let i = 0; i < G.n; i++) this.after(i * G.step, () => {
+    const k = clamp(((st || 1.5) - 1) / 1.5, 0, 1), B = BURST[w.id], n = B ? Math.round(lerp(B[0], B[1], k)) : G.n, fx = G.fx * (0.85 + 0.35 * k), dmg = G.dmg * G.n / n;   // (a trigger does the same damage, in more or fewer rounds)
+    this.lastBurst = n;
+    for (let i = 0; i < n; i++) this.after(i * G.step, () => {
       const a = rand(0, TAU), r = Math.sqrt(Math.random()) * G.spread, fl = G.missile || 0.28; this.velOf(t, _bd);
       const to = new V3(t.pos.x + _bd.x * (G.missile ? 0 : fl) + Math.cos(a) * r, 0, t.pos.z + _bd.z * (G.missile ? 0 : fl) + Math.sin(a) * r); to.y = G.air ? t.pos.y + t.ah : groundH(to.x, to.z);
-      if (G.missile) { this.missiles.push({ w, G, tgt: G.spread < 2 ? t : null, from: this.muzzle(new V3(), rand(-1, 1) > 0 ? rand(8, 14) : rand(-14, -8)).addScaledVector(_bt.set(camera.matrixWorld.elements[4], camera.matrixWorld.elements[5], camera.matrixWorld.elements[6]), -3), to, p: 0, t: 0, dur: G.missile, rush: false, puff: 0 }); return; }
+      if (G.missile) { this.missiles.push({ w, G, tgt: G.spread < 2 ? t : null, from: this.muzzle(new V3(), rand(-1, 1) > 0 ? rand(8, 14) : rand(-14, -8)).addScaledVector(_bt.set(camera.matrixWorld.elements[4], camera.matrixWorld.elements[5], camera.matrixWorld.elements[6]), -3), to, p: 0, t: 0, dur: G.missile, rush: false, puff: 0, fx, dmg }); return; }
       this.muzzle(_bm); _bt.subVectors(to, _bm); const d = _bt.length();
       FX.tracers.spawn(_bm, _bt.multiplyScalar(1 / fl), { life: fl, len: G.tl, w: G.tw, color: 0xffc070 });
       if (this.barrel) FX.tracers.spawn(_bm, _bt, { life: 0.08, len: 45, w: G.tw * 2.5, color: 0xffd090 });   // (out of the barrel in the frame: a streak back to the muzzle for the first frames)
-      this.after(fl, () => { hitFx(to.x, to.y, to.z, G.fx); this.strike(to, G.r, G.dmg, w, false); });
+      this.after(fl, () => { hitFx(to.x, to.y, to.z, fx); this.strike(to, G.r, dmg, w, false); });
     });
   },
   flyMissiles(dt) {
@@ -370,7 +423,7 @@ const BATTLE = {
       if (m.tgt && m.tgt.alive) { m.to.copy(m.tgt.pos); m.to.y += G.air ? m.tgt.ah : 0; }
       if (m.t > m.dur * 1.5) m.rush = true;                                         // (no beat came: the deadline)
       m.p += dt / m.dur * (m.rush ? 6 : m.p < 0.8 ? 1 : 0.25);
-      if (m.p >= 1) { this.missiles.splice(i, 1); hitFx(m.to.x, m.to.y, m.to.z, G.fx, G.air); this.strike(m.to, G.r, G.dmg, m.w, G.air); continue; }
+      if (m.p >= 1) { this.missiles.splice(i, 1); hitFx(m.to.x, m.to.y, m.to.z, m.fx, G.air); this.strike(m.to, G.r, m.dmg, m.w, G.air); continue; }
       _bp.lerpVectors(m.from, m.to, m.p); if (G.bomb) continue;
       FX.flash.spawn(_bp, { s0: 2.4, s1: 1.2, life: 0.07 });
       if ((m.puff -= dt) <= 0) { m.puff = 0.035; FX.smoke.spawn(_bp, { s0: 1.2, s1: 4, life: 1.1, a0: 0.32, color: 0xd8d8d8 }); }

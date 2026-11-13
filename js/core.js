@@ -43,6 +43,7 @@ const CFG = {
   clouds: 35,         // cloud cover under the aircraft, %
   aa: true,           // enemy anti-aircraft fire and the flares in reply (looks only)
   allies: 100,        // how many allied reinforcements come, %
+  pulse: true,        // the sensor's bloom and exposure pulse with the kick drum
   quality: 'high',    // high (antialiasing, pixel ratio up to 1.5) / medium (antialiasing, 1) / low (none, 0.75)
   autoArms: true      // switch the weapon to suit the targets and the music (a click on one holds it for 30 s)
 };
