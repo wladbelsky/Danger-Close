@@ -277,3 +277,21 @@ test('lighting', async ({ wp }) => {
   await wp.run(() => { SENSOR.set('wh'); updateEnvironment(); const n = BATTLE.stat.shots; for (let i = 0; i < 400 && BATTLE.stat.shots < n + 1; i++) __t.sim(0.05, { audio: true }); __t.sim(0.4, { audio: true }); __t.render(); }); await snap();
   await sheet(wp, shots, 3, 'lighting.png');
 });
+
+/* stage 9: night lights (windows, headlights, the helicopters' navigation lights) */
+test('night lights', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  const shots = [], at = async (fn, arg) => { await wp.run(fn, arg); shots.push((await wp.page.screenshot()).toString('base64')); };
+  await wp.boot({ query: '?hour=23.5&seed=11&spot=town&transit=0&season=summer&weather=clear&clouds=0&mode=tv' });
+  const follow = (o) => { const p = o.position || o; GUNSHIP.look.set(p.x, groundH(p.x, p.z), p.z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.ctr.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.nextWander = 1e9; };
+  await wp.run(`window.__follow = ${follow.toString()}`);
+  await at(() => { CFG.zoom = 70; __t.sim(2); __t.render(); });
+  await at(() => { const P = ALLIES.posts[0]; P.timer = 0; __t.sim(40, {}); CFG.zoom = 110; __follow(P.col.u[0].obj); __t.sim(0.05); __t.render(); });
+  await at(() => { SENSOR.set('nv'); HUD.markModes(); updateEnvironment(); CFG.zoom = 150; __t.sim(0.05); __t.render(); });
+  await at(() => { SENSOR.set('tv'); HUD.markModes(); updateEnvironment(); const h = ALLIES.helis[0]; h.timer = 0; for (let i = 0; i < 200 && h.state !== 'fly'; i++) __t.sim(0.5); __t.sim(4); h.strobe = 0; CFG.zoom = 110; const up = h.pos.y - groundH(h.pos.x, h.pos.z); __follow({ x: h.pos.x - Math.cos(camAz) * up, z: h.pos.z - Math.sin(camAz) * up }); __t.sim(0.05); __t.render(); });
+  await at(() => { const o = LAYOUT.outposts[0]; CFG.zoom = 60; __follow({ x: o.x, z: o.z }); __t.sim(0.05); __t.render(); });
+  await wp.goto('?hour=23.5&seed=11&season=summer&weather=clear&clouds=0&mode=tv&aa=0');
+  await wp.run(`window.__follow = ${follow.toString()}`);
+  await at(() => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(1, { audio: true }); CFG.zoom = 70; if (BATTLE.base) __follow(BATTLE.base); __t.sim(0.5, { audio: true }); __t.render(); });
+  await sheet(wp, shots, 3, 'night-lights.png');
+});

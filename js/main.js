@@ -54,7 +54,7 @@ function init() {
   FX.smoke = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, 420, true, 0.14);
   FX.dust = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, 240, true, 0.46);
   FX.scorch = new Scorch(scene, 60);
-  FX.flare = new SpriteFX(scene, TEX.flash, THREE.AdditiveBlending, 120, false, 1); FX.flare.mesh.renderOrder = 10;   // flares and missiles near the lens: over the clouds
+  FX.flare = new SpriteFX(scene, TEX.flash, THREE.AdditiveBlending, 120, false, 1); FX.flare.mesh.renderOrder = 10; LAMPS.init();   // flares and missiles near the lens: over the clouds
   WEATHER.init();
 
   runSlices(buildWorld(), finishInit);
@@ -67,6 +67,7 @@ function* buildWorld() {
   yield* STRUCT.build();
   const season = seasonNow(); TERRAIN.setSeason(season);
   yield* TERRAIN.buildVeg(season);
+  LAMPS.bake();
   MAP.genMs = performance.now() - t0;
 }
 /* run a generator in slices of ~30 ms, yielding to the browser in between (a MessageChannel: no 4 ms timer clamp, no throttling) */
@@ -221,7 +222,7 @@ function step(dt) {
   FX.dust.update(dt, null, camera);
   FX.scorch.update(dt);
   FX.flare.update(dt);
-  WEATHER.update(dt); AA.update(dt);
+  WEATHER.update(dt); AA.update(dt); LAMPS.update(dt);
   envTimer -= dt; if (envTimer <= 0) { envTimer = 2; updateEnvironment(); }
 }
 

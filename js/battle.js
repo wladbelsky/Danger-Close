@@ -103,9 +103,10 @@ const BASE_MODELS = {
 };
 const STRUCT_HP = { hq: 60, tent: 20, fuel: 14, ammo: 14, mast: 10, truck: 14, bunker: 40, aa: 8 }, STRUCT_FLAT = { aa: 0.4, tent: 0.15, mast: 0.08, hq: 0.4, fuel: 0.3, ammo: 0.25, truck: 0.6, bunker: 0.5 };
 const BASE_PLAN = [['hq', -16, 14, 0], ['mast', -25, 19, 0], ['tent', 2, 18, 0], ['tent', 12, 18, 0], ['tent', 22, 18, 0], ['fuel', 21, -3, Math.PI / 2], ['ammo', -21, -6, 0], ['ammo', -21, -14, 0], ['truck', -9, 3, 1.4], ['truck', 9, -1, 1.75], ['bunker', -9, -20, 0], ['bunker', 9, -20, 0], ['aa', -7, 22, 0], ['aa', 24, 8, 0]];
+const BASE_LAMP = { hq: [5.9, 3.5], tent: [4.7, 3], fuel: [3.9, 0], ammo: [3.9, 3.1] };   // a lamp post beside each of these (x, z in the model's frame): js/lights.js
 function baseModel(type) {
   const k = 'base_' + type;
-  if (!PROTO[k]) { const g = new THREE.Group(); BASE_MODELS[type](g); mergeStatic(g, []); PROTO[k] = g; }
+  if (!PROTO[k]) { const g = new THREE.Group(), lp = BASE_LAMP[type.replace('2', '')]; BASE_MODELS[type](g); if (lp) { const q = new THREE.Group(); q.position.set(lp[0], 0, lp[1]); g.add(q); lampPost(q, 5, 0); } mergeStatic(g, []); PROTO[k] = g; }
   return PROTO[k].clone();
 }
 

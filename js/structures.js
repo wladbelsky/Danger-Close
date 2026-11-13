@@ -53,6 +53,12 @@ const WATER_HEAT = { value: 0 };
 const WATER_MAT = sensorMat(new THREE.MeshPhongMaterial({ color: 0x1c3236, specular: 0x3a464c, shininess: 40, vertexColors: true }));
 WATER_MAT.userData.shared = true; WATER_MAT.userData.albK = 0.3; WATER_MAT.userData.extend = s => { s.uniforms.uMatHeat = WATER_HEAT; };   // (uniforms only: the program is the shared one)
 const WIN_MAT = windowMat(); WIN_MAT.userData.shared = true; WIN_MAT.userData.heat = 0.1;
+/* At night only some windows are lit: WIN_MAT glows after dusk (updateEnvironment), WIN_DARK never does. Each building draws its own
+   share (many are dark altogether) from its position, so a map looks the same every time. */
+const WIN_DARK = windowMat(); WIN_DARK.userData.shared = true; WIN_DARK.userData.heat = 0.1;
+const WIN_SHARE = { house: [0.65, 0.3, 0.75], flats: [0.9, 0.15, 0.4], shop: [0.3, 1, 1] };   // (how many buildings have any light; the share of their windows, from - to)
+let winRng = Math.random, winLit = 0.4;
+function winsOf(b, type) { const S = WIN_SHARE[type] || WIN_SHARE.house; winRng = mulberry32(Math.floor((b.x || 0) * 31.7 + (b.z || 0) * 517.3 + 9) | 0); winLit = winRng() < S[0] ? lerp(S[1], S[2], winRng()) : 0; }
 const WALL_COLS = [0x948a7a, 0x9e9686, 0x887c6c, 0xa69e90, 0x7c7264, 0x989084, 0x84888a, 0xa29078];
 const FLAT_COLS = [0x8e8a82, 0x9c968c, 0x86847c, 0xaaa49a, 0x7e7c76];
 const BARN_ROOFS = [0x6e726e, 0x7a3c30, 0x5c6066];
@@ -65,7 +71,7 @@ function gable(p, w, d, rh, mat, y) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
   const m = shade(new THREE.Mesh(g, mat)); m.position.y = y; p.add(m); return m;
 }
-function winPlane(p, x, y, z, w, h, ry) { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), WIN_MAT); m.position.set(x, y, z); m.rotation.y = ry; m.receiveShadow = true; p.add(m); return m; }
+function winPlane(p, x, y, z, w, h, ry) { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), winRng() < winLit ? WIN_MAT : WIN_DARK); m.position.set(x, y, z); m.rotation.y = ry; m.receiveShadow = true; p.add(m); return m; }
 /* windows along both long sides of a w x d box, f floors of fh, starting at y0 */
 function windowRows(p, w, d, f, fh, y0, bay, wh) { const n = Math.max(1, Math.floor(w / bay)); for (let k = 0; k < f; k++) for (let i = 0; i < n; i++) { const x = (i + 0.5) * w / n - w / 2, y = y0 + k * fh + fh * 0.55; winPlane(p, x, y, d / 2 + 0.03, 1.3, wh, 0); winPlane(p, x, y, -d / 2 - 0.03, 1.3, wh, Math.PI); } }
 
@@ -167,7 +173,7 @@ const STRUCT = {
       const o = new THREE.Group(); o.position.set(b.x, b.y, b.z); o.rotation.y = -b.a; g.add(o);
       const cs = rectCorners(b.x, b.z, b.w, b.d, b.a).map(c => groundH(c[0], c[1])), lo = Math.min(...cs) - 0.6;
       box(o, b.w + 0.4, b.y - lo + 0.25, b.d + 0.4, 0x8a8478, 0, (lo - b.y + 0.25) / 2, 0);   // the plinth down to the lowest corner
-      BUILDERS[b.type](o, b);
+      winsOf(b, b.type); BUILDERS[b.type](o, b);
     }
     if (LAYOUT.station) {
       const S = LAYOUT.station, g = new THREE.Group(); groups.set('station', g);
@@ -179,9 +185,21 @@ const STRUCT = {
       });
       const h = new THREE.Group(); h.position.set(S.bx, S.y, S.bz); h.rotation.y = -S.a; g.add(h);
       const cs = rectCorners(S.bx, S.bz, 18, 9, S.a).map(c => groundH(c[0], c[1])); box(h, 18.4, S.y - Math.min(...cs) + 0.8, 9.4, 0x8a8478, 0, (Math.min(...cs) - S.y) / 2 + 0.2, 0);
-      BUILDERS.house(h, { w: 18, d: 9, floors: 2, tint: 0.8, roof: 0.4, seed: 0.3 });
+      winsOf({ x: S.bx, z: S.bz }, 'flats'); BUILDERS.house(h, { w: 18, d: 9, floors: 2, tint: 0.8, roof: 0.4, seed: 0.3 });
     }
-    for (const o of LAYOUT.outposts) { const g = new THREE.Group(); groups.set(o, g); OUTPOST_BUILD(g, o); }
+    for (const o of LAYOUT.outposts) { winsOf(o, 'flats'); const g = new THREE.Group(); groups.set(o, g); OUTPOST_BUILD(g, o); }
+    // street lamps: along the paved roads, on alternating sides (not on a bridge, not at a junction)
+    const lg = new THREE.Group(); groups.set('lamps', lg); LAYOUT.lamps = [];
+    for (const r of LAYOUT.roads) {
+      const K = ROAD_KINDS[r.kind], P = r.pts, step = r.kind === 'street' ? 8 : 13; if (K.dirt) continue;
+      for (let i = 3, n = 0; i < P.length - 3; i += step, n++) {
+        if (r.br.slice(i - 2, i + 3).some(Boolean) || nearJ(P[i][0], P[i][1], 5)) continue;
+        const dx = P[i + 1][0] - P[i - 1][0], dz = P[i + 1][1] - P[i - 1][1], d = Math.hypot(dx, dz) || 1, sd = n % 2 ? 1 : -1, off = K.w / 2 + 1.5;
+        const x = P[i][0] - dz / d * off * sd, z = P[i][1] + dx / d * off * sd; if (occAt(x, z) & (OCC_WATER | OCC_BUILD | OCC_RAIL | OCC_YARD)) continue;
+        const a = Math.atan2(P[i][1] - z, P[i][0] - x), y = groundH(x, z), q = new THREE.Group(); q.position.set(x, y, z); q.rotation.y = -a; lg.add(q); lampPost(q, 7.5, 2.2);
+        LAYOUT.lamps.push({ x: x + Math.cos(a) * 2.1, y: y + 7.35, z: z + Math.sin(a) * 2.1 });
+      }
+    }
     for (const g of groups.values()) {
       mergeStatic(g, []);
       for (const c of g.children.slice()) if (c.isGroup && !c.children.length) g.remove(c);   // the per-building groups are empty now (one keeps a mesh no other shares a material with)
@@ -221,11 +239,15 @@ const RAIL_BED_MAT = decalMat({ map: sleeperTex() }, 0.03, 0);
 const RAIL_MAT = sensorMat(new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 50, specular: 0x666666 }), 0.04); RAIL_MAT.userData.shared = true;
 const BRIDGE_MAT = sensorMat(new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: true, shininess: 4, specular: 0x111111 }), 0.04); BRIDGE_MAT.userData.shared = true;
 
+/* a lamp post: a pole h high with an arm along +x and the lamp's head at its end */
+function lampPost(q, h, arm) { box(q, 0.18, h, 0.18, 0x4a4c4e, 0, h / 2, 0); if (arm) box(q, arm, 0.12, 0.12, 0x4a4c4e, arm / 2, h - 0.06, 0); box(q, 0.7, 0.14, 0.34, 0x8a8c88, arm - 0.1, h - 0.2, 0); }
+const OP_LAMPS = [[-11, -7], [-12, 11], [5, 17], [10, -12]];   // the yard lamps of an outpost (u, v)
 /* an allied outpost: a gravel yard, a wall of earth-filled barriers, two watch towers, containers, tents, a helipad */
 function OUTPOST_BUILD(root, o) {
   const g = new THREE.Group(); g.position.set(o.x, o.y, o.z); g.rotation.y = -o.a; root.add(g);
   box(g, OP_W - 1, 0.12, OP_D - 1, 0x625e52, 0, 0.0, 0).castShadow = false;                 // gravel
   const at = (part, fn) => { const q = new THREE.Group(); q.position.set(part.u, 0, part.v * o.side); g.add(q); fn(q, part); };   // (rotation.y = -a turns +x onto u and +z onto ±v: the side the outpost lies on)
+  for (const [u, v] of OP_LAMPS) at({ u, v }, q => lampPost(q, 6, 0));
   for (const p of o.parts) at(p, (q, p) => {
     if (p.type === 'wall') {                                    // barriers in 1.1 m cells along the long side
       const long = p.w > p.d, L = long ? p.w : p.d, n = Math.max(1, Math.round(L / 1.12));

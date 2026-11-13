@@ -6,7 +6,7 @@
 const SENSOR_MODES = ['tv', 'wh', 'bh', 'nv'];
 const SENSOR_LABEL = { tv: 'TV', wh: 'IR WHT', bh: 'IR BLK', nv: 'NVG' };
 const SENSOR_INDEX = { tv: 0, wh: 1, bh: 2, nv: 3 };
-const SU = { uThermal: { value: 0 }, uGain: { value: 1 }, uAmbHeat: { value: 0.36 }, uLit: { value: 1 } };   // (uLit: how much light there is, for what is not lit by the lights: smoke, dust, clouds)   // shared by every material
+const SU = { uThermal: { value: 0 }, uGain: { value: 1 }, uAmbHeat: { value: 0.36 }, uLit: { value: 1 }, uLampMap: { value: null }, uLampRect: { value: new THREE.Vector3(0, 0, 0) }, uCamW: { value: new THREE.Matrix4() } };   // (uLit: how much light there is, for what is not lit by the lights: smoke, dust, clouds)   // shared by every material
 
 /* the one hook every material uses (a single function source: one program per material kind, no variants) */
 function sensorHook(shader) {
@@ -15,7 +15,12 @@ function sensorHook(shader) {
   shader.uniforms.uBaked = { value: this.userData.noBake ? 0 : 1 };      // 0: ignore aHeat (a wreck's burnt material on a merged mesh)
   shader.uniforms.uAlbK = { value: this.userData.albK != null ? this.userData.albK : 0.22 };   // how much the visible colour shows in thermal
   shader.vertexShader = 'attribute float aHeat; varying float vHeat;\n' + shader.vertexShader.replace('#include <begin_vertex>', 'vHeat = aHeat;\n#include <begin_vertex>');
-  shader.fragmentShader = 'uniform float uThermal, uGain, uAmbHeat, uMatHeat, uBaked, uAlbK; varying float vHeat;\n' + shader.fragmentShader.replace('#include <opaque_fragment>', `#include <opaque_fragment>
+  let fs = shader.fragmentShader;
+  if (this.isMeshPhongMaterial) {   // the lamps' light (js/lights.js): a map of it seen from above, read at the fragment's place in the world
+    shader.uniforms.uLampMap = SU.uLampMap; shader.uniforms.uLampRect = SU.uLampRect; shader.uniforms.uCamW = SU.uCamW;
+    fs = 'uniform sampler2D uLampMap; uniform vec3 uLampRect; uniform mat4 uCamW;\n' + fs.replace('#include <opaque_fragment>', 'outgoingLight += diffuseColor.rgb * texture2D(uLampMap, ((uCamW * vec4(-vViewPosition, 1.0)).xz - uLampRect.xy) * uLampRect.z + 0.5).rgb;\n#include <opaque_fragment>');
+  }
+  shader.fragmentShader = 'uniform float uThermal, uGain, uAmbHeat, uMatHeat, uBaked, uAlbK; varying float vHeat;\n' + fs.replace('#include <opaque_fragment>', `#include <opaque_fragment>
     if (uThermal > 0.5) {
       float alb = pow(dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)), 0.4545), sol = pow(dot(reflectedLight.directDiffuse, vec3(0.333)) + 0.03, 0.4545) - 0.203;   // (the heat is a display value: the colour and the sunlight go into it as they look)
       gl_FragColor.rgb = vec3(clamp(uAmbHeat + (alb - 0.35) * uAlbK + sol * 0.12 + uMatHeat + vHeat * uBaked, 0.0, 1.0));
@@ -94,6 +99,7 @@ const SENSOR = {
   },
   render() {
     this.post.uniforms.uTime.value = T % 100;
+    LAMPS.draw();
     renderer.setRenderTarget(this.rt); renderer.clear(); renderer.render(scene, camera);
     renderer.setRenderTarget(null); renderer.render(this.postScene, this.postCam);
   }

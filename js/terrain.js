@@ -185,5 +185,5 @@ const TERRAIN = {
     this.kinds = null;
   },
   /* a new season (the month turned, or the setting): palette at once, the shapes rebuilt in one go */
-  changeSeason(season) { this.setSeason(season); for (const _ of this.buildVeg(season)); }
+  changeSeason(season) { this.setSeason(season); for (const _ of this.buildVeg(season)); LAMPS.bake(); }
 };

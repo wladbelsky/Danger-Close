@@ -23,7 +23,7 @@ const GUNSHIP = {
     return out;
   },
   /* a random district to start over (?spot=name or ?x=&z= in the browser preview) */
-  pickStart() { return pick(this.list); },
+  pickStart() { const far = this.list.filter(d => !LAYOUT.sites.some(s => Math.hypot(s.x - d.x, s.z - d.z) < 450)); return pick(far.length ? far : this.list); },   // (not next to a site of the enemy's base: it is only built out of sight)
   init() {
     this.list = this.districts();
     let d = this.pickStart();
