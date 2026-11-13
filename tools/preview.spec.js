@@ -397,3 +397,22 @@ test('settings panel', async ({ wp }) => {
   await wp.run(() => { document.getElementById('cfg').classList.remove('open'); const s = document.createElement('div'); s.id = 'splash'; s.innerHTML = '<div class="t">DANGER CLOSE</div><div class="s">ACQUIRING SENSOR FEED</div>'; s.style.animation = 'none'; document.body.append(s); });
   save('splash.png', 'x,' + (await wp.page.screenshot()).toString('base64'));
 });
+
+/* stage 12: the red laser and its red glow where it hits — by day, at dusk, at night, night vision, white-hot */
+test('laser', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  const shots = [];
+  for (const [hour, mode] of [[12, 'tv'], [19.6, 'tv'], [23, 'tv'], [23, 'nv'], [23, 'wh'], [12, 'tv']]) {
+    const q = `?seed=11&hour=${hour}&season=summer&weather=clear&clouds=0&mode=${mode}&transit=0&aa=0&weapons=las&auto=0`;
+    if (!shots.length) await wp.boot({ query: q }); else await wp.goto(q);
+    await wp.run((zoom) => {
+      __t.sim(5.5, { audio: true }); for (let i = 0; i < 1200 && (GUNSHIP.state === 'transit' || BATTLE.stat.out < 1); i++) __t.sim(0.05, { audio: true });
+      for (let i = 0; i < 2400 && !BATTLE.beam.visible; i++) __t.sim(0.05, { audio: true });
+      __t.sim(0.3, { audio: true }); for (let i = 0; i < 200 && !BATTLE.beam.visible; i++) __t.sim(0.05, { audio: true });
+      if (zoom) { CFG.zoom = zoom; __t.sim(1.5, { audio: true }); for (let i = 0; i < 400 && !BATTLE.beam.visible; i++) __t.sim(0.05, { audio: true }); }
+      __t.render();
+    }, shots.length === 5 ? 190 : 0);
+    shots.push((await wp.page.screenshot()).toString('base64'));
+  }
+  await sheet(wp, shots, 3, 'laser.png');
+});

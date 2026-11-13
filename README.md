@@ -59,7 +59,7 @@ fullscreen apps by default.
 | APKWS rockets | + | + | + | | | strong |
 | GBU-39 | + | + | + | + | | strong |
 | AIM-9X | | | | | + | strong |
-| Laser | + | + | + | + | + | held on the beat |
+| Laser (red, lights up what it hits) | + | + | + | + | + | held on the beat |
 | Railgun | + | + | + | + | + | strong, through a column |
 
   The first three are on by default; each is a property. Automatic switching picks one for the targets and the music;

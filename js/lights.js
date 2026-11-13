@@ -14,7 +14,7 @@
    Cold on the thermal sensor: it sees heat, not light. The lit windows are in js/structures.js (WIN_MAT / WIN_DARK).   */
 const LAMP_AT = { tank: [3.4, 1.15, 1.5], apc: [3.3, 0.95, 1.4], car: [2.3, 0.7, 1.0] };   // the lamps: ahead of the centre, to each side, up
 const LAMP_HALF = 256, LAMP_N = 1024, HMAP_N = 2048;                                                      // the map: metres each way, texels
-const LC_HEAD = [1, 0.9, 0.7], LC_STREET = [1, 0.7, 0.36], LC_SEARCH = [0.88, 0.94, 1], LC_YARD = [1, 0.86, 0.62];   // a lamp and its light: one colour
+const LC_LASER = [1, 0.1, 0.05], LC_HEAD = [1, 0.9, 0.7], LC_STREET = [1, 0.7, 0.36], LC_SEARCH = [0.88, 0.94, 1], LC_YARD = [1, 0.86, 0.62];   // a lamp and its light: one colour
 const BEAM_VS = `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; attribute vec4 iD; uniform vec3 uLampRect; varying vec2 vUv; varying vec4 vCol; varying vec2 vP; varying vec2 vW; varying vec3 vL;
   void main() {
     vUv = position.xy; vCol = iC; vP = iB.zw; vL = iD.xyz;
@@ -131,6 +131,11 @@ const LAMPS = {
         for (const l of o.yard) this.pole(l.x, o.y + 5.85, l.z, LC_YARD, 15, k * 2.4);
       }
       for (const l of LAYOUT.lamps || []) this.pole(l.x, l.y, l.z, LC_STREET, 17, k * 2.6);   // the street lamps
+    }
+    if (BATTLE.beam && BATTLE.beam.visible) {   // the laser's hit, day or night: a red glow on the ground and on what stands round it, flickering
+      const h = BATTLE.lasHit, f = 0.8 + 0.2 * Math.sin(T * 47) * Math.sin(T * 13);
+      this.put(h.x, h.y + 0.4, h.z, 2.4, LC_LASER, 3.6 * f, 1);
+      this.light(1, h.x, h.z, 0, 26, 26, LC_LASER, (2.4 + 2.6 * this.k) * f, 1, h.x, h.z, h.y + 2);
     }
     this.n = live.length; this.fx.flush(camera);
     if (this.nb) for (const a of [this.aA, this.aB, this.aC, this.aD]) { a.needsUpdate = true; a.clearUpdateRanges(); a.addUpdateRange(0, this.nb * 4); }

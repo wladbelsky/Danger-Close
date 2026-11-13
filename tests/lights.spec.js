@@ -17,3 +17,14 @@ test('headlights and navigation lights only at night; only some windows are lit'
   expect(r.glow).toBeGreaterThan(0.2); expect(r.off).toBe(0);
   const share = r.lit / (r.lit + r.dark); expect(share).toBeGreaterThan(0.12); expect(share).toBeLessThan(0.5);
 });
+
+test('the laser is red and casts a red glow where it hits, by day too', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weather=clear&aa=0&weapons=las&auto=0' });
+  const r = await wp.run(() => {
+    __t.sim(5.5, { audio: true }); for (let i = 0; i < 3000 && !BATTLE.beam.visible; i++) __t.sim(0.05, { audio: true });
+    const on = BATTLE.beam.visible, c = BATTLE.beam.material.color, h = BATTLE.lasHit, A = LAMPS.aA.array, C = LAMPS.aC.array;
+    let red = false; for (let i = 0; i < LAMPS.nb; i++) if (Math.hypot(A[i * 4] - h.x, A[i * 4 + 1] - h.z) < 1 && C[i * 4] > 0.9 && C[i * 4 + 1] < 0.2) red = true;
+    return { on, red, beamRed: c.r > 0.9 && c.g < 0.2 && c.b < 0.2, glow: BATTLE.beamGlow.visible };
+  });
+  expect(r.on, 'the laser fired').toBe(true); expect(r.beamRed).toBe(true); expect(r.glow).toBe(true); expect(r.red, 'a red light on the map at the hit').toBe(true);
+});

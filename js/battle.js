@@ -120,8 +120,10 @@ const BATTLE = {
   pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, nextHop: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0,
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
-    this.beam = new THREE.Mesh(geo, sensorMat(new THREE.MeshBasicMaterial({ color: 0xffd8c8, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), 1));
+    this.beam = new THREE.Mesh(geo, sensorMat(new THREE.MeshBasicMaterial({ color: 0xff4a36, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), 1));   // the laser: a red core
     this.beam.frustumCulled = false; this.beam.renderOrder = 8; this.beam.visible = false; scene.add(this.beam);
+    this.beamGlow = new THREE.Mesh(geo, sensorMat(new THREE.MeshBasicMaterial({ color: 0xff1808, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), 0.8));   // and a wide red haze round it
+    this.beamGlow.frustumCulled = false; this.beamGlow.renderOrder = 8; this.beamGlow.visible = false; scene.add(this.beamGlow); this.lasHit = new V3();
     for (const side in UNIT_TYPES) for (const type in UNIT_TYPES[side]) { unitModel(side, type, 0); if (type === 'heli') unitModel(side, type, 1); }   // (every model built now, under the splash)
     for (const type in BASE_MODELS) baseModel(type);
   },
@@ -389,10 +391,12 @@ const BATTLE = {
   /* the laser: a beam kept up by the beats, burning its target */
   laser(dt) {
     const w = ARMS.w; let t = w && w.band === 'hold' && T < this.laserUntil && AUD.fighting && GUNSHIP.state === 'orbit' ? this.target(w) : null; if (t && !this.onReticle(t)) t = null;
-    this.beam.visible = !!t; if (!t) return;
-    this.muzzle(_bm); _bt.set(t.pos.x, t.pos.y + t.ah * 0.7, t.pos.z); _bd.subVectors(_bt, _bm); const d = _bd.length(), k = rand(0.2, 0.34);
+    this.beam.visible = this.beamGlow.visible = !!t; if (!t) return;
+    this.muzzle(_bm); _bt.set(t.pos.x, t.pos.y + t.ah * 0.7, t.pos.z); _bd.subVectors(_bt, _bm); const d = _bd.length(), k = rand(0.16, 0.26);
     this.beam.position.copy(_bm); this.beam.quaternion.setFromUnitVectors(_bx, _bd.multiplyScalar(1 / d)); this.beam.scale.set(d, k, k);
-    if ((this.lasTick -= dt) <= 0) { this.lasTick = 0.06; this.note(w, t); FX.fire.spawn(_bt, { s0: 1.4, s1: 3.2, life: 0.22, a0: 0.85 }); FX.smoke.spawn(_bt, { s0: 1.5, s1: 5, life: 1.4, a0: 0.3, color: 0x2c2823, rise: 1.5 }); }
+    this.beamGlow.position.copy(_bm); this.beamGlow.quaternion.copy(this.beam.quaternion); this.beamGlow.scale.set(d, k * 4, k * 4);
+    this.lasHit.copy(_bt);   // (the red glow round it: js/lights.js)
+    if ((this.lasTick -= dt) <= 0) { this.lasTick = 0.06; this.note(w, t); FX.fire.spawn(_bt, { s0: 1.4, s1: 3.2, life: 0.22, a0: 0.85, color: 0xff3a1c }); FX.smoke.spawn(_bt, { s0: 1.5, s1: 5, life: 1.4, a0: 0.3, color: 0x2c2823, rise: 1.5 }); }
     hurt(t, GUN.las.dps * dt * (t.kind === 'inf' ? 4 : 1));
   },
   /* the railgun: the slug goes through everything on a line (along the column it hits) */
