@@ -22,8 +22,8 @@ Update the status here when a stage is finished. The full approved design is sum
 5. **Units and allied patrols**: models, infantry, scale against the buildings — **done**.
 6. **Combat**: arming on music, bases, the weapon table, the beat, wrecks, retreat — done.
 7. **AA, flares, clouds, weather, day and night** — done.
-8. **Physically based lighting and colour**: three.js r187's own light units and colour management instead of the emulated legacy look (`ColorManagement.enabled = false`, intensities × π, linear output): sRGB-authored colours, sRGB output through the post pass, every palette re-tuned (ground per season, sky per sun elevation, models, effects), the thermal and night-vision thresholds re-checked; before / after sheets in all four modes, day and night — not started.
-9. **Night lights**: headlights on the allies' and the enemies' vehicles at night, green and red navigation lights on every helicopter, light in the houses at night (not every window, not every house) — not started.
+8. **Physically based lighting and colour**: three.js r187's own colour management and linear light instead of the emulated legacy look; before / after sheets — done.
+9. **Night lights**: headlights on the allies' and the enemies' vehicles at night, green and red navigation lights on every helicopter, light in the houses at night (not every window, not every house) — **in progress**.
 10. **Big guns in frame**: the barrels of the big guns (105 mm and the railgun at least; the others are optional) visible at the edge of the frame while selected, with a firing animation (recoil, muzzle flash, gases) on every shot — not started.
 11. **Splash, all properties, README, preview, soak**; `renderer.compileAsync` at start so the splash does not freeze while the shaders compile (the warm-up frame for the shadow pass stays) — not started.
 
@@ -64,8 +64,8 @@ Update the status here when a stage is finished. The full approved design is sum
 - Plain JS, no build step. `'use strict'` classic scripts sharing **global** scope (no modules; top-level names unique across
   files). three.js **r187** is vendored as `js/three.min.js` — never edit it. r187 ships ES modules only and modules may not load over `file://` in WE, so it was
   bundled once with esbuild: `export * from "three"` → `esbuild --bundle --minify --format=iife --global-name=THREE --target=es2020`.
-- Code taken from FAB / Code 3 (r149) needs the r187 changes: `opaque_fragment` (was `output_fragment`), `ColorManagement.enabled = false` (core.js) and linear output, light
-  intensities × π (legacy units), `addUpdateRange` (was `updateRange`), `PCFShadowMap` (`PCFSoftShadowMap` is gone), `InstancedMesh` can compute its own bounding sphere.
+- Code taken from FAB / Code 3 (r149) needs the r187 changes: `opaque_fragment` (was `output_fragment`), `addUpdateRange` (was `updateRange`), `PCFShadowMap` (`PCFSoftShadowMap` is gone), `InstancedMesh` can compute its own bounding sphere.
+- **Colour and light (stage 8)**: colour management is on. Colours are authored in sRGB (hex; `Color.setHex` converts), canvas colour textures are `srgbTex`, data textures (masks, detail, land use) stay untagged. The scene is lit in linear light into a half-float MSAA target; `renderer.outputColorSpace` stays linear because the sensor's post pass does the conversion itself (`show()`: exposure `uExp`, a soft shoulder, the sRGB curve; thermal frames hold heat and are taken as they are). Bloom in TV / NVG comes only from what is brighter than a sunlit white surface (`over()`); thermal keeps its own thresholds. Light intensities: `SKY_KEYS` are tuned in display space and go through `GAMMA` (x^2.2), × π. Any brightness factor tuned by eye (gains, window glow, detail shading in the ground shader) is a display-space number: put it through `GAMMA` / `pow(…, 2.2)`. Unlit sprites (smoke, dust, clouds) are scaled by `SU.uLit` (the light level, 1 at noon). In the heat term the colour and the sunlight are converted back to display values, so thermal looks as before.
 - Load order: `core → sensor → models → armor → helis → mapgen → layout → terrain → structures → effects → infantry → units → weapons → battle → weather → gunship → hud → audio → main`.
   Target order: core → sensor → models → armor → mapgen → terrain → effects → weather → infantry → units → weapons → battle → gunship → hud → main → properties → settings.
 
@@ -92,7 +92,7 @@ Update the status here when a stage is finished. The full approved design is sum
 | `js/main.js` | scene init, camera (the aircraft circles `CAM_CTR`, the sensor looks at `CAM_TGT`: slewing turns the line of sight, the lens keeps the frame's size at any range; `clampFrame`: the whole frame stays on the map, measured down to `MAP.lo`), `VIEW`, `updateEnvironment`, `fitShadow`, main loop |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=32`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=37`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

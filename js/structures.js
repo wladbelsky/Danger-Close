@@ -24,7 +24,7 @@ class GeoAcc {   // non-indexed triangles with per-vertex colours (and optional 
 }
 /* a ribbon vertex's height: the highest ground within 2.5 m (+7 cm; half a junction's longest segment), so a convex bump between vertices never pokes through */
 function roadY(x, z) { return Math.max(groundH(x, z), groundH(x + 2.5, z), groundH(x - 2.5, z), groundH(x, z + 2.5), groundH(x, z - 2.5)) + 0.07; }
-const UP = [0, 1, 0], rgb = h => [(h >> 16 & 255) / 255, (h >> 8 & 255) / 255, (h & 255) / 255];
+const UP = [0, 1, 0], _rgb = new THREE.Color(), rgb = h => { _rgb.setHex(h); return [_rgb.r, _rgb.g, _rgb.b]; };   // (sRGB hex → linear)
 /* a ribbon along pts: cross = [[offset, dy, colour], …] left to right; y(i, x, z) the base height; u along (metres / uScale) */
 function ribbonInto(G, pts, y, cross, uScale) {
   const n = pts.length, rows = []; let dist = 0;

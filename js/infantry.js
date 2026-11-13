@@ -10,7 +10,7 @@ function boxesGeo(list) {
   for (const [w, h, d, x, y, z, k, rz] of list) {
     const g = new THREE.BoxGeometry(w, h, d).toNonIndexed(); if (rz) g.rotateZ(rz); g.translate(x, y, z);
     pos.push(g.attributes.position.array); nor.push(g.attributes.normal.array);
-    const c = new Float32Array(g.attributes.position.count * 3).fill(k); col.push(c); g.dispose();
+    const c = new Float32Array(g.attributes.position.count * 3).fill(GAMMA(k)); col.push(c); g.dispose();
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(concatF32(pos), 3)); geo.setAttribute('normal', new THREE.BufferAttribute(concatF32(nor), 3)); geo.setAttribute('color', new THREE.BufferAttribute(concatF32(col), 3));

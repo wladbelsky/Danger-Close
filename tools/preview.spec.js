@@ -256,3 +256,24 @@ test('weather', async ({ wp }) => {
   await wp.run(() => { __t.sim(0.9, { audio: true }); SENSOR.set('wh'); HUD.markModes(); updateEnvironment(); __t.render(); }); await snap();
   await sheet(wp, shots, 3, 'weather.png');
 });
+
+/* stage 8: the look of the light and the colours (compared before / after the change to r187's own lighting and colour management) */
+test('lighting', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 960, height: 540 });
+  const shots = [], snap = async () => shots.push((await wp.page.screenshot()).toString('base64'));
+  const view = async (q) => { const url = '?seed=11&transit=0&hud=0&weather=clear&clouds=0&az=135&' + q; if (!shots.length) await wp.boot({ query: url }); else await wp.goto(url); await wp.run(() => { __t.sim(2); __t.render(); }); await snap(); };
+  await view('spot=town&hour=12&season=summer');
+  await view('spot=town&hour=19.6&season=summer');
+  await view('spot=town&hour=23.5&season=summer');
+  await view('spot=fields&hour=12&season=autumn');
+  await view('spot=town&hour=12&season=winter');
+  await view('spot=outpost&hour=10&season=spring&zoom=80');
+  await view('spot=town&hour=12&season=summer&mode=wh');
+  await view('spot=town&hour=23.5&season=summer&mode=bh');
+  await view('spot=town&hour=23.5&season=summer&mode=nv');
+  await wp.goto('?seed=11&hud=0&weather=clear&clouds=0&hour=12&season=summer');
+  await wp.run(() => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); const n = BATTLE.stat.shots; for (let i = 0; i < 400 && BATTLE.stat.shots < n + 2; i++) __t.sim(0.05, { audio: true }); __t.sim(0.4, { audio: true }); __t.render(); }); await snap();
+  await wp.run(() => { CFG.fixedHour = 23.5; updateEnvironment(); const n = BATTLE.stat.shots; for (let i = 0; i < 400 && BATTLE.stat.shots < n + 1; i++) __t.sim(0.05, { audio: true }); __t.sim(0.4, { audio: true }); __t.render(); }); await snap();
+  await wp.run(() => { SENSOR.set('wh'); updateEnvironment(); const n = BATTLE.stat.shots; for (let i = 0; i < 400 && BATTLE.stat.shots < n + 1; i++) __t.sim(0.05, { audio: true }); __t.sim(0.4, { audio: true }); __t.render(); }); await snap();
+  await sheet(wp, shots, 3, 'lighting.png');
+});

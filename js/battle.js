@@ -109,6 +109,7 @@ function baseModel(type) {
   return PROTO[k].clone();
 }
 
+const RET_ON = 0.07;   // the reticle is "on" a target within this of the frame's centre (in half frame heights): no shot before that
 const _bm = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0);
 const BATTLE = {
   base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0 },
@@ -330,10 +331,10 @@ const BATTLE = {
     this.lastShot = T; this.stat.shots++; this.fire(w, t);
   },
   /* is the target under the reticle (within 0.13 of the frame's height from the centre)? */
-  onReticle(u) { const n = VIEW.ndc(u.pos); return Math.hypot(n.x * camera.aspect, n.y) < 0.18 || this.offT > 5; },   // (or it cannot be centred: at the map's edge the frame stops)
+  onReticle(u) { const n = VIEW.ndc(u.pos); return Math.hypot(n.x * camera.aspect, n.y) < RET_ON || this.offT > 5; },   // (or it cannot be centred: at the map's edge the frame stops)
   /* the camera onto a unit: a little ahead of a moving one, so the slew's lag leaves the reticle on it */
   lookAt(u) {
-    this.velOf(u, _bd); _bp.set(u.pos.x + _bd.x * 2 / SLEW_LOCK, 0, u.pos.z + _bd.z * 2 / SLEW_LOCK);
+    this.velOf(u, _bd); _bp.set(u.pos.x + _bd.x * (2 / SLEW_LOCK + 0.125), 0, u.pos.z + _bd.z * (2 / SLEW_LOCK + 0.125));
     const h = u.pos.y - groundH(u.pos.x, u.pos.z); if (h > 3) { _bd.subVectors(CAM_TGT, camera.position).normalize(); _bp.addScaledVector(_bd, -h / _bd.y); }   // (one in the air: the ground point behind it on the line of sight)
     GUNSHIP.track(_bp);
   },
@@ -406,7 +407,7 @@ const BATTLE = {
       const far = c.filter(s => Math.hypot(s.x - GUNSHIP.look.x, s.z - GUNSHIP.look.z) > 250); if (far.length) { const s = pick(far); this.focus = null; GUNSHIP.goTo({ n: 'tgt', x: s.x, z: s.z }); return; }
     }
     const w = ARMS.w, f = w ? this.target(w) : null;
-    if (f) { this.seekT = T + 4; this.lookAt(f); const n = VIEW.ndc(f.pos); this.offT = Math.hypot(n.x * camera.aspect, n.y) < 0.18 ? 0 : this.offT + 0.4; return; }
+    if (f) { this.seekT = T + 4; this.lookAt(f); const n = VIEW.ndc(f.pos); this.offT = Math.hypot(n.x * camera.aspect, n.y) < RET_ON ? 0 : this.offT + 0.4; return; }
     this.focus = null; this.offT = 0; if (T < this.seekT) return;
     if (here && !man) {   // enemies here that no enabled weapon may hit: the sensor stays on them and the allies are called in to finish them
       this.lookAt(here);

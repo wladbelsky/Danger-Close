@@ -6,7 +6,7 @@
 const SENSOR_MODES = ['tv', 'wh', 'bh', 'nv'];
 const SENSOR_LABEL = { tv: 'TV', wh: 'IR WHT', bh: 'IR BLK', nv: 'NVG' };
 const SENSOR_INDEX = { tv: 0, wh: 1, bh: 2, nv: 3 };
-const SU = { uThermal: { value: 0 }, uGain: { value: 1 }, uAmbHeat: { value: 0.36 } };   // shared by every material
+const SU = { uThermal: { value: 0 }, uGain: { value: 1 }, uAmbHeat: { value: 0.36 }, uLit: { value: 1 } };   // (uLit: how much light there is, for what is not lit by the lights: smoke, dust, clouds)   // shared by every material
 
 /* the one hook every material uses (a single function source: one program per material kind, no variants) */
 function sensorHook(shader) {
@@ -17,7 +17,7 @@ function sensorHook(shader) {
   shader.vertexShader = 'attribute float aHeat; varying float vHeat;\n' + shader.vertexShader.replace('#include <begin_vertex>', 'vHeat = aHeat;\n#include <begin_vertex>');
   shader.fragmentShader = 'uniform float uThermal, uGain, uAmbHeat, uMatHeat, uBaked, uAlbK; varying float vHeat;\n' + shader.fragmentShader.replace('#include <opaque_fragment>', `#include <opaque_fragment>
     if (uThermal > 0.5) {
-      float alb = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)), sol = dot(reflectedLight.directDiffuse, vec3(0.333));
+      float alb = pow(dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)), 0.4545), sol = pow(dot(reflectedLight.directDiffuse, vec3(0.333)) + 0.03, 0.4545) - 0.203;   // (the heat is a display value: the colour and the sunlight go into it as they look)
       gl_FragColor.rgb = vec3(clamp(uAmbHeat + (alb - 0.35) * uAlbK + sol * 0.12 + uMatHeat + vHeat * uBaked, 0.0, 1.0));
     } else gl_FragColor.rgb *= uGain;`);
   if (this.userData.extend) this.userData.extend(shader);   // a material's own additions (the ground); it then needs a customProgramCacheKey
@@ -25,12 +25,16 @@ function sensorHook(shader) {
 function sensorMat(mat, heat) { mat.onBeforeCompile = sensorHook; if (heat != null) mat.userData.heat = heat; return mat; }
 
 const POST_FS = `
-  uniform sampler2D tMap; uniform float uMode, uTime, uNight; uniform vec2 uRes; varying vec2 vUv;
+  uniform sampler2D tMap; uniform float uMode, uTime, uNight, uExp; uniform vec2 uRes; varying vec2 vUv;
   float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-  vec3 bright(float lod, float cut) { return max(textureLod(tMap, vUv, lod).rgb - vec3(cut), vec3(0.0)); }
+  /* linear light → the display: a soft shoulder for what is over 1 (flashes, snow in the sun), then the sRGB curve. Thermal frames hold heat, not light: taken as they are */
+  vec3 show(vec3 c) { if (uMode > 0.5 && uMode < 2.5) return c; c *= uExp; c = c / (1.0 + max(c - 0.8, 0.0) * 0.55); return pow(clamp(c, 0.0, 1.0), vec3(0.4545)); }
+  vec3 over(float lod) { vec3 x = max(textureLod(tMap, vUv, lod).rgb * uExp - vec3(1.9), vec3(0.0)); return x / (1.0 + x); }
+  vec3 bright(float lod, float cut) { return max(show(textureLod(tMap, vUv, lod).rgb) - vec3(cut), vec3(0.0)); }
   void main() {
-    vec3 c = texture2D(tMap, vUv).rgb;
-    vec3 glow = bright(2.0, 0.74) * 0.55 + bright(3.5, 0.66) * 0.75 + bright(5.5, 0.56) * 0.9;
+    vec3 c = show(texture2D(tMap, vUv).rgb);
+    vec3 glow = uMode > 0.5 && uMode < 2.5 ? bright(2.0, 0.74) * 0.55 + bright(3.5, 0.66) * 0.75 + bright(5.5, 0.56) * 0.9   // thermal: what is hot blooms
+      : over(2.0) * 0.55 + over(3.5) * 0.75 + over(5.5) * 0.9;                                                          // light: only what is brighter than a white surface in the sun (flashes, tracers, fire)
     vec2 q = vUv - 0.5; float vig = 1.0 - dot(q, q) * 0.62;
     float grain = hash(gl_FragCoord.xy * 0.73 + fract(uTime) * 311.7) - 0.5;
     float scan = 0.5 + 0.5 * sin(gl_FragCoord.y * 2.094);       // a line every 3 pixels
@@ -55,9 +59,9 @@ const SENSOR = {
   mode: 'tv', rt: null, post: null, postScene: null, postCam: null,
   build(renderer) {
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-    this.rt = new THREE.WebGLRenderTarget(size.x, size.y, { samples: CFG.msaa, depthBuffer: true, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+    this.rt = new THREE.WebGLRenderTarget(size.x, size.y, { samples: CFG.msaa, depthBuffer: true, type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
     this.post = new THREE.ShaderMaterial({
-      uniforms: { tMap: { value: this.rt.texture }, uMode: { value: 0 }, uTime: { value: 0 }, uNight: { value: 0 }, uRes: { value: size } },
+      uniforms: { tMap: { value: this.rt.texture }, uMode: { value: 0 }, uTime: { value: 0 }, uNight: { value: 0 }, uExp: { value: 1.6 }, uRes: { value: size } },
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
       fragmentShader: POST_FS, depthTest: false, depthWrite: false
     });
@@ -81,8 +85,9 @@ const SENSOR = {
   /* what depends on the mode and the time of day: gain, ambient heat, the fog's colour (or heat) */
   env() {
     const thermal = SU.uThermal.value > 0.5;
-    SU.uGain.value = this.mode === 'nv' ? lerp(1.0, 2.5, ENV.night) : lerp(1, 1.9, ENV.night);   // (the TV camera is a low-light one too)
+    SU.uGain.value = GAMMA(this.mode === 'nv' ? lerp(1.0, 2.5, ENV.night) : lerp(1, 1.3, ENV.night));   // (the TV camera is a low-light one too; the factors are display-space ones)
     this.post.uniforms.uNight.value = ENV.night;
+    this.post.uniforms.uExp.value = TERRAIN.season === 'winter' ? 1.65 : 2.05;   // (the exposure: stopped down over snow)
     SU.uAmbHeat.value = lerp(0.3, 0.4, ENV.day);
     if (thermal) { scene.fog.color.setScalar(SU.uAmbHeat.value + 0.04); return; }
     scene.fog.color.multiplyScalar(SU.uGain.value);

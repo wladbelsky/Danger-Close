@@ -1,6 +1,9 @@
 'use strict';
 /* ===== Shared utils, settings, ground & seasons, sun position, textures ===== */
-THREE.ColorManagement.enabled = false;   // palettes are authored as plain RGB (no sRGB conversions anywhere)
+/* Colour: three.js's colour management is on (its default). Every colour here is authored in sRGB (hex) and converted to the linear
+   working space when set; the scene is lit and blended in linear light into a half-float target, and the sensor's post pass
+   turns that into the picture (js/sensor.js). GAMMA: a display-space factor (a brightness tuned by eye) into linear light. */
+const GAMMA = x => Math.pow(x, 2.2);
 const TAU = Math.PI * 2;
 const V3 = THREE.Vector3;
 const DEG = Math.PI / 180;
@@ -107,11 +110,12 @@ function skyAt(elev) {
   for (const k of ['sun', 'hs', 'hg', 'fog', 'smoke']) {
     _ca.setHex(a[k]); _cb.setHex(b[k]); out[k] = _ca.clone().lerp(_cb, t);
   }
-  out.si = lerp(a.si, b.si, t); out.hi = lerp(a.hi, b.hi, t);
+  out.si = GAMMA(lerp(a.si, b.si, t)); out.hi = GAMMA(lerp(a.hi, b.hi, t));   // (the keys are tuned in display space)
   return out;
 }
 
 /* ===== Canvas-generated textures ===== */
+function srgbTex(t) { t.colorSpace = THREE.SRGBColorSpace; return t; }
 function radialTex(stops, size) {
   size = size || 64;
   const c = document.createElement('canvas'); c.width = c.height = size;
@@ -119,7 +123,7 @@ function radialTex(stops, size) {
   const gr = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   stops.forEach(s => gr.addColorStop(s[0], s[1]));
   g.fillStyle = gr; g.fillRect(0, 0, size, size);
-  return new THREE.CanvasTexture(c);
+  return srgbTex(new THREE.CanvasTexture(c));
 }
 function smokeTex() {
   const s = 64, c = document.createElement('canvas'); c.width = c.height = s;

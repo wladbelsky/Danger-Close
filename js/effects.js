@@ -59,11 +59,11 @@ const SPRITE_VS = `attribute vec3 iPos; attribute vec4 iCol; attribute vec2 iSR;
     gl_Position = projectionMatrix * mvPosition;
     #include <fog_vertex>
   }`;
-const SPRITE_FS = `uniform sampler2D map; uniform float uThermal; uniform float uHeat; uniform float uGain; varying vec2 vUv; varying vec4 vCol;
+const SPRITE_FS = `uniform sampler2D map; uniform float uThermal; uniform float uHeat; uniform float uGain; uniform float uLit; varying vec2 vUv; varying vec4 vCol;
   #include <fog_pars_fragment>
   void main() {
     gl_FragColor = vCol * texture2D(map, vUv);
-    if (uThermal > 0.5) gl_FragColor.rgb = vec3(uHeat); else gl_FragColor.rgb *= uGain;   // a pool's heat: flashes white-hot, smoke cold
+    if (uThermal > 0.5) gl_FragColor.rgb = vec3(uHeat); else gl_FragColor.rgb *= uGain * uLit;   // a pool's heat: flashes white-hot, smoke cold
     #include <fog_fragment>
   }`;
 const _sfxFwd = new V3(), farFirst = (a, b) => b.depth - a.depth;
@@ -79,7 +79,7 @@ class SpriteFX {
     this.aPos = attr('iPos', 3); this.aCol = attr('iCol', 4); this.aSR = attr('iSR', 2); this.attrs = [this.aPos, this.aCol, this.aSR];
     geo.instanceCount = 0;
     const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog]); uniforms.map = { value: tex };
-    uniforms.uThermal = SU.uThermal; uniforms.uHeat = { value: heat != null ? heat : 0.15 }; uniforms.uGain = blending === THREE.AdditiveBlending ? { value: 1 } : SU.uGain;   // (flashes are bright enough: no sensor gain)
+    uniforms.uThermal = SU.uThermal; uniforms.uHeat = { value: heat != null ? heat : 0.15 }; uniforms.uGain = blending === THREE.AdditiveBlending ? { value: 1 } : SU.uGain; uniforms.uLit = blending === THREE.AdditiveBlending ? { value: 1 } : SU.uLit;   // (flashes are bright enough: no sensor gain)
     const mat = new THREE.ShaderMaterial({ uniforms, vertexShader: SPRITE_VS, fragmentShader: SPRITE_FS, blending, transparent: true, depthWrite: false, fog: !!fog });
     this.mesh = new THREE.Mesh(geo, mat); this.mesh.frustumCulled = false; this.mesh.visible = false;
     this.mesh.renderOrder = blending === THREE.AdditiveBlending ? 7 : 3; scene.add(this.mesh);

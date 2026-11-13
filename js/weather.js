@@ -10,7 +10,7 @@ const WEATHER = {
   kind: 'clear', k: { rain: 0, snow: 0, fog: 0 }, next: 0, acc: 0, clouds: [], cover: 0, fx: null, drops: null,
   init() {
     this.fx = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, CLOUD_N * 9, true, 0.25); this.fx.mesh.renderOrder = 9;   // (over everything on the ground)
-    this.drops = new Tracers(scene, 900, 0.2); this.drops.mesh.renderOrder = 9;
+    this.drops = new Tracers(scene, 1500, 0.2); this.drops.mesh.renderOrder = 9;
     for (let i = 0; i < CLOUD_N; i++) {
       const c = { x: rand(-CLOUD_R, CLOUD_R), z: rand(-CLOUD_R, CLOUD_R), y: rand(100, 150), vis: 0, puffs: [] };
       for (let k = 0; k < randi(6, 9); k++) { const it = this.fx.items[i * 9 + k], a = rand(0, TAU), r = rand(0, 34); c.puffs.push({ it, ox: Math.cos(a) * r * 1.5, oy: rand(-5, 5), oz: Math.sin(a) * r, s: rand(22, 40), a: rand(0.3, 0.55) }); it.rot = rand(0, TAU); }
@@ -30,8 +30,8 @@ const WEATHER = {
   light() {
     const o = this.overcast, f = this.k.fog, thermal = SU.uThermal.value > 0.5, fk = f * (thermal ? 0.45 : 1) + this.k.rain * 0.18 + this.k.snow * 0.25;   // (thermal sees further through it)
     sunLight.intensity *= lerp(1, 0.5, o); hemi.intensity *= lerp(1, 1.12, o);
-    _wcol.setRGB(0.62, 0.65, 0.68).multiplyScalar(lerp(0.12, 1, ENV.day)); scene.fog.color.lerp(_wcol, Math.max(o, fk) * 0.8);
-    scene.fog.near = lerp(CAM_D + 150, 110, fk); scene.fog.far = lerp(CAM_D + 1100, CAM_D + 300, fk);
+    _wcol.setRGB(0.62, 0.65, 0.68, THREE.SRGBColorSpace).multiplyScalar(GAMMA(lerp(0.12, 1, ENV.day))); scene.fog.color.lerp(_wcol, Math.max(o, fk) * 0.8);
+    scene.fog.near = lerp(CAM_D + 150, CAM_D * 0.35, fk); scene.fog.far = lerp(CAM_D + 1100, CAM_D + 650, fk);   // (in full fog the ground under the sensor is about a third gone, the frame's far edge more)
   },
   update(dt) {
     if (CFG.weather !== 'auto') { if (this.kind !== CFG.weather) this.kind = CFG.weather; } else if (T > this.next) this.pick();
@@ -44,11 +44,12 @@ const WEATHER = {
   precip(dt) {
     const rain = this.k.rain, snow = this.k.snow;
     if (rain > 0.02 || snow > 0.02) {
-      this.acc += dt * (rain * 300 + snow * 220); const n = Math.min(60, Math.floor(this.acc)); this.acc -= n;
+      const RR = 520, SR = 220; this.acc += dt * (rain * RR + snow * SR); const n = Math.min(80, Math.floor(this.acc)); this.acc -= n;
+      const gl = c => { const v = Math.round(255 * c); return v << 16 | v << 8 | Math.min(255, Math.round(v * 1.08)); }, rainCol = gl(lerp(0.07, 0.34, ENV.day)), snowCol = gl(lerp(0.22, 0.88, ENV.day));   // (lit by the sky: dim at night)
       for (let i = 0; i < n; i++) {
-        const isRain = Math.random() * (rain * 300 + snow * 220) < rain * 300, x = CAM_TGT.x + rand(-115, 115), z = CAM_TGT.z + rand(-115, 115), g = groundH(x, z);
-        if (isRain) { const h = rand(25, 125); this.drops.spawn(_wp.set(x, g + h, z), _wq.set(WIND.x * 3, -27, WIND.z * 3), { life: h / 27, len: 2.6, w: 0.07, color: 0x9aa6b2 }); }
-        else { const h = rand(6, 60); this.drops.spawn(_wp.set(x, g + h, z), _wq.set(WIND.x * 2 + rand(-1, 1), -3.4, WIND.z * 2 + rand(-1, 1)), { life: Math.min(4.5, h / 3.4), len: 0.32, w: 0.26, color: 0xe6ecf2 }); }
+        const isRain = Math.random() * (rain * RR + snow * SR) < rain * RR, x = CAM_TGT.x + rand(-115, 115), z = CAM_TGT.z + rand(-115, 115), g = groundH(x, z);
+        if (isRain) { const h = rand(25, 125); this.drops.spawn(_wp.set(x, g + h, z), _wq.set(WIND.x * 4, -50, WIND.z * 4), { life: h / 50, len: rand(4, 6.5), w: 0.055, color: rainCol }); }
+        else { const h = rand(6, 60); this.drops.spawn(_wp.set(x, g + h, z), _wq.set(WIND.x * 2 + rand(-1, 1), -3.4, WIND.z * 2 + rand(-1, 1)), { life: Math.min(4.5, h / 3.4), len: 0.32, w: 0.26, color: snowCol }); }
       }
     }
     this.drops.update(dt);
@@ -57,7 +58,7 @@ const WEATHER = {
      other). None in a fight: they would hide it (they thin out as it starts and gather again afterwards) */
   drift(dt) {
     const want = AUD.combat ? 0 : Math.round(CLOUD_N * clamp(CFG.clouds / 100 * (1 + this.overcast * 1.2), 0, 1)), live = this.fx.live; live.length = 0;
-    const tint = ENV.smokeTint, lum = lerp(0.2, 1.05, ENV.day) * lerp(1, 0.7, this.overcast);
+    const tint = ENV.smokeTint, lum = GAMMA(lerp(0.2, 1.05, ENV.day) * lerp(1, 0.7, this.overcast));
     this.clouds.forEach((c, i) => {
       c.x += WIND.x * 2.5 * dt; c.z += WIND.z * 2.5 * dt;
       let dx = c.x - CAM_TGT.x, dz = c.z - CAM_TGT.z;
@@ -89,6 +90,13 @@ const AA = {
     return best;
   },
   update(dt) {
+    /* the base's guns turn after the aircraft (the model's barrels point along its +x) */
+    for (const u of UNITS) {
+      if (u.type !== 'aa' || !u.alive || !u.obj || !u.obj.parent) continue;
+      const want = Math.atan2(u.pos.z - camera.position.z, camera.position.x - u.pos.x) - u.obj.parent.rotation.y;
+      const d = ((want - u.obj.rotation.y + Math.PI) % TAU + TAU) % TAU - Math.PI;
+      u.obj.rotation.y += clamp(d, -1.4 * dt, 1.4 * dt); u.aimOff = Math.abs(d);
+    }
     if (CFG.aa && AUD.fighting && GUNSHIP.state === 'orbit') {
       if (T > this.nextGun) { this.nextGun = T + rand(2.5, 6) / (0.6 + AUD.heavy); const u = this.source(false); if (u) { this.basis(); this.bursts.push({ u, n: u.type === 'aa' ? randi(10, 16) : randi(4, 8), tick: 0, col: Math.random() < 0.6 ? 0xa8ff8a : 0xff8850, ox: rand(9, 24) * (Math.random() < 0.5 ? -1 : 1), oy: rand(-12, 14) }); if (Math.random() < 0.15) this.drop(3); } }
       if (T > this.nextSam) { this.nextSam = T + rand(18, 36); const u = this.source(true); if (u) this.launch(u); }
@@ -96,7 +104,9 @@ const AA = {
     for (let i = this.bursts.length - 1; i >= 0; i--) {
       const b = this.bursts[i]; if (!b.u.alive || b.n <= 0) { this.bursts.splice(i, 1); continue; }
       if ((b.tick -= dt) > 0) continue; b.tick = 0.07; b.n--; this.shots++;
+      if (b.u.type === 'aa' && b.u.aimOff > 0.25) { b.tick = 0; b.n++; this.shots--; continue; }   // (the gun is still turning: the burst waits)
       this.basis(); _wp.set(b.u.pos.x, b.u.pos.y + 2.2, b.u.pos.z);
+      if (b.u.type === 'aa') { const k = 2.2 / (Math.hypot(camera.position.x - _wp.x, camera.position.z - _wp.z) || 1); _wp.x += (camera.position.x - _wp.x) * k; _wp.z += (camera.position.z - _wp.z) * k; _wp.y += 1; }   // (from the muzzles)
       _wq.copy(camera.position).addScaledVector(_wr, b.ox + rand(-3, 3)).addScaledVector(_wu, b.oy + rand(-3, 3)).sub(_wp); const d = _wq.length();
       FX.tracers.spawn(_wp, _wq.multiplyScalar(430 / d), { life: d / 430, len: 7, w: 0.34, color: b.col });
       if (b.n % 3 === 0) FX.flash.spawn(_wp, { s0: 2, s1: 4, life: 0.08 });

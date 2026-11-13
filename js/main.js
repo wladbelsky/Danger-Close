@@ -45,7 +45,7 @@ function init() {
   sunLight.castShadow = CFG.shadows;
   sunLight.shadow.mapSize.set(SHADOW_N, SHADOW_N);
   Object.assign(sunLight.shadow.camera, { left: -50, right: 50, top: 50, bottom: -50, near: 1, far: 1600 });   // bounds: fitShadow()
-  sunLight.shadow.bias = -0.0005; sunLight.shadow.normalBias = 0.25;
+  sunLight.shadow.bias = -0.0012; sunLight.shadow.normalBias = 1.1;   // (in linear light a faint acne under the moon would show)
   scene.add(sunLight); scene.add(sunLight.target);
 
   FX.tracers = new Tracers(scene, 600);
@@ -148,7 +148,7 @@ const VIEW = {
 };
 
 /* ---- time of day, season & lighting ---- */
-const _hg = new THREE.Color(), SUN_DIR = new V3();
+const _hg = new THREE.Color(), SUN_DIR = new V3(), SUN_K = 1.0, SKY_K = 1.0;   // (the sun's and the sky's share, tuned on the review sheets)
 function updateEnvironment() {
   const season = seasonNow(); if (TERRAIN.season && season !== TERRAIN.season) TERRAIN.changeSeason(season);   // a new month, or the setting changed
   const S = SEASONS[season];
@@ -158,17 +158,18 @@ function updateEnvironment() {
   const dirOf = (az, el) => new V3(Math.sin(az * DEG) * Math.cos(el * DEG), Math.sin(el * DEG), -Math.cos(az * DEG) * Math.cos(el * DEG));
   const sunDir = dirOf(sp.az, Math.max(sp.elev, 7)), moonDir = dirOf(sp.az + 160, 42);
   SUN_DIR.copy(sunDir.lerp(moonDir, smoothstep(-2, -7, sp.elev))).normalize();
-  sunLight.color.copy(k.sun); sunLight.intensity = k.si * Math.PI;   // (SKY_KEYS are in the old non-physical light units: ×π gives the same picture)
-  _hg.setHex(S.hg).multiplyScalar(lerp(0.35, 1, smoothstep(-8, 12, sp.elev)));
-  hemi.color.copy(k.hs); hemi.groundColor.copy(k.hg).lerp(_hg, 0.6); hemi.intensity = k.hi * Math.PI;
+  sunLight.color.copy(k.sun); sunLight.intensity = k.si * Math.PI * SUN_K;   // (× π: a white surface facing a light of 1 comes out 1)
+  _hg.setHex(S.hg).multiplyScalar(GAMMA(lerp(0.35, 1, smoothstep(-8, 12, sp.elev))));
+  hemi.color.copy(k.hs); hemi.groundColor.copy(k.hg).lerp(_hg, 0.6); hemi.intensity = k.hi * Math.PI * SKY_K;
   scene.fog.color.copy(k.fog);
   ENV.smokeTint.copy(k.smoke);
   ENV.dustTint.setHex(GROUND_PAL[season].a).lerp(k.smoke, 0.45);
   ENV.night = 1 - smoothstep(-10, 1, sp.elev);
   ENV.day = smoothstep(-6, 10, sp.elev);
-  WIN_MAT.emissive.setHex(0xffc27a).multiplyScalar(0.5 * (1 - smoothstep(-3, 5, sp.elev)));   // lit windows after dusk
+  WIN_MAT.emissive.setHex(0xffc27a).multiplyScalar(GAMMA(0.8 * (1 - smoothstep(-3, 5, sp.elev))));   // lit windows after dusk
   if (CFG.vision === 'auto' && !SENSOR.manual && ready) { const m = ENV.night > 0.5 ? 'wh' : 'tv'; if (m !== SENSOR.mode) { SENSOR.mode = m; SENSOR.post.uniforms.uMode.value = SENSOR_INDEX[m]; SU.uThermal.value = m === 'wh' ? 1 : 0; HUD.markModes(); } }   // (auto: TV by day, white-hot at night, until a mode is clicked)
   WEATHER.light();
+  const lum = c => c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722; SU.uLit.value = clamp((sunLight.intensity * lum(sunLight.color) * 0.7 + hemi.intensity * lum(hemi.color)) / Math.PI / 1.1, 0.01, 1.1);   // (1 at noon)
   WATER_HEAT.value = lerp(0.12, -0.1, ENV.day);   // water: cooler than the ground by day, warmer at night
   SENSOR.env();
   renderer.setClearColor(scene.fog.color);

@@ -123,10 +123,10 @@ const TERRAIN = {
         if (lu.r > 0.004) {      // a field: g and b are premultiplied by the coverage (an edge keeps its own crop and rows)
           float ang = lu.g / lu.r * 3.14159265, cb = lu.b / lu.r;
           vec3 cc = cb < 0.25 ? uC0 : cb < 0.5 ? uC1 : cb < 0.75 ? uC2 : uC3;
-          cc *= 0.86 + 0.14 * sin(dot(vW, vec2(cos(ang), sin(ang))) * 2.4);
+          cc *= pow(0.86 + 0.14 * sin(dot(vW, vec2(cos(ang), sin(ang))) * 2.4), 2.2);
           g = mix(g, cc, lu.r);
         }
-        g *= 0.74 + d0.r * 0.34 + d2.b * 0.18 + (d1.r - 0.5) * 0.14;
+        g *= pow(0.74 + d0.r * 0.34 + d2.b * 0.18 + (d1.r - 0.5) * 0.14, 2.2);   // (the detail's shading is a display-space factor)
         diffuseColor.rgb = g;`);
     };
     mat.customProgramCacheKey = () => 'ground';   // its own program: the source above differs from the shared hook's
