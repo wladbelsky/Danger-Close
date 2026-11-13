@@ -10,7 +10,7 @@
    blown back by the slipstream; the railgun's rails flash blue and glow again as it recharges. The barrels heat up with every
    shot (white on the thermal sensor) and cool down slowly. Lit like the world: the sun / moon and the sky turned into view space.
    Its materials skip the lamps' light map (a view-space scene has no place in the world): their own program (customProgramCacheKey). */
-const GUN_FOV = 40, GUN_MOUNTS = ['h105', 'rail'];   // (forward to aft along the fuselage)
+const GUN_FOV = 40, GUN_TOP = -0.22, GUN_LEFT = 0.12, GUN_MOUNTS = ['h105', 'rail'];   // (how far the sensor's turn may bring the muzzles towards the middle: frame units, -1…1)   // (forward to aft along the fuselage)
 const GUNS = {
   scene: null, cam: null, models: {}, cur: null,
   init() {
@@ -109,7 +109,14 @@ const GUNS = {
     const a = camera.aspect, t = Math.tan(GUN_FOV / 2 * DEG), zm = 4.6, mag = Math.max(30, CFG.zoom * GUNSHIP.zm) / 85;   // (the sensor's zoom against the 105 mm's at 100 %: the lens magnifies the barrels as it does the ground)
     this.cam.aspect = a; this.cam.fov = 2 * Math.atan(t / mag) / DEG; this.cam.updateProjectionMatrix();
     _gn.position.copy(camera.position); _gn.lookAt(CAM_CTR); _gn.updateMatrixWorld();
-    this.cam.quaternion.copy(_gn.quaternion).invert().multiply(camera.quaternion); this.cam.updateMatrixWorld();   // (the sensor's turn away from the centre)
+    this.cam.quaternion.copy(_gn.quaternion).invert().multiply(camera.quaternion);   // (the sensor's turn away from the centre)
+    // limited towards the frame's middle: looking down lifts the barrels, looking right (to the nose) moves them left — past a few
+    // degrees softly less and less, so they never cover the picture nor come up to the lens; away from the middle they may leave it
+    // (the limits from where the muzzles show at this zoom: up to GUN_TOP of the frame's height, the inner one no further left than GUN_LEFT)
+    const nOn = GUN_MOUNTS.filter(id => this.models[id].k > 0.001).length, tl = t / mag;
+    const up = Math.atan(Math.max(0.02, GUN_TOP + 0.5 * mag) * tl), left = Math.atan(Math.max(0.02, (nOn > 1 ? 0.34 : 0.64) * mag - GUN_LEFT) * tl * a);
+    const soft = (x, lim) => x < 0 ? -lim * Math.tanh(-x / lim) : x;
+    _ge.setFromQuaternion(this.cam.quaternion, 'YXZ'); _ge.x = soft(_ge.x, up); _ge.y = soft(_ge.y, left); _ge.z = 0; this.cam.quaternion.setFromEuler(_ge); this.cam.updateMatrixWorld();   // (no roll: looking near straight down the camera rolls about its axis, which would swing the barrels round the middle)
     _gt.set(t * zm * a * 0.64, -t * zm * 0.5, -zm); _gd.set(0, 0, -1).applyQuaternion(this.cam.quaternion);   // (the muzzles' mounts; the barrels on the line of sight: they point where the shells go)
     const on = GUN_MOUNTS.filter(id => this.models[id].k > 0.001), along = t * zm * a * 0.3;   // (two guns: this far apart along the fuselage)
     let any = false;
@@ -144,4 +151,4 @@ const GUNS = {
     const p = renderer.compileAsync(this.scene, this.cam); for (const o of hid) o.visible = false; return p;   // (compileAsync takes what is visible at the call)
   }
 };
-const _gn = new THREE.PerspectiveCamera(), _gm = new V3(), _ga = new V3(), _gs = new V3(), _gu = new V3(), _gv = new V3(), _gp = new V3(), _gt = new V3(), _gd = new V3();
+const _ge = new THREE.Euler(), _gn = new THREE.PerspectiveCamera(), _gm = new V3(), _ga = new V3(), _gs = new V3(), _gu = new V3(), _gv = new V3(), _gp = new V3(), _gt = new V3(), _gd = new V3();

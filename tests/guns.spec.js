@@ -40,3 +40,21 @@ test('the fight fires the visible gun', async ({ wp }) => {
   const r = await wp.run(() => { const h0 = GUNS.models.h105.heat.value; let kicks = 0; for (let i = 0; i < 1200 && BATTLE.stat.shots < 3; i++) { __t.sim(0.05, { audio: true }); if (GUNS.models.h105.recT != null) kicks++; } return { shots: BATTLE.stat.shots, kicks, heat: GUNS.models.h105.heat.value - h0 }; });
   expect(r.shots).toBeGreaterThan(0); expect(r.kicks).toBeGreaterThan(0); expect(r.heat).toBeGreaterThan(0);
 });
+
+test('looking far down or to the nose, the barrels stay at the bottom and never reach the lens', async ({ wp }) => {
+  await wp.boot({ query: '?hour=11&seed=11&transit=0&weapons=h105,rail&auto=0' });
+  const r = await wp.run(() => {
+    const slew = (m, side) => { const c = GUNSHIP.ctr, dx = camera.position.x - c.x, dz = camera.position.z - c.z, d = Math.hypot(dx, dz); GUNSHIP.nextWander = 1e9; GUNSHIP.vel.set(0, 0, 0); GUNSHIP.look.set(c.x + dx / d * m - dz / d * side, 0, c.z + dz / d * m + dx / d * side); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); __t.sim(0.05); };
+    __t.sim(1.5); const out = [];
+    for (const [m, side] of [[0, 0], [150, 0], [250, 0], [0, 150], [0, -150], [200, 150], [200, -150]]) for (const zoom of [60, 100, 160]) {
+      CFG.zoom = zoom; slew(m, side); __t.sim(1.5); slew(m, side); GUNS.pose();
+      let top = -9, near = 9;
+      for (const g of Object.values(GUNS.models)) { if (!g.root.visible) continue; for (let z = -1.6; z <= g.muzzle; z += 0.2) {
+        const p = g.root.localToWorld(new THREE.Vector3(0, 0, z)), v = p.clone().applyMatrix4(GUNS.cam.matrixWorldInverse), n = p.clone().project(GUNS.cam);
+        near = Math.min(near, v.length()); if (v.z < 0 && Math.abs(n.x) < 1 && Math.abs(n.y) < 1) top = Math.max(top, n.y); } }
+      out.push({ m, side, zoom, top: +top.toFixed(2), near: +near.toFixed(2) });
+    }
+    return out;
+  });
+  for (const o of r) { expect(o.top, `the barrels' highest point in the frame, ${JSON.stringify(o)}`).toBeLessThan(-0.1); expect(o.near, `the lens never inside a barrel (their radius is under 0.16), ${JSON.stringify(o)}`).toBeGreaterThan(0.3); }
+});
