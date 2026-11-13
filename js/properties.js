@@ -1,0 +1,313 @@
+'use strict';
+/* Generated from project.json by tools/gen_properties.py — do not edit by hand */
+const WE_PROPERTIES = {
+ "schemecolor": {
+  "order": 0,
+  "text": "ui_browse_properties_scheme_color",
+  "type": "color",
+  "value": "0.10 0.14 0.12"
+ },
+ "vision": {
+  "order": 1,
+  "text": "Vision mode at start",
+  "type": "combo",
+  "value": "tv",
+  "options": [
+   {
+    "label": "TV (daylight camera)",
+    "value": "tv"
+   },
+   {
+    "label": "Thermal, white hot",
+    "value": "wh"
+   },
+   {
+    "label": "Thermal, black hot",
+    "value": "bh"
+   },
+   {
+    "label": "Night vision",
+    "value": "nv"
+   },
+   {
+    "label": "Auto: TV by day, thermal at night",
+    "value": "auto"
+   }
+  ]
+ },
+ "zoom": {
+  "order": 2,
+  "text": "Zoom, %",
+  "type": "slider",
+  "value": 100,
+  "min": 50,
+  "max": 200
+ },
+ "orbit": {
+  "order": 3,
+  "text": "Orbit speed, %",
+  "type": "slider",
+  "value": 100,
+  "min": 0,
+  "max": 300
+ },
+ "transit": {
+  "order": 4,
+  "text": "Fly to another area every, min (0 = never)",
+  "type": "slider",
+  "value": 4,
+  "min": 0,
+  "max": 20
+ },
+ "callsign": {
+  "order": 5,
+  "text": "Callsign",
+  "type": "textinput",
+  "value": "GHOSTRIDER 31"
+ },
+ "hudscale": {
+  "order": 6,
+  "text": "HUD scale, %",
+  "type": "slider",
+  "value": 100,
+  "min": 60,
+  "max": 180
+ },
+ "hudbottom": {
+  "order": 7,
+  "text": "HUD space kept free at the bottom (taskbar), px",
+  "type": "slider",
+  "value": 48,
+  "min": 0,
+  "max": 160
+ },
+ "timemode": {
+  "order": 10,
+  "text": "Time of day",
+  "type": "combo",
+  "value": "real",
+  "options": [
+   {
+    "label": "PC clock",
+    "value": "real"
+   },
+   {
+    "label": "Fixed hour",
+    "value": "fixed"
+   }
+  ]
+ },
+ "fixedhour": {
+  "order": 11,
+  "text": "Fixed hour",
+  "type": "slider",
+  "value": 12,
+  "min": 0,
+  "max": 23.9,
+  "fraction": true,
+  "precision": 1,
+  "condition": "timemode.value == 'fixed'"
+ },
+ "season": {
+  "order": 12,
+  "text": "Season",
+  "type": "combo",
+  "value": "auto",
+  "options": [
+   {
+    "label": "By the PC date",
+    "value": "auto"
+   },
+   {
+    "label": "Spring",
+    "value": "spring"
+   },
+   {
+    "label": "Summer",
+    "value": "summer"
+   },
+   {
+    "label": "Autumn",
+    "value": "autumn"
+   },
+   {
+    "label": "Winter",
+    "value": "winter"
+   }
+  ]
+ },
+ "weather": {
+  "order": 13,
+  "text": "Weather",
+  "type": "combo",
+  "value": "auto",
+  "options": [
+   {
+    "label": "Changing (by the season)",
+    "value": "auto"
+   },
+   {
+    "label": "Clear",
+    "value": "clear"
+   },
+   {
+    "label": "Rain",
+    "value": "rain"
+   },
+   {
+    "label": "Snow",
+    "value": "snow"
+   },
+   {
+    "label": "Fog",
+    "value": "fog"
+   }
+  ]
+ },
+ "clouds": {
+  "order": 14,
+  "text": "Clouds under the aircraft, %",
+  "type": "slider",
+  "value": 35,
+  "min": 0,
+  "max": 100
+ },
+ "w_g25": {
+  "order": 20,
+  "text": "25 mm Gatling (GAU-12)",
+  "type": "bool",
+  "value": true
+ },
+ "w_g30": {
+  "order": 21,
+  "text": "30 mm cannon (GAU-23)",
+  "type": "bool",
+  "value": true
+ },
+ "w_h105": {
+  "order": 22,
+  "text": "105 mm howitzer (M102)",
+  "type": "bool",
+  "value": true
+ },
+ "w_b40": {
+  "order": 23,
+  "text": "40 mm Bofors",
+  "type": "bool",
+  "value": false
+ },
+ "w_hf": {
+  "order": 24,
+  "text": "Hellfire missiles",
+  "type": "bool",
+  "value": false
+ },
+ "w_apk": {
+  "order": 25,
+  "text": "APKWS rockets",
+  "type": "bool",
+  "value": false
+ },
+ "w_gbu": {
+  "order": 26,
+  "text": "GBU-39 glide bombs",
+  "type": "bool",
+  "value": false
+ },
+ "w_aim": {
+  "order": 27,
+  "text": "AIM-9X (helicopters only)",
+  "type": "bool",
+  "value": false
+ },
+ "w_las": {
+  "order": 28,
+  "text": "Laser (60 kW)",
+  "type": "bool",
+  "value": false
+ },
+ "w_rail": {
+  "order": 29,
+  "text": "Railgun",
+  "type": "bool",
+  "value": false
+ },
+ "autoarms": {
+  "order": 30,
+  "text": "Switch weapons automatically (a click holds one for 30 s)",
+  "type": "bool",
+  "value": true
+ },
+ "sens": {
+  "order": 30,
+  "text": "Audio sensitivity, %",
+  "type": "slider",
+  "value": 100,
+  "min": 25,
+  "max": 300
+ },
+ "fire": {
+  "order": 31,
+  "text": "How often the gunship fires on a beat, %",
+  "type": "slider",
+  "value": 100,
+  "min": 10,
+  "max": 100
+ },
+ "enemies": {
+  "order": 32,
+  "text": "Enemy forces, %",
+  "type": "slider",
+  "value": 100,
+  "min": 25,
+  "max": 200
+ },
+ "allies": {
+  "order": 33,
+  "text": "Allied reinforcements, %",
+  "type": "slider",
+  "value": 100,
+  "min": 0,
+  "max": 200
+ },
+ "aa": {
+  "order": 34,
+  "text": "Anti-aircraft fire and flares",
+  "type": "bool",
+  "value": true
+ },
+ "seed": {
+  "order": 40,
+  "text": "Map seed (0 = a new map every start)",
+  "type": "slider",
+  "value": 0,
+  "min": 0,
+  "max": 999
+ },
+ "shadows": {
+  "order": 41,
+  "text": "Shadows",
+  "type": "bool",
+  "value": true
+ },
+ "quality": {
+  "order": 42,
+  "text": "Quality",
+  "type": "combo",
+  "value": "high",
+  "options": [
+   {
+    "label": "High (antialiasing, sharp)",
+    "value": "high"
+   },
+   {
+    "label": "Medium (antialiasing)",
+    "value": "medium"
+   },
+   {
+    "label": "Low (fastest)",
+    "value": "low"
+   }
+  ]
+ }
+};

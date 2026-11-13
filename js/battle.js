@@ -15,6 +15,9 @@ const FIRE = {
   tank: { range: 230, reload: [5, 8],     n: 1, v: 520, len: 5,   w: 0.3,  acc: 0.45, dmg: 7,   mh: 2.2, blast: 1.2, flash: 2.2 },
   heli: { range: 260, reload: [1.4, 2.8], n: 2, v: 260, len: 4,   w: 0.2,  acc: 0.4,  dmg: 2.5, mh: 0,   blast: 0.8 }
 };
+/* the allies fire this many times as often (their helicopters most of all), each round doing less: their damage a second is only
+   ALLY_DPS × the enemy's, so the fight looks busier without the allies clearing it before the gunship gets a word in */
+const ALLY_RATE = { inf: 1.6, car: 1.6, apc: 1.6, tank: 1.3, heli: 2.8 }, ALLY_DPS = 1.2;
 /* damage factor shooter → target (0: not a target for it) */
 const VS = {
   inf:  { inf: 1,   car: 0.3, apc: 0,   tank: 0,    heli: 0.06, struct: 0 },
@@ -198,8 +201,9 @@ const BATTLE = {
     if (T > this.nextField) { this.nextField = T + rand(35, 60) / k; this.spots = this.spots.filter(s => this.hot(s, 200)); if (this.spots.length < 2) this.spawnField(); }
     // the allies' quick reaction force: a column from a road near the base and fireteams round it, so there are always some of them in the fight
     const B = this.base; if (!B) return;
-    if (T > this.nextQrf) { this.nextQrf = T + rand(20, 35); let n = 0; for (const u of UNITS) if (u.side === 'ally' && u.col && Math.hypot(u.pos.x - B.x, u.pos.z - B.z) < 320) n++; if (n < 4) this.columnTo('ally', B.node, pick(QRF_TYPES)); }
-    if (T > this.nextAsq) { this.nextAsq = T + rand(15, 30); if (this.squads.filter(s => !s.flee && s.side === 'ally').length < 2) this.squadAt('ally', B.x, B.z, 95, 170, 60, 150); }
+    const ka = CFG.allies / 100; if (ka <= 0) return;   // (the allies' share: how many and how often)
+    if (T > this.nextQrf) { this.nextQrf = T + rand(20, 35) / ka; let n = 0; for (const u of UNITS) if (u.side === 'ally' && u.col && Math.hypot(u.pos.x - B.x, u.pos.z - B.z) < 320) n++; if (n < Math.round(4 * ka)) this.columnTo('ally', B.node, pick(QRF_TYPES)); }
+    if (T > this.nextAsq) { this.nextAsq = T + rand(15, 30) / ka; if (this.squads.filter(s => !s.flee && s.side === 'ally').length < Math.max(1, Math.round(2 * ka))) this.squadAt('ally', B.x, B.z, 95, 170, 60, 150); }
     if (T > this.nextHeli) { this.nextHeli = T + rand(40, 70) / k; if (this.helis.filter(h => h.alive && !h.retreat).length < Math.round(2 * k)) this.spawnHeli(); }
   },
   spawnColumn() {
@@ -287,7 +291,7 @@ const BATTLE = {
     if (!fight || u.retreat || u.state === 'pad' || u.state === 'crash') { u.tgt = null; return; }
     if (u.tgt && !u.tgt.alive) u.tgt = null;
     if ((u.think -= dt) <= 0) { u.think = rand(0.7, 1.3); u.tgt = this.pickTarget(u, F); }
-    if (u.tgt && (u.cool -= dt) <= 0) { u.cool = rand(F.reload[0], F.reload[1]); this.unitFire(u, u.tgt, F); }
+    if (u.tgt && (u.cool -= dt) <= 0) { u.cool = rand(F.reload[0], F.reload[1]) / (u.side === 'ally' ? ALLY_RATE[u.kind] : 1); this.unitFire(u, u.tgt, F); }
   },
   pickTarget(u, F) {
     const V = VS[u.kind]; let best = null, bd = F.range;
@@ -301,7 +305,7 @@ const BATTLE = {
     _bd.multiplyScalar(F.v / d);
     for (let i = 0; i < F.n; i++) { _bt.copy(_bd); if (i) { _bt.x += rand(-6, 6); _bt.y += rand(-4, 4); _bt.z += rand(-6, 6); _bt.multiplyScalar(1 - i * 0.07); } FX.tracers.spawn(_bm, _bt, { life: fl, len: F.len, w: F.w, color: col }); }
     if (F.flash) FX.flash.spawn(_bm, { s0: F.flash * 2, s1: F.flash * 4, life: 0.12 });
-    const dmg = F.dmg * VS[u.kind][t.kind], side = u.side;
+    const dmg = F.dmg * VS[u.kind][t.kind] * (u.side === 'ally' ? ALLY_DPS / ALLY_RATE[u.kind] : 1), side = u.side;
     this.after(fl, () => {
       if (F.blast) hitFx(x, y, z, F.blast, air);
       if (hit) hurt(t, dmg);
@@ -408,6 +412,8 @@ const BATTLE = {
   aimCamera(dt) {
     if ((this.fTick -= dt) > 0) { if (this.focus && this.focus.alive && GUNSHIP.state === 'orbit') this.lookAt(this.focus); return; }
     this.fTick = 0.4; if (GUNSHIP.state === 'transit') { this.offT = 0; this.focus = null; return; }
+    const w0 = ARMS.w;   // a weapon picked by hand: the auto-switching takes over again after 30 s, or 3 s after the click once nothing it may hit is left round here
+    if (CFG.autoArms && T < this.manualUntil && T > this.manualUntil - 27 && w0 && !UNITS.some(u => u.alive && u.side === 'enemy' && w0.hitSet.has(u.kind) && Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z) < 250)) { this.manualUntil = 0; this.autoTick = 0; }
     const man = !CFG.autoArms || T < this.manualUntil; let here = null;
     for (const u of UNITS) if (u.side === 'enemy' && this.inFrame(u.pos)) { here = u; break; }   // (never away from enemies still in the frame)
     if (this.wantGo && !here) { const d = this.wantGo; this.wantGo = null; GUNSHIP.goTo(d); return; }

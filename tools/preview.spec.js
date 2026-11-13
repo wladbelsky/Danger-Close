@@ -322,3 +322,78 @@ test('big guns', async ({ wp }) => {
   }
   await sheet(wp, shots, 3, 'big-guns.png');
 });
+
+/* ===== stage 11: the Workshop preview (preview.gif: animated, 256x256, < 1 MB) and the README screenshots (screenshots/*.jpg)
+   -g gif → test-results/gif-<seed>.gif (+ gif-<seed>-sheet.png, four of its frames); -g screens → test-results/shot-*.jpg.
+   Copy the best ones over preview.gif / screenshots/. The HUD canvas is drawn over the picture (the DOM buttons are not). */
+const GIF = { size: 256, render: 768, frames: 40, fps: 10, colors: 64 };
+const FIGHT = (q) => `?seed=${q.seed}&hour=${q.hour}&season=${q.season}&weather=clear&clouds=0&mode=${q.mode}&transit=0&aa=0`;
+async function intoFight(wp) {   // music until the gunship is over the enemy and has fired a few times
+  await wp.run(() => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 1200 && (GUNSHIP.state === 'transit' || BATTLE.stat.shots < 6); i++) __t.sim(0.05, { audio: true }); });
+}
+const grab = (size) => {   // the picture with the HUD over it, downscaled in halving steps (in the task of the render: the WebGL buffer is still there)
+  __t.render();
+  const C = window.__shotC || (window.__shotC = {}), src0 = renderer.domElement, W = src0.width, H = src0.height;
+  const full = C.full || (C.full = document.createElement('canvas')); full.width = W; full.height = H;
+  const g = full.getContext('2d'); g.drawImage(src0, 0, 0); if (HUD.cv) g.drawImage(HUD.cv, 0, 0, W, H);
+  let src = full, w = W, h = H;
+  while (w > size[0]) { w = Math.max(size[0], w >> 1); h = Math.round(w * H / W); const c = C[w] || (C[w] = document.createElement('canvas')); c.width = w; c.height = h; const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, w, h); src = c; }
+  return src;
+};
+test.describe('gif', () => {
+  test.use({ viewport: { width: GIF.render, height: GIF.render } });
+  for (const q of [{ seed: 11, hour: 23, season: 'summer', mode: 'wh' }, { seed: 29, hour: 23, season: 'autumn', mode: 'wh' }, { seed: 11, hour: 15, season: 'summer', mode: 'tv' }]) test(`gif, ${q.mode} seed ${q.seed}`, async ({ wp }) => {
+    test.setTimeout(6 * 60 * 1000);
+    await wp.boot({ query: FIGHT(q) + '&weapons=g25&auto=0&enemies=200' });   // (the 25 mm: a stream of tracers on every beat)
+    await intoFight(wp); await wp.run(() => {
+      BATTLE.nextHop = 1e9; CFG.zoom = 135; __t.sim(1.5, { audio: true });   // (closer; no hop to another fight while it records)
+      const at = []; for (let i = 0, n = BATTLE.stat.shots; i < 2400; i++) { __t.sim(0.05, { audio: true }); if (BATTLE.stat.shots > n) { n = BATTLE.stat.shots; at.push(T); } if (at.filter(t => T - t < 1.6).length >= 4 && ARMS.st.g25.reload <= 0 && ARMS.st.g25.mag >= 200) break; }   // (start in a burst: four volleys in the last 1.6 s, a full magazine)
+      for (const u of UNITS) if (u.side === 'enemy' && u.kind !== 'struct') u.hp = 1e6;   // (staged for the preview: the targets outlast the clip, the 25 mm keeps firing at them)
+      window.__s0 = BATTLE.stat.shots;
+    });
+    const frames = [];
+    for (let i = 0; i < GIF.frames; i++) {
+      await wp.sim(1 / GIF.fps, { audio: true });
+      const b64 = await wp.run(([size, i, n, grabSrc]) => {
+        const src = (0, eval)('(' + grabSrc + ')')([size, size]), C = window.__shotC;
+        const sheet = C.sheet || (C.sheet = Object.assign(document.createElement('canvas'), { width: size * 2, height: size * 2 }));
+        const k = [0, n / 3, 2 * n / 3, n - 1].map(Math.floor).indexOf(i); if (k >= 0) sheet.getContext('2d').drawImage(src, (k % 2) * size, (k >> 1) * size);
+        const d = src.getContext('2d').getImageData(0, 0, size, size).data;
+        let s = ''; for (let j = 0; j < d.length; j += 0x8000) s += String.fromCharCode.apply(null, d.subarray(j, j + 0x8000));
+        return btoa(s);
+      }, [GIF.size, i, GIF.frames, grab.toString()]);
+      frames.push(new Uint8Array(Buffer.from(b64, 'base64')));
+    }
+    console.log(`${q.mode} ${q.seed}: ${await wp.run(() => BATTLE.stat.shots - __s0)} volleys while recording`);
+    const { GIFEncoder, quantize, applyPalette } = require('gifenc'), name = `gif-${q.mode}-${q.seed}`;
+    save(`${name}-sheet.png`, await wp.run(() => __shotC.sheet.toDataURL('image/png')));
+    const all = new Uint8Array(frames[0].length * Math.ceil(frames.length / 2)); frames.filter((f, i) => i % 2 === 0).forEach((f, i) => all.set(f, i * f.length));
+    const palette = quantize(all, GIF.colors), gif = GIFEncoder();
+    frames.forEach((f, i) => gif.writeFrame(applyPalette(f, palette), GIF.size, GIF.size, i ? { delay: 1000 / GIF.fps } : { palette, delay: 1000 / GIF.fps, repeat: 0 }));
+    gif.finish(); const bytes = gif.bytes(); fs.writeFileSync(path.join(OUT, name + '.gif'), bytes);
+    console.log(`${name}.gif: ${(bytes.length / 1024).toFixed(0)} KB`);
+    if (bytes.length >= 1024 * 1024) throw new Error('Wallpaper Engine takes previews under 1 MB');
+  });
+});
+test('screens', async ({ wp }) => {
+  test.setTimeout(8 * 60 * 1000);
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  const shot = async (name) => save(`shot-${name}.jpg`, await wp.run((g) => (0, eval)('(' + g + ')')([1280, 720]).toDataURL('image/jpeg', 0.88), grab.toString()));
+  await wp.boot({ query: '?seed=11&hour=10.5&season=summer&weather=clear&clouds=20&mode=tv&spot=town&transit=0' }); await wp.sim(3); await shot('day-tv');
+  await wp.goto('?seed=47&hour=8&season=winter&weather=clear&clouds=40&mode=tv&transit=0'); await wp.sim(3); await shot('winter-tv');
+  await wp.goto(FIGHT({ seed: 11, hour: 23, season: 'summer', mode: 'wh' }) + '&weapons=g25,h105'); await intoFight(wp); await shot('fight-wh');
+  await wp.goto(FIGHT({ seed: 29, hour: 22, season: 'autumn', mode: 'nv' }) + '&weapons=g30,h105,rail'); await intoFight(wp); await shot('fight-nv');
+  await wp.goto(FIGHT({ seed: 23, hour: 16, season: 'summer', mode: 'tv' }) + '&weapons=h105,rail'); await intoFight(wp); await shot('fight-tv');
+  await wp.goto('?seed=11&hour=23.5&season=summer&weather=clear&clouds=0&mode=tv&spot=town&transit=0'); await wp.sim(3); await shot('night-tv');
+});
+
+/* the settings drawer of the browser preview, open; and the splash screen */
+test('settings panel', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  await wp.boot({ we: false, query: '?seed=11&hour=10.5&season=summer&weather=clear&mode=tv&spot=town&transit=0&cfg=1' });
+  await wp.run(() => { __t.sim(2); __t.render(); document.getElementById('cfg').classList.add('open'); });
+  await wp.page.waitForTimeout(400);
+  save('settings-panel.png', 'x,' + (await wp.page.screenshot()).toString('base64'));
+  await wp.run(() => { document.getElementById('cfg').classList.remove('open'); const s = document.createElement('div'); s.id = 'splash'; s.innerHTML = '<div class="t">DANGER CLOSE</div><div class="s">ACQUIRING SENSOR FEED</div>'; s.style.animation = 'none'; document.body.append(s); });
+  save('splash.png', 'x,' + (await wp.page.screenshot()).toString('base64'));
+});

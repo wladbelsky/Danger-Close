@@ -142,8 +142,7 @@ const GUNS = {
   /* compile its programs under the splash (everything shown once) */
   warm() {
     const hid = []; this.scene.traverse(o => { if (!o.visible) { hid.push(o); o.visible = true; } });
-    renderer.compile(this.scene, this.cam);
-    for (const o of hid) o.visible = false;
+    const p = renderer.compileAsync(this.scene, this.cam); for (const o of hid) o.visible = false; return p;   // (compileAsync takes what is visible at the call)
   }
 };
 const _gn = new THREE.PerspectiveCamera(), _gm = new V3(), _ga = new V3(), _gs = new V3(), _gu = new V3(), _gv = new V3(), _gp = new V3(), _gb = new V3(), _gt = new V3(), _gd = new V3();

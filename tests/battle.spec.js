@@ -94,3 +94,20 @@ test('at the map edge, where the frame cannot centre the target, the gun still f
   expect(r.shifted, 'the frame stops at the edge').toBeGreaterThan(3);
   expect(r.centred).toBe(false); expect(r.aim, 'on the point the sensor is turned to').toBe(true); expect(r.far).toBe(false);
 });
+
+test('a weapon picked by hand gives way to the auto-switching once nothing it may hit is left in the sector', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weather=clear&aa=0&weapons=g25,g30,h105,aim' });
+  const r = await wp.run(() => {
+    __t.sim(5.5, { audio: true }); for (let i = 0; i < 1200 && (GUNSHIP.state === 'transit' || !BATTLE.base); i++) __t.sim(0.05, { audio: true });
+    for (const u of UNITS) if (u.kind === 'heli' && u.side === 'enemy') u.pos.x += 5000;   // (no enemy helicopter anywhere near)
+    BATTLE.nextHeli = 1e9;
+    ARMS.select('aim'); BATTLE.manualUntil = T + 30; BATTLE.focus = null; BATTLE.seekT = 0; BATTLE.fTick = 0; const t0 = T;
+    let took = null; for (let i = 0; i < 200 && took == null; i++) { __t.sim(0.05, { audio: true }); if (ARMS.cur !== 'aim') took = T - t0; }
+    // and a weapon with targets round it is held
+    const g = UNITS.some(u => u.alive && u.side === 'enemy' && WEAPON.h105.hitSet.has(u.kind) && Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z) < 250);
+    ARMS.select('h105'); BATTLE.manualUntil = T + 30; __t.sim(8, { audio: true });
+    return { took, cur: ARMS.cur, targets: g, held: ARMS.cur === 'h105' };
+  });
+  expect(r.took, 'the auto-switching took over').not.toBeNull(); expect(r.took).toBeLessThan(6);
+  if (r.targets) expect(r.held, 'held while it has targets').toBe(true);
+});

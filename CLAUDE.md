@@ -25,7 +25,8 @@ Update the status here when a stage is finished. The full approved design is sum
 8. **Physically based lighting and colour**: three.js r187's own colour management and linear light instead of the emulated legacy look; before / after sheets — done.
 9. **Night lights**: headlights on the allies' and the enemies' vehicles at night, green and red navigation lights on every helicopter, light in the houses at night (not every window, not every house), street lamps along the paved roads, lamps and searchlights at both sides' bases; the lamps' light is a map from above with shadows over a baked height map — done.
 10. **Big guns in frame**: the barrels of the big guns (105 mm and the railgun at least; the others are optional) visible at the edge of the frame while selected, with a firing animation (recoil, muzzle flash, gases) on every shot; fixed to the aircraft (they move in the frame as the sensor slews and zooms), both shown side by side when both are enabled, tracers leave the visible muzzle — done.
-11. **Splash, all properties, README, preview, soak**; `renderer.compileAsync` at start so the splash does not freeze while the shaders compile (the warm-up frame for the shadow pass stays) — in progress.
+11. **Splash, all properties, README, preview, soak**; `renderer.compileAsync` at start so the splash does not freeze while the shaders compile (the warm-up frame for the shadow pass stays) — done.
+12. **Fix: a red laser**: the laser beam red, and a red glow on the ground where it hits — in progress.
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -42,7 +43,7 @@ Update the status here when a stage is finished. The full approved design is sum
   only out of view. Both sides fight each other. Five unit types per side with different models: infantry, tank, APC, car,
   helicopter. Infantry vanish in a dust puff at once; vehicles lie as wrecks, then sink into the ground.
 - **Weapons** (one active; each a property, no limit; first three on by default; optional auto-switching, a click selects a weapon and
-  auto resumes 30 s later; only fires at what the table allows, allies handle the rest; guns land at once, missiles / bombs on the next beat with a deadline):
+  auto resumes 30 s later, or 3 s after the click once nothing that weapon may hit is left within 250 m of the sensor's point; only fires at what the table allows, allies handle the rest; guns land at once, missiles / bombs on the next beat with a deadline):
 
 | Weapon | Infantry | Car | APC | Tank | Helicopter | Beat |
 |---|---|---|---|---|---|---|
@@ -66,8 +67,8 @@ Update the status here when a stage is finished. The full approved design is sum
   bundled once with esbuild: `export * from "three"` → `esbuild --bundle --minify --format=iife --global-name=THREE --target=es2020`.
 - Code taken from FAB / Code 3 (r149) needs the r187 changes: `opaque_fragment` (was `output_fragment`), `addUpdateRange` (was `updateRange`), `PCFShadowMap` (`PCFSoftShadowMap` is gone), `InstancedMesh` can compute its own bounding sphere.
 - **Colour and light (stage 8)**: colour management is on. Colours are authored in sRGB (hex; `Color.setHex` converts), canvas colour textures are `srgbTex`, data textures (masks, detail, land use) stay untagged. The scene is lit in linear light into a half-float MSAA target; `renderer.outputColorSpace` stays linear because the sensor's post pass does the conversion itself (`show()`: exposure `uExp`, a soft shoulder, the sRGB curve; thermal frames hold heat and are taken as they are). Bloom in TV / NVG comes only from what is brighter than a sunlit white surface (`over()`); thermal keeps its own thresholds. Light intensities: `SKY_KEYS` are tuned in display space and go through `GAMMA` (x^2.2), × π. Any brightness factor tuned by eye (gains, window glow, detail shading in the ground shader) is a display-space number: put it through `GAMMA` / `pow(…, 2.2)`. Unlit sprites (smoke, dust, clouds) are scaled by `SU.uLit` (the light level, 1 at noon). In the heat term the colour and the sunlight are converted back to display values, so thermal looks as before.
-- Load order: `core → sensor → models → armor → helis → mapgen → layout → terrain → structures → effects → infantry → units → weapons → battle → weather → gunship → hud → audio → main`.
-  Target order: core → sensor → models → armor → mapgen → terrain → effects → weather → infantry → units → weapons → battle → gunship → hud → main → properties → settings.
+- Load order: `core → sensor → models → armor → helis → mapgen → layout → terrain → structures → effects → infantry → units → weapons → battle → weather → lights → guns → gunship → hud → audio → main → properties → settings`.
+  Then: `lights → guns` (after weather), and `properties → settings` (after main).
 
 | File | Contents |
 |---|---|
@@ -92,9 +93,12 @@ Update the status here when a stage is finished. The full approved design is sum
 | `js/gunship.js` | `GUNSHIP`: districts (towns, spots, farms, roads in the country; `GS_MARGIN` from the edge), a random start, the left orbit, the slew (eased aim + critically damped spring), transits (smootherstep, zoom-out arc), `track(p)` for combat; `TRACKS` (what the HUD brackets); the outposts are districts too |
 | `js/hud.js` | `HUD`: a 2D canvas over the picture (compass, altitude ladder, clock, grid, reticle per weapon, fixed-size brackets) + DOM for the clicks (`#modes`, `#arms`); sizes follow window height × `CFG.hudScale` (`--hs` in CSS) |
 | `js/main.js` | scene init, camera (the aircraft circles `CAM_CTR`, the sensor looks at `CAM_TGT`: slewing turns the line of sight, the lens keeps the frame's size at any range; `clampFrame`: the whole frame stays on the map, measured down to `MAP.lo`), `VIEW`, `updateEnvironment`, `fitShadow`, main loop |
+| `js/properties.js` | `WE_PROPERTIES`: generated from `project.json` by `tools/gen_properties.py` — never edit by hand; after changing a property in `project.json` run `python tools/gen_properties.py` (a test checks they agree) |
+| `js/settings.js` | the settings drawer in a normal browser (not in WE, not under automated tests unless `?cfg`): every property through `wallpaperPropertyListener`, kept in `localStorage`; the demo beat and an audio file player (`FILE_AUDIO`) for music |
+| `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=55`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=58`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
@@ -105,7 +109,7 @@ Update the status here when a stage is finished. The full approved design is sum
 - No `FlashLights` / point lights for blasts: every light costs on every terrain fragment. Additive ground glows instead.
 - Never create geometry per spawn; pools and `disposeTree`. Anything in `mergeStatic` that moves must be listed as dynamic. Spawn by time accumulators.
 - Map generation uses its own `mulberry32`, never `Math.random`.
-- At start one whole frame is drawn with nothing hidden and nothing culled (`finishInit`): `renderer.compile` does not make the shadow pass's programs, and hidden effect pools would compile on first use.
+- At start every program is compiled with `renderer.compileAsync` under the splash (a 20 s deadline), then one whole frame is drawn with nothing hidden and nothing culled (`finishInit`): compiling does not make the shadow pass's programs, and hidden effect pools would compile on first use. The splash hides itself after 45 s whatever happens (CSS).
 - Vision `auto` follows day and night live (TV / white-hot) until a mode is clicked (`SENSOR.manual`). Windows (`WIN_MAT`) are lit after dusk.
 
 ## Notes for later
@@ -117,4 +121,5 @@ Update the status here when a stage is finished. The full approved design is sum
 - Browser preview: `python -m http.server 8767` in this folder, URL params `?hour=22`, `?season=winter`, `?mode=wh`, `?zoom=150`, `?ts=N`.
 - Tests: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 [file / -g pattern]` (Playwright in Docker, SwiftShader; `$env:SEED = N`).
 - Review sheets: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 -c tools/preview.config.js` → `test-results/*.png`, `terrain-metrics.json`. URL params also `?seed=N`, `?x=&z=` (view point), `?az=` (fixed camera azimuth, deg), `?spot=town` (start district by name), `?transit=N` (minutes between transits, 0 = never), `?weapons=all` or `g25,h105`, `?hud=0`, `?demo=124` (a synthetic beat: the fight in a browser; `&pause=0` without silent bars), `?auto=0` (no auto-switching), `?enemies=N` (%), `?weather=rain` (clear / rain / snow / fog / auto), `?clouds=N` (%), `?aa=0`.
-- Tests feed music with `wp.sim(sec, { audio: true })`.
+- Tests feed music with `wp.sim(sec, { audio: true })`. `tests/soak.spec.js`: five fights and silences with every weapon, weather, day and night and a new season; nothing may pile up.
+- Workshop preview and README screenshots: `tools/test.ps1 -c tools/preview.config.js -g "gif|screens"` → `test-results/gif-*.gif`, `shot-*.jpg`; copy the chosen ones over `preview.gif` / `screenshots/`. `?cfg` shows the settings drawer under the tests.

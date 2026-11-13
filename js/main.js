@@ -2,7 +2,7 @@
 /* ===== Scene, camera, light & seasons, Wallpaper Engine properties, main loop ===== */
 let scene, camera, renderer, sunLight, hemi;
 const FX = {};
-let T = 0, paused = false, fpsLimit = 0, lastMs = 0, ready = false;
+let T = 0, paused = false, fpsLimit = 0, lastMs = 0, ready = false, worldSeed = 0;
 const ENV = { elev: 30, night: 0, day: 1, smokeTint: new THREE.Color(0xbbbbbb), dustTint: new THREE.Color(0xa89878) };
 function RT() { return performance.now() / 1000; }
 
@@ -21,19 +21,59 @@ if (QS.has('aa')) CFG.aa = QS.get('aa') !== '0';
 if (QS.has('auto')) CFG.autoArms = QS.get('auto') !== '0';
 if (QS.has('enemies')) CFG.enemies = parseFloat(QS.get('enemies'));
 
-/* ---- Wallpaper Engine properties ---- */
+/* ---- Wallpaper Engine properties (project.json; in a browser the settings panel feeds the same listener: js/settings.js) ----
+   They may come before the world is built (then init reads CFG) or at any time after it (then they apply at once). The URL's
+   test parameters win over them. A new seed rebuilds the map: a reload. */
 window.wallpaperPropertyListener = {
-  applyUserProperties(p) { if (ready) updateEnvironment(); },
+  applyUserProperties(p) {
+    const has = k => p[k] !== undefined && p[k] !== null, v = k => p[k].value, url = k => QS.has(k);
+    if (has('vision') && !url('mode')) { CFG.vision = v('vision'); if (ready && !SENSOR.manual) { SENSOR.set(SENSOR.initial()); HUD.markModes(); } }
+    if (has('zoom') && !url('zoom')) CFG.zoom = v('zoom');
+    if (has('orbit')) CFG.orbit = v('orbit');
+    if (has('transit') && !url('transit')) { CFG.transitMin = v('transit'); if (ready) GUNSHIP.nextTransit = T + GUNSHIP.interval(); }
+    if (has('callsign')) CFG.callsign = String(v('callsign') || '').trim().toUpperCase().slice(0, 20) || 'GHOSTRIDER 31';
+    if (has('hudscale')) CFG.hudScale = v('hudscale') / 100;
+    if (has('hudbottom')) CFG.hudBottom = v('hudbottom');
+    if (has('timemode') && !url('hour')) CFG.timeMode = v('timemode');
+    if (has('fixedhour') && !url('hour')) CFG.fixedHour = v('fixedhour');
+    if (has('season') && !url('season')) CFG.season = v('season');
+    if (has('weather') && !url('weather')) CFG.weather = v('weather');
+    if (has('clouds') && !url('clouds')) CFG.clouds = v('clouds');
+    let arms = false;
+    if (!url('weapons')) for (const w of WEAPONS) if (has('w_' + w.id)) { const on = !!v('w_' + w.id), i = CFG.weapons.indexOf(w.id); if (on && i < 0) CFG.weapons.push(w.id); if (!on && i >= 0) CFG.weapons.splice(i, 1); arms = true; }
+    if (arms) CFG.weapons.sort((a, b) => WEAPONS.indexOf(WEAPON[a]) - WEAPONS.indexOf(WEAPON[b]));
+    if (has('autoarms') && !url('auto')) CFG.autoArms = !!v('autoarms');
+    if (has('sens')) CFG.sens = v('sens');
+    if (has('fire')) CFG.fire = v('fire');
+    if (has('enemies') && !url('enemies')) CFG.enemies = v('enemies');
+    if (has('allies')) CFG.allies = v('allies');
+    if (has('aa') && !url('aa')) CFG.aa = !!v('aa');
+    if (has('shadows')) { CFG.shadows = !!v('shadows'); if (sunLight) sunLight.castShadow = CFG.shadows; }
+    if (has('quality')) { CFG.quality = v('quality'); applyQuality(); }
+    if (has('seed') && !url('seed')) { const s = Math.max(0, Math.round(v('seed'))); if (s !== CFG.seed) { CFG.seed = s; if (s && worldSeed && s !== worldSeed) location.reload(); } }
+    if (!ready) return;
+    if (arms) { if (!CFG.weapons.includes(ARMS.cur)) ARMS.cur = CFG.weapons[0] || null; HUD.buildArms(); }
+    HUD.resize(); updateEnvironment();
+  },
   applyGeneralProperties(p) { if (p.fps !== undefined) fpsLimit = p.fps; },
   setPaused(v) { paused = v; }
 };
+
+/* the quality setting: the render target's antialiasing and the pixel ratio */
+function applyQuality() {
+  const q = CFG.quality, pr = q === 'high' ? Math.min(window.devicePixelRatio || 1, 1.5) : q === 'medium' ? 1 : 0.75;
+  CFG.msaa = q === 'low' ? 0 : 4; if (!renderer) return;
+  renderer.setPixelRatio(pr);
+  if (SENSOR.rt && SENSOR.rt.samples !== CFG.msaa) { SENSOR.rt.samples = CFG.msaa; SENSOR.rt.dispose(); }   // (made again with the new samples on its next use)
+  if (ready) resize(); else if (SENSOR.rt) SENSOR.resize(renderer);
+}
 
 /* ---- init: the renderer at once, the world in slices under the splash ---- */
 function init() {
   const canvas = document.getElementById('c');
   renderer = new THREE.WebGLRenderer({ canvas, antialias: false, precision: 'highp', powerPreference: 'high-performance' });   // (MSAA is on the render target)
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  applyQuality();
   renderer.setSize(Math.max(1, window.innerWidth), Math.max(1, window.innerHeight), false);
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
   SENSOR.build(renderer);
@@ -61,7 +101,8 @@ function init() {
 }
 function* buildWorld() {
   const t0 = performance.now();
-  yield* MAP.generate(CFG.seed || (Math.random() * 2147483647 | 1));
+  worldSeed = CFG.seed || (Math.random() * 2147483647 | 1);   // (from here on a new seed needs a reload)
+  yield* MAP.generate(worldSeed);
   yield* LAYOUT.plan(MAP.seed);
   yield* TERRAIN.buildGround();
   yield* STRUCT.build();
@@ -93,14 +134,22 @@ function finishInit() {
   SENSOR.set(SENSOR.initial()); HUD.markModes();
   updateEnvironment();
   const hid = []; scene.traverse(o => { if (!o.visible) { hid.push(o); o.visible = true; } });   // (what is hidden now is compiled too: effect pools, the beam)
-  renderer.setRenderTarget(SENSOR.rt); renderer.compile(scene, camera); GUNS.warm(); renderer.setRenderTarget(null);   // under the splash: no compile stalls later
-  const cull = []; scene.traverse(o => { if (o.frustumCulled) { cull.push(o); o.frustumCulled = false; } });
-  if (CFG.shadows) fitShadow(); SENSOR.render();   // one whole frame of everything: the shadow pass's programs are only made when something is first drawn into it
-  for (const o of cull) o.frustumCulled = true;
-  for (const o of hid) o.visible = false;
-  ready = true;
-  const s = document.getElementById('splash'); if (s) { s.classList.add('off'); setTimeout(() => s.remove(), 700); }
-  requestAnimationFrame(frame);
+  // every program compiled under the splash, without blocking it (compileAsync: the driver links them in parallel where it can;
+  // a deadline in case one never reports), then one whole frame of everything: the shadow pass's programs are only made when
+  // something is first drawn into it
+  renderer.setRenderTarget(SENSOR.rt);
+  const deadline = new Promise(r => setTimeout(r, 20000)), go = () => {
+    if (ready) return;
+    renderer.setRenderTarget(null);
+    const cull = []; scene.traverse(o => { if (o.frustumCulled) { cull.push(o); o.frustumCulled = false; } });
+    if (CFG.shadows) fitShadow(); SENSOR.render();
+    for (const o of cull) o.frustumCulled = true;
+    for (const o of hid) o.visible = false;
+    ready = true;
+    const s = document.getElementById('splash'); if (s) { s.classList.add('off'); setTimeout(() => s.remove(), 700); }
+    requestAnimationFrame(frame);
+  };
+  Promise.race([Promise.all([renderer.compileAsync(scene, camera), GUNS.warm()]), deadline]).then(go, go);
 }
 
 /* ---- camera: perspective with a narrow lens from far away; ~95 m of screen height at 100 % zoom ---- */
@@ -203,7 +252,7 @@ function frame(ms) {
   }
   const el = clamp((ms - lastMs) / 1000, 0, 0.25); lastMs = ms;
   const n = Math.max(1, Math.ceil(el / 0.05)), dt = el / n;
-  if (DEMO.on) onAudio(demoSpectrum(RT(), DEMO.bpm, DEMO.pauses));
+  if (DEMO.on && !FILE_AUDIO.playing) onAudio(demoSpectrum(RT(), DEMO.bpm, DEMO.pauses));   // (a file playing in the settings panel feeds onAudio itself)
   for (let i = 0; i < n * TIME_SCALE; i++) step(dt);
   renderFrame();
 }

@@ -43,6 +43,8 @@ const CFG = {
   weather: 'auto',    // auto (drawn for the season every few minutes) / clear / rain / snow / fog
   clouds: 35,         // cloud cover under the aircraft, %
   aa: true,           // enemy anti-aircraft fire and the flares in reply (looks only)
+  allies: 100,        // how many allied reinforcements come, %
+  quality: 'high',    // high (antialiasing, pixel ratio up to 1.5) / medium (antialiasing, 1) / low (none, 0.75)
   autoArms: true      // switch the weapon to suit the targets and the music (a click on one holds it for 30 s)
 };
 
