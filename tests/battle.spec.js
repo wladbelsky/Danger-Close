@@ -82,3 +82,15 @@ test('a fight leaks nothing: geometries and programs stay put over two fights', 
   const b = await wp.run(count);
   expect(b.live, 'geometries in the scene').toBeLessThanOrEqual(a.live + 2); expect(b.p, 'shader programs (a shadow-pass variant may still turn up once)').toBeLessThanOrEqual(a.p + 1); expect(b.kids).toBeLessThanOrEqual(a.kids + 6);
 });
+
+test('at the map edge, where the frame cannot centre the target, the gun still fires at it', async ({ wp }) => {
+  await wp.boot({ query: '?hour=11&seed=3&transit=0&weapons=h105&auto=0' });
+  const r = await wp.run(() => {
+    const p = new THREE.Vector3(MAP_HALF - 25, 0, 0); p.y = groundH(p.x, p.z);
+    GUNSHIP.nextWander = 1e9; GUNSHIP.track(p); GUNSHIP.aimS.copy(GUNSHIP.aim); GUNSHIP.look.copy(GUNSHIP.aim); GUNSHIP.vel.set(0, 0, 0); __t.sim(0.1);
+    const u = { pos: GUNSHIP.look.clone() }, n = VIEW.ndc(u.pos);
+    return { shifted: Math.hypot(GUNSHIP.look.x - CAM_TGT.x, GUNSHIP.look.z - CAM_TGT.z), centred: Math.hypot(n.x * camera.aspect, n.y) < RET_ON, aim: BATTLE.onAim(u), far: BATTLE.onAim({ pos: new THREE.Vector3(GUNSHIP.look.x - 40, GUNSHIP.look.y, GUNSHIP.look.z) }) };
+  });
+  expect(r.shifted, 'the frame stops at the edge').toBeGreaterThan(3);
+  expect(r.centred).toBe(false); expect(r.aim, 'on the point the sensor is turned to').toBe(true); expect(r.far).toBe(false);
+});

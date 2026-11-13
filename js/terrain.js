@@ -61,6 +61,7 @@ function bareGeo(v) {   // a leafless tree: a trunk and a fan of branches
 const cone = (r, h, s) => new THREE.ConeGeometry(r, h, s || 7, 1, true), cylv = (a, b, h, s) => new THREE.CylinderGeometry(a, b, h, s || 4, 1, true);
 const CROWN_MAT = sensorMat(new THREE.MeshPhongMaterial({ color: 0x8c9084, vertexColors: true, shininess: 3, specular: 0x050505 }), 0.03); CROWN_MAT.userData.shared = true;
 const FIR_MAT = sensorMat(new THREE.MeshPhongMaterial({ color: 0xffffff, vertexColors: true, flatShading: true, shininess: 3, specular: 0x050505, side: THREE.DoubleSide }), 0.01); FIR_MAT.userData.shared = true;
+const FIR_DEPTH = new THREE.MeshDepthMaterial({ side: THREE.DoubleSide });
 const SNOW_FIR_MAT = sensorMat(new THREE.MeshPhongMaterial({ color: 0xbcc2ca, vertexColors: true, flatShading: true, shininess: 3, specular: 0x050505, side: THREE.DoubleSide }), -0.16); SNOW_FIR_MAT.userData.shared = true;
 const BARE_MAT = sensorMat(new THREE.MeshPhongMaterial({ color: 0xffffff, vertexColors: true, flatShading: true, shininess: 2, specular: 0x050505 }), 0.02); BARE_MAT.userData.shared = true;
 /* what grows in a season: roles are the same every season (the layout does not change), the shapes are not */
@@ -174,6 +175,7 @@ const TERRAIN = {
       let r = 0; for (let i = 0; i < count; i++) r = Math.max(r, Math.hypot(list[i * 4] - sx, list[i * 4 + 1] - sz));
       inst.boundingSphere = new THREE.Sphere(new V3(sx, (lo + hi) / 2 + 6, sz), Math.hypot(r + 9, (hi - lo) / 2 + 12));
       inst.castShadow = true; inst.receiveShadow = true; inst.instanceColor.needsUpdate = true;
+      if (K.mat.side === THREE.DoubleSide) inst.customDepthMaterial = FIR_DEPTH;   // (two-sided firs: a depth material of their own, compiled with the rest at the start; the shared one only switches its program in some orders)
       scene.add(inst); this.veg.push(inst);
       if (c % 64 === 0) yield;
     }

@@ -295,3 +295,30 @@ test('night lights', async ({ wp }) => {
   await at(() => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(1, { audio: true }); CFG.zoom = 70; if (BATTLE.base) __follow(BATTLE.base); __t.sim(0.5, { audio: true }); __t.render(); });
   await sheet(wp, shots, 3, 'night-lights.png');
 });
+
+/* stage 10: the big guns in frame (the 105 mm and the railgun on the aircraft): both at rest, their shots, the sensor slewed down
+   and up off the orbit's centre, thermal after a series, night, a fight with the tracer out of the barrel */
+test('big guns', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  const shots = [], at = async (fn, arg) => { await wp.run(fn, arg); shots.push((await wp.page.screenshot()).toString('base64')); };
+  await wp.boot({ query: '?hour=11&seed=11&spot=town&transit=0&season=summer&weather=clear&clouds=0&mode=tv&weapons=h105,rail&auto=0' });
+  await wp.run(() => { window.__slew = (m) => { const c = GUNSHIP.ctr, dx = camera.position.x - c.x, dz = camera.position.z - c.z, d = Math.hypot(dx, dz); GUNSHIP.nextWander = 1e9; GUNSHIP.vel.set(0, 0, 0); GUNSHIP.look.set(c.x + dx / d * m, 0, c.z + dz / d * m); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); }; });
+  await at(() => { __t.sim(1.5); __t.render(); });
+  await at(() => { GUNS.shot('h105'); __t.sim(0.03); __t.render(); });
+  await at(() => { __t.sim(0.6); GUNS.shot('rail'); __t.sim(0.03); __t.render(); });
+  await at(() => { __t.sim(1.5); __slew(110); __t.sim(0.05); __t.render(); });
+  await at(() => { __slew(-120); __t.sim(0.05); __t.render(); });
+  await at(() => { __slew(0); CFG.zoom = 60; __t.sim(2); __t.render(); });
+  await at(() => { CFG.zoom = 150; __t.sim(2); __t.render(); CFG.zoom = 100; __t.sim(2); });
+  await at(() => { __slew(0); for (let i = 0; i < 5; i++) { GUNS.shot('h105'); __t.sim(0.6); } SENSOR.set('wh'); HUD.markModes(); updateEnvironment(); __t.sim(0.05); __t.render(); });
+  await at(() => { SENSOR.set('tv'); HUD.markModes(); CFG.fixedHour = 23.5; updateEnvironment(); GUNS.shot('rail'); __t.sim(0.03); __t.render(); });
+  for (const id of ['h105', 'rail']) {
+    await wp.goto(`?hour=11&seed=11&season=summer&weather=clear&clouds=0&mode=tv&weapons=${id}&auto=0&aa=0`);
+    await at((id) => {
+      __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
+      const n = BATTLE.stat.shots + 1; for (let i = 0; i < 4000 && BATTLE.stat.shots < n; i++) __t.sim(0.05, { audio: true });
+      __t.render();
+    }, id);
+  }
+  await sheet(wp, shots, 3, 'big-guns.png');
+});

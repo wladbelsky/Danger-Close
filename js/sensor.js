@@ -16,7 +16,7 @@ function sensorHook(shader) {
   shader.uniforms.uAlbK = { value: this.userData.albK != null ? this.userData.albK : 0.22 };   // how much the visible colour shows in thermal
   shader.vertexShader = 'attribute float aHeat; varying float vHeat;\n' + shader.vertexShader.replace('#include <begin_vertex>', 'vHeat = aHeat;\n#include <begin_vertex>');
   let fs = shader.fragmentShader;
-  if (this.isMeshPhongMaterial) {   // the lamps' light (js/lights.js): a map of it seen from above, read at the fragment's place in the world
+  if (this.isMeshPhongMaterial && !this.userData.noLamp) {   // the lamps' light (js/lights.js): a map of it seen from above, read at the fragment's place in the world
     shader.uniforms.uLampMap = SU.uLampMap; shader.uniforms.uLampRect = SU.uLampRect; shader.uniforms.uCamW = SU.uCamW;
     fs = 'uniform sampler2D uLampMap; uniform vec3 uLampRect; uniform mat4 uCamW;\n' + fs.replace('#include <opaque_fragment>', 'outgoingLight += diffuseColor.rgb * texture2D(uLampMap, ((uCamW * vec4(-vViewPosition, 1.0)).xz - uLampRect.xy) * uLampRect.z + 0.5).rgb;\n#include <opaque_fragment>');
   }
@@ -100,7 +100,7 @@ const SENSOR = {
   render() {
     this.post.uniforms.uTime.value = T % 100;
     LAMPS.draw();
-    renderer.setRenderTarget(this.rt); renderer.clear(); renderer.render(scene, camera);
+    renderer.setRenderTarget(this.rt); renderer.clear(); renderer.render(scene, camera); GUNS.render();
     renderer.setRenderTarget(null); renderer.render(this.postScene, this.postCam);
   }
 };

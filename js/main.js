@@ -54,7 +54,7 @@ function init() {
   FX.smoke = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, 420, true, 0.14);
   FX.dust = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, 240, true, 0.46);
   FX.scorch = new Scorch(scene, 60);
-  FX.flare = new SpriteFX(scene, TEX.flash, THREE.AdditiveBlending, 120, false, 1); FX.flare.mesh.renderOrder = 10; LAMPS.init();   // flares and missiles near the lens: over the clouds
+  FX.flare = new SpriteFX(scene, TEX.flash, THREE.AdditiveBlending, 120, false, 1); FX.flare.mesh.renderOrder = 10; LAMPS.init(); GUNS.init();   // flares and missiles near the lens: over the clouds
   WEATHER.init();
 
   runSlices(buildWorld(), finishInit);
@@ -93,7 +93,7 @@ function finishInit() {
   SENSOR.set(SENSOR.initial()); HUD.markModes();
   updateEnvironment();
   const hid = []; scene.traverse(o => { if (!o.visible) { hid.push(o); o.visible = true; } });   // (what is hidden now is compiled too: effect pools, the beam)
-  renderer.setRenderTarget(SENSOR.rt); renderer.compile(scene, camera); renderer.setRenderTarget(null);   // under the splash: no compile stalls later
+  renderer.setRenderTarget(SENSOR.rt); renderer.compile(scene, camera); GUNS.warm(); renderer.setRenderTarget(null);   // under the splash: no compile stalls later
   const cull = []; scene.traverse(o => { if (o.frustumCulled) { cull.push(o); o.frustumCulled = false; } });
   if (CFG.shadows) fitShadow(); SENSOR.render();   // one whole frame of everything: the shadow pass's programs are only made when something is first drawn into it
   for (const o of cull) o.frustumCulled = true;
@@ -222,7 +222,7 @@ function step(dt) {
   FX.dust.update(dt, null, camera);
   FX.scorch.update(dt);
   FX.flare.update(dt);
-  WEATHER.update(dt); AA.update(dt); LAMPS.update(dt);
+  WEATHER.update(dt); AA.update(dt); LAMPS.update(dt); GUNS.update(dt);
   envTimer -= dt; if (envTimer <= 0) { envTimer = 2; updateEnvironment(); }
 }
 

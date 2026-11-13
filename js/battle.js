@@ -111,7 +111,7 @@ function baseModel(type) {
 }
 
 const RET_ON = 0.07;   // the reticle is "on" a target within this of the frame's centre (in half frame heights): no shot before that
-const _bm = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0);
+const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0);
 const BATTLE = {
   base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0 },
   pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, nextHop: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0,
@@ -311,7 +311,7 @@ const BATTLE = {
 
   /* ---- the gunship ---- */
   /* where the rounds come from: just under the lens (they fly away from the viewer and shrink onto the target) */
-  muzzle(out, side) { const e = camera.matrixWorld.elements; return out.copy(camera.position).addScaledVector(_bt.set(e[4], e[5], e[6]), -5.5).addScaledVector(_bt.set(e[0], e[1], e[2]), side || -1.5); },
+  muzzle(out, side) { this.barrel = !side && !!GUNS.muzzleAt(ARMS.cur, out, 45); if (this.barrel) return out; const e = camera.matrixWorld.elements; return out.copy(camera.position).addScaledVector(_bt.set(e[4], e[5], e[6]), -5.5).addScaledVector(_bt.set(e[0], e[1], e[2]), side || -1.5); },
   /* the target for a weapon: the one it is on while that is alive and in the frame, else the nearest to the frame's centre */
   target(w) {
     const f = this.focus; if (f && f.alive && w.hitSet.has(f.kind) && this.inFrame(f.pos)) return f;
@@ -332,7 +332,14 @@ const BATTLE = {
     this.lastShot = T; this.stat.shots++; this.fire(w, t);
   },
   /* is the target under the reticle (within 0.13 of the frame's height from the centre)? */
-  onReticle(u) { const n = VIEW.ndc(u.pos); return Math.hypot(n.x * camera.aspect, n.y) < RET_ON || this.offT > 5; },   // (or it cannot be centred: at the map's edge the frame stops)
+  onReticle(u) { return this.onAim(u) || this.offT > 5; },   // (or it could not be brought there for a while)
+  /* is it where the sensor points? At the map's edge the frame stops short of the point it is turned to (clampFrame): then
+     what counts is that point, wherever it shows in the frame (else a wide lens, the 105 mm's, may never fire there) */
+  onAim(u) {
+    const n = VIEW.ndc(u.pos), ax = n.x * camera.aspect, ay = n.y; if (Math.hypot(ax, ay) < RET_ON) return true;
+    if (Math.hypot(GUNSHIP.look.x - CAM_TGT.x, GUNSHIP.look.z - CAM_TGT.z) < 0.5) return false;
+    const m = VIEW.ndc(_bla.copy(GUNSHIP.look)); return Math.hypot(ax - m.x * camera.aspect, ay - m.y) < RET_ON;
+  },
   /* the camera onto a unit: a little ahead of a moving one, so the slew's lag leaves the reticle on it */
   lookAt(u) {
     this.velOf(u, _bd); _bp.set(u.pos.x + _bd.x * (2 / SLEW_LOCK + 0.125), 0, u.pos.z + _bd.z * (2 / SLEW_LOCK + 0.125));
@@ -341,7 +348,7 @@ const BATTLE = {
   },
   velOf(u, out) { const v = u.v || 0, a = u.yaw || 0; return u.kind === 'inf' ? out.set(0, 0, 0) : out.set(Math.cos(a) * v, 0, Math.sin(a) * v); },
   fire(w, t) {
-    const G = GUN[w.id];
+    const G = GUN[w.id]; GUNS.shot(w.id);
     if (w.id === 'rail') { this.rail(w, G, t); return; }
     for (let i = 0; i < G.n; i++) this.after(i * G.step, () => {
       const a = rand(0, TAU), r = Math.sqrt(Math.random()) * G.spread, fl = G.missile || 0.28; this.velOf(t, _bd);
@@ -349,6 +356,7 @@ const BATTLE = {
       if (G.missile) { this.missiles.push({ w, G, tgt: G.spread < 2 ? t : null, from: this.muzzle(new V3(), rand(-1, 1) > 0 ? rand(8, 14) : rand(-14, -8)).addScaledVector(_bt.set(camera.matrixWorld.elements[4], camera.matrixWorld.elements[5], camera.matrixWorld.elements[6]), -3), to, p: 0, t: 0, dur: G.missile, rush: false, puff: 0 }); return; }
       this.muzzle(_bm); _bt.subVectors(to, _bm); const d = _bt.length();
       FX.tracers.spawn(_bm, _bt.multiplyScalar(1 / fl), { life: fl, len: G.tl, w: G.tw, color: 0xffc070 });
+      if (this.barrel) FX.tracers.spawn(_bm, _bt, { life: 0.08, len: 45, w: G.tw * 2.5, color: 0xffd090 });   // (out of the barrel in the frame: a streak back to the muzzle for the first frames)
       this.after(fl, () => { hitFx(to.x, to.y, to.z, G.fx); this.strike(to, G.r, G.dmg, w, false); });
     });
   },
@@ -408,7 +416,7 @@ const BATTLE = {
       const far = c.filter(s => Math.hypot(s.x - GUNSHIP.look.x, s.z - GUNSHIP.look.z) > 250); if (far.length) { const s = pick(far); this.focus = null; GUNSHIP.goTo({ n: 'tgt', x: s.x, z: s.z }); return; }
     }
     const w = ARMS.w, f = w ? this.target(w) : null;
-    if (f) { this.seekT = T + 4; this.lookAt(f); const n = VIEW.ndc(f.pos); this.offT = Math.hypot(n.x * camera.aspect, n.y) < RET_ON ? 0 : this.offT + 0.4; return; }
+    if (f) { this.seekT = T + 4; this.lookAt(f); this.offT = this.onAim(f) ? 0 : this.offT + 0.4; return; }
     this.focus = null; this.offT = 0; if (T < this.seekT) return;
     if (here && !man) {   // enemies here that no enabled weapon may hit: the sensor stays on them and the allies are called in to finish them
       this.lookAt(here);
