@@ -201,21 +201,18 @@ const BATTLE = {
     if (T > this.nextWave) { this.nextWave = T + rand(10, 20) / k; let n = 0; for (const E of this.cols) if (!E.retreat && !E.ally) n += E.col.u.length; if (n < Math.round(9 * k)) this.spawnColumn(); }
     if (T > this.nextSquad) { this.nextSquad = T + rand(18, 35) / k; if (this.base && this.squads.filter(s => !s.flee && s.side === 'enemy').length < Math.round(4 * k)) this.squadAt('enemy', this.base.x, this.base.z, 95, 170, 60, 150); }
     if (T > this.nextField) { this.nextField = T + rand(35, 60) / k; this.spots = this.spots.filter(s => this.hot(s, 200)); if (this.spots.length < 2) this.spawnField(); }
+    if (T > this.nextHeli) { this.nextHeli = T + rand(40, 70) / k; if (this.helis.filter(h => h.alive && !h.retreat).length < Math.round(2 * k)) this.spawnHeli(); }   // (with a base or without, whatever the allies' share)
     // the allies' quick reaction force: a column from a road near the base and fireteams round it, so there are always some of them in the fight
     const B = this.base; if (!B) return;
     const ka = CFG.allies / 100; if (ka <= 0) return;   // (the allies' share: how many and how often)
     if (T > this.nextQrf) { this.nextQrf = T + rand(20, 35) / ka; let n = 0; for (const u of UNITS) if (u.side === 'ally' && u.col && Math.hypot(u.pos.x - B.x, u.pos.z - B.z) < 320) n++; if (n < Math.round(4 * ka)) this.columnTo('ally', B.node, pick(QRF_TYPES)); }
     if (T > this.nextAsq) { this.nextAsq = T + rand(15, 30) / ka; if (this.squads.filter(s => !s.flee && s.side === 'ally').length < Math.max(1, Math.round(2 * ka))) this.squadAt('ally', B.x, B.z, 95, 170, 60, 150); }
-    if (T > this.nextHeli) { this.nextHeli = T + rand(40, 70) / k; if (this.helis.filter(h => h.alive && !h.retreat).length < Math.round(2 * k)) this.spawnHeli(); }
   },
   spawnColumn() {
     const N = ROADNET; let k = -1;
     for (let t = 0; t < 40 && k < 0; t++) { const c = randi(0, N.n - 1), x = N.X[c], z = N.Z[c]; if (!N.BR[c] && this.hidden(x, z, 0.8) && !UNITS.some(u => u.side === 'ally' && Math.hypot(u.pos.x - x, u.pos.z - z) < 160)) k = c; }
     if (k < 0) return;
-    const opts = []; if (this.base && this.base.node >= 0) opts.push(this.base.node, this.base.node);
-    for (const P of ALLIES.posts) if (P.gateNode >= 0) opts.push(P.gateNode);
-    const h = N.nearest(GUNSHIP.home.x, GUNSHIP.home.z, 160); if (h >= 0) opts.push(h);
-    if (!opts.length) return;
+    const opts = this.dests(); if (!opts.length) return;
     const dest = pick(opts), nodes = N.route(k, dest); if (!nodes || nodes.length < 30) return;
     const path = Path.fromNodes(nodes); if (!this.hidden(path.p[Math.min(path.p.length - 1, 14)].x, path.p[Math.min(path.p.length - 1, 14)].z, 0.8)) return;
     const col = new Column(pick(WAVES).map(t => new Vehicle(t, 'enemy'))); col.place(path);
@@ -245,7 +242,8 @@ const BATTLE = {
   },
   /* room for another of the allies' columns? At most seven: one standing idle out of sight is taken away to make room */
   allyRoom() {
-    const mine = this.cols.filter(E => E.ally && !E.retreat); if (mine.length < 7) return true;
+    if (CFG.allies <= 0) return false;   // (no allied reinforcements at all)
+    const mine = this.cols.filter(E => E.ally && !E.retreat && E.col.u.length); if (mine.length < 7) return true;   // (a column emptied this step is gone, not idle)
     const E = mine.find(E => E.col.done && !E.col.engaged && E.col.u.every(v => this.hidden(v.pos.x, v.pos.z, 0.5))); if (!E) return false;
     for (const v of E.col.u.slice()) { this.seen('out', v.pos); v.remove(); } return true;
   },
@@ -277,7 +275,7 @@ const BATTLE = {
     const d = pick(c), node = ROADNET.nearest(d.x, d.z, 160); this.spots.push({ x: d.x, z: d.z });
     this.squadAt('enemy', d.x, d.z, 10, 60, 25, 70); if (Math.random() < 0.6) this.squadAt('enemy', d.x, d.z, 10, 60, 25, 70);
     this.columnTo('enemy', node, pick(WAVES)); this.columnTo('ally', node, pick(QRF_TYPES));
-    this.squadAt('ally', d.x, d.z, 70, 130, 50, 110);
+    if (CFG.allies > 0) this.squadAt('ally', d.x, d.z, 70, 130, 50, 110);
   },
   /* are there allied vehicles within 200 m of p? */
   backed(p) { return UNITS.some(u => u.side === 'ally' && u.kind !== 'inf' && u.kind !== 'heli' && Math.hypot(u.pos.x - p.x, u.pos.z - p.z) < 200); },
@@ -434,7 +432,7 @@ const BATTLE = {
       if (T < this.waitT) return;
     } else this.waitT = 0;
     const en = man && w ? [w] : ARMS.enabled(); let best = null, bd = 1e9;   // (a weapon chosen by hand: to what it can hit)
-    for (const u of UNITS) { if (u.side !== 'enemy' || !en.some(q => q.hitSet.has(u.kind))) continue; const d = Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z) * (this.backed(u.pos) ? 0.4 : 1); if (d < bd) { bd = d; best = u; } }   // (rather where the allies already are)
+    for (const u of UNITS) { if (u.side !== 'enemy' || !en.some(q => q.hitSet.has(u.kind))) continue; let d = Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z); if (d * 0.4 < bd && this.backed(u.pos)) d *= 0.4; if (d < bd) { bd = d; best = u; } }   // (rather where the allies already are; backed() only for one that could win)
     if (best) bd = Math.hypot(best.pos.x - GUNSHIP.look.x, best.pos.z - GUNSHIP.look.z);
     if (best && !this.backed(best.pos) && T > this.nextCall) { this.nextCall = T + 25; this.columnTo('ally', ROADNET.nearest(best.pos.x, best.pos.z, 250), pick(QRF_TYPES)); }   // (nobody of ours there: a column is called in)
     if (!best) { if (man) this.manualUntil = 0; return; }   // (nothing anywhere for the chosen weapon: the auto-switching takes over)
@@ -469,7 +467,7 @@ const BATTLE = {
       const E = this.cols[i], c = E.col;
       if (!c.u.length) { this.cols.splice(i, 1); continue; }
       if (!E.retreat) {   // under the gunship's fire a column does not stand still: it drives on, and from where it was halted, off down the road
-        const run = c.alarm > T; if (run && c.done) { E.hold = false; for (let k = 0; k < 6; k++) { const n = randi(0, ROADNET.n - 1); if (Math.hypot(ROADNET.X[n] - c.u[0].pos.x, ROADNET.Z[n] - c.u[0].pos.z) > 300 && c.reroute(n)) break; } }
+        const run = c.alarm > T; if (run && c.done && T > (E.runT || 0)) { E.hold = false; E.runT = T + 2; for (let k = 0; k < 6; k++) { const n = randi(0, ROADNET.n - 1); if (Math.hypot(ROADNET.X[n] - c.u[0].pos.x, ROADNET.Z[n] - c.u[0].pos.z) > 300 && c.reroute(n)) break; } }   // (no way found: tried again in 2 s, not every step)
         if (c.done && !c.engaged && !E.hold && !run) { if (!E.idle) E.idle = T + rand(8, 15); else if (T > E.idle) { E.idle = 0; this.retask(E); } } else E.idle = 0;   // (arrived and nothing to do: on to the next fight)
         c.update(dt, run || (!E.hold && !c.engaged)); continue;
       }

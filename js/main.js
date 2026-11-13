@@ -39,6 +39,7 @@ window.wallpaperPropertyListener = {
     if (has('season') && !url('season')) CFG.season = v('season');
     if (has('weather') && !url('weather')) CFG.weather = v('weather');
     if (has('clouds') && !url('clouds')) CFG.clouds = v('clouds');
+    if (!ready && ((has('weather') && !url('weather')) || (has('season') && !url('season')))) WEATHER.pick(true);   // (the first weather was drawn in init, before these came: drawn again for them, already there, not fading out of the wrong one)
     let arms = false;
     if (!url('weapons')) for (const w of WEAPONS) if (has('w_' + w.id)) { const on = !!v('w_' + w.id), i = CFG.weapons.indexOf(w.id); if (on && i < 0) CFG.weapons.push(w.id); if (!on && i >= 0) CFG.weapons.splice(i, 1); arms = true; }
     if (arms) CFG.weapons.sort((a, b) => WEAPONS.indexOf(WEAPON[a]) - WEAPONS.indexOf(WEAPON[b]));

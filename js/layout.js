@@ -392,7 +392,8 @@ const LAYOUT = {
           S.segs.push({ x: mx + qx * 5.2, z: mz + qz * 5.2, a: Math.atan2(vz, vx), y: (R.h[i] + R.h[i + 2]) / 2, L: L2 });
         }
         this.station = S;
-        carveRect(S.bx, S.bz, 18, 9, a, S.y, 4); stampRect(S.x - nx * 4, S.z - nz * 4, 96, 14, a, OCC_BUILD);   // the platform, both tracks and a clearance: no crossing or road next to it stampRect(S.bx, S.bz, 20, 12, a, OCC_BUILD);
+        carveRect(S.bx, S.bz, 18, 9, a, S.y, 4); stampRect(S.x - nx * 4, S.z - nz * 4, 96, 14, a, OCC_BUILD);   // the platform, both tracks and a clearance: no crossing or road next to it
+        stampRect(S.bx, S.bz, 20, 12, a, OCC_BUILD);                                                              // the station building
         return;
       }
     }

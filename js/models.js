@@ -90,22 +90,6 @@ function strut(p, a, b, r, c) {
   const m = shade(new THREE.Mesh(new THREE.CylinderGeometry(r, r, L, 4), mm(c)));
   m.position.copy(a).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(new V3(0, 1, 0), d.normalize()); p.add(m); return m;
 }
-const DECK_MARK_MATS = {};
-function deckLine(p, x1, z1, x2, z2, w, color, y) {
-  if (!DECK_MARK_MATS[color]) {
-    DECK_MARK_MATS[color] = new THREE.MeshPhongMaterial({ color, flatShading: true, shininess: 4, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-    DECK_MARK_MATS[color].userData.shared = true;
-  }
-  const dx = x2 - x1, dz = z2 - z1, L = Math.hypot(dx, dz);
-  const g = new THREE.PlaneGeometry(L, w); g.rotateX(-Math.PI / 2);
-  const m = new THREE.Mesh(g, DECK_MARK_MATS[color]); m.receiveShadow = true;
-  m.position.set((x1 + x2) / 2, y, (z1 + z2) / 2); m.rotation.y = Math.atan2(-dz, dx);
-  p.add(m); return m;
-}
-function dashed(p, x1, z1, x2, z2, w, color, y, dash, gap) {
-  const L = Math.hypot(x2 - x1, z2 - z1), ux = (x2 - x1) / L, uz = (z2 - z1) / L;
-  for (let s = 0; s < L; s += dash + gap) { const e = Math.min(L, s + dash); deckLine(p, x1 + ux * s, z1 + uz * s, x1 + ux * e, z1 + uz * e, w, color, y); }
-}
 function windowMat() { return sensorMat(new THREE.MeshPhongMaterial({ color: 0x14202c, emissive: 0x000000, shininess: 70, specular: 0x7090b0, flatShading: true })); }
 
 /* ===== Seasonal shared materials: roofs turn white in winter (seasonMats, called by TERRAIN.build) ===== */

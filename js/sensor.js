@@ -30,7 +30,7 @@ function sensorHook(shader) {
 function sensorMat(mat, heat) { mat.onBeforeCompile = sensorHook; if (heat != null) mat.userData.heat = heat; return mat; }
 
 const POST_FS = `
-  uniform sampler2D tMap; uniform float uMode, uTime, uNight, uExp; uniform vec2 uRes; varying vec2 vUv;
+  uniform sampler2D tMap; uniform float uMode, uTime, uNight, uExp; varying vec2 vUv;
   float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
   /* linear light → the display: a soft shoulder for what is over 1 (flashes, snow in the sun), then the sRGB curve. Thermal frames hold heat, not light: taken as they are */
   vec3 show(vec3 c) { if (uMode > 0.5 && uMode < 2.5) return c; c *= uExp; c = c / (1.0 + max(c - 0.8, 0.0) * 0.55); return pow(clamp(c, 0.0, 1.0), vec3(0.4545)); }
@@ -66,7 +66,7 @@ const SENSOR = {
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     this.rt = new THREE.WebGLRenderTarget(size.x, size.y, { samples: CFG.msaa, depthBuffer: true, type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
     this.post = new THREE.ShaderMaterial({
-      uniforms: { tMap: { value: this.rt.texture }, uMode: { value: 0 }, uTime: { value: 0 }, uNight: { value: 0 }, uExp: { value: 1.6 }, uRes: { value: size } },
+      uniforms: { tMap: { value: this.rt.texture }, uMode: { value: 0 }, uTime: { value: 0 }, uNight: { value: 0 }, uExp: { value: 1.6 } },
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
       fragmentShader: POST_FS, depthTest: false, depthWrite: false
     });
@@ -76,7 +76,7 @@ const SENSOR = {
   },
   resize(renderer) {
     const s = renderer.getDrawingBufferSize(new THREE.Vector2());
-    this.rt.setSize(s.x, s.y); this.post.uniforms.uRes.value.copy(s);
+    this.rt.setSize(s.x, s.y);
   },
   /* set the vision mode; a click on the HUD comes here (never saved: the property gives the default at every start) */
   set(mode) {
@@ -100,7 +100,11 @@ const SENSOR = {
   render() {
     this.post.uniforms.uTime.value = T % 100;
     LAMPS.draw();
-    renderer.setRenderTarget(this.rt); renderer.clear(); renderer.render(scene, camera); GUNS.render();
+    // (render() clears the target itself; every render() into it also makes its mipmaps for the bloom: when the guns are drawn
+    // over the world, only their render does)
+    const guns = GUNS.pose(), tex = this.rt.texture;
+    renderer.setRenderTarget(this.rt); tex.generateMipmaps = !guns; renderer.render(scene, camera); tex.generateMipmaps = true;
+    if (guns) GUNS.render();
     renderer.setRenderTarget(null); renderer.render(this.postScene, this.postCam);
   }
 };

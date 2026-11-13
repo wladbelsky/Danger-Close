@@ -158,7 +158,7 @@ const TERRAIN = {
         const cx = clamp(Math.floor((px + MAP_HALF) / CHUNK_M), 0, CHUNK_N - 1), cz = clamp(Math.floor((pz + MAP_HALF) / CHUNK_M), 0, CHUNK_N - 1);
         buckets[(cz * CHUNK_N + cx) * N + role].push(px, pz, d, e); n++;
       }
-      if (Math.round(z) % 96 === 3) yield;
+      if (Math.round((z + MAP_HALF - SP / 2) / SP) % 16 === 15) yield;   // (every 16 rows; the rows lie at z = 5 mod 6, so a test on z itself never held)
     }
     this.trees = n;
     for (let c = 0; c < buckets.length; c++) {

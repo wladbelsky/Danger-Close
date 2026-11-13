@@ -274,7 +274,7 @@ class Squad {
 }
 /* can a soldier walk straight from a to b (no wall, building, water or outpost yard on the way)? */
 function walkable(ax, az, bx, bz) {
-  const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 2);
+  const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 2));   // (at least 1: a single point, a == b, is tested too, not 0 / 0)
   for (let i = 0; i <= n; i++) { const x = lerp(ax, bx, i / n), z = lerp(az, bz, i / n); if ((occAt(x, z) & (OCC_BUILD | OCC_WATER | OCC_YARD)) || waterAt(x, z) || Math.abs(x) > MAP_HALF - 40 || Math.abs(z) > MAP_HALF - 40) return false; }
   return true;
 }
@@ -329,7 +329,7 @@ const ALLIES = {
       if (P.heli.out) { const i = this.helis.indexOf(P.heli); if (i >= 0) { this.helis.splice(i, 1); P.heliAt = T + rand(70, 130); } if (T > P.heliAt && away) this.fly(P); }
       if (P.squad.m.length < 4 && away && !war) P.squad.join(P.sq[0], P.sq[1]);
       if (!c.u.length) continue;
-      if (war && P.state !== 'sortie') { if (c.reroute(BATTLE.base.node)) P.state = 'sortie'; }
+      if (war && P.state !== 'sortie') { if (T > (P.retry || 0)) { if (c.reroute(BATTLE.base.node)) P.state = 'sortie'; else P.retry = T + 5; } }   // (no way there: tried again in 5 s, not every step)
       else if (!war && P.state === 'sortie') { if (P.gateNode >= 0 && c.reroute(P.gateNode, P.drive.slice().reverse())) P.state = 'back'; else { P.state = 'hold'; P.timer = 20; } }
       if (P.state === 'sortie') { c.update(dt, !c.engaged); continue; }
       if (P.state === 'park' || P.state === 'hold') {

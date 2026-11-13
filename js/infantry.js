@@ -31,7 +31,7 @@ const INF_MAT = sensorMat(new THREE.MeshPhongMaterial({ vertexColors: true, flat
 INF_MAT.userData.shared = true;
 const _im = new THREE.Matrix4(), _iq = new THREE.Quaternion(), _ie = new THREE.Euler(0, 0, 0, 'YZX'), _is = new V3(1, 1, 1), _ip = new V3(), _io = new V3();
 const INF = {
-  list: [], body: null, legs: null,
+  list: [], body: null, legs: null, dirty: true,   // (dirty: the list changed, the instances' colours are written again)
   build() {
     this.body = new THREE.InstancedMesh(INF_BODY_GEO, INF_MAT, INF_MAX); this.legs = new THREE.InstancedMesh(INF_LEG_GEO, INF_MAT, INF_MAX * 2);
     for (const m of [this.body, this.legs]) { m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); }
@@ -41,24 +41,24 @@ const INF = {
   add(side, x, z) {
     if (this.list.length >= INF_MAX) return null;
     const s = { position: new V3(x, groundH(x, z), z), a: 0, phase: Math.random() * TAU, stride: 0, side, visible: true };
-    this.list.push(s); TRACKS.push({ obj: s, side, inf: true, h: 1.1 }); return s;
+    this.list.push(s); this.dirty = true; TRACKS.push({ obj: s, side, inf: true, h: 1.1 }); return s;
   },
-  remove(s) { const i = this.list.indexOf(s); if (i >= 0) this.list.splice(i, 1); const k = TRACKS.findIndex(t => t.obj === s); if (k >= 0) TRACKS.splice(k, 1); },
-  /* the instances from the soldiers, once a frame */
+  remove(s) { const i = this.list.indexOf(s); if (i >= 0) { this.list.splice(i, 1); this.dirty = true; } untrack(s); },
+  /* the instances from the soldiers, once a frame (their colours only when the list changed: a slot's side changes only then) */
   update() {
-    let n = 0;
+    let n = 0; const col = this.dirty; this.dirty = false;
     for (const s of this.list) {
       if (!s.visible) continue;
-      _ie.set(0, -s.a, 0); _iq.setFromEuler(_ie); _im.compose(s.position, _iq, _is); this.body.setMatrixAt(n, _im); this.body.setColorAt(n, INF_COL[s.side]);
+      _ie.set(0, -s.a, 0); _iq.setFromEuler(_ie); _im.compose(s.position, _iq, _is); this.body.setMatrixAt(n, _im); if (col) this.body.setColorAt(n, INF_COL[s.side]);
       const sw = Math.sin(s.phase) * 0.5 * s.stride;
       for (let k = 0; k < 2; k++) {
         const side = k ? 1 : -1; _io.set(0, 0.9, side * 0.1).applyQuaternion(_iq); _ip.copy(s.position).add(_io);
-        _ie.set(0, -s.a, sw * side); _iq.setFromEuler(_ie); _im.compose(_ip, _iq, _is); this.legs.setMatrixAt(n * 2 + k, _im); this.legs.setColorAt(n * 2 + k, INF_COL[s.side]);
+        _ie.set(0, -s.a, sw * side); _iq.setFromEuler(_ie); _im.compose(_ip, _iq, _is); this.legs.setMatrixAt(n * 2 + k, _im); if (col) this.legs.setColorAt(n * 2 + k, INF_COL[s.side]);
         _ie.set(0, -s.a, 0); _iq.setFromEuler(_ie);
       }
       n++;
     }
     this.body.count = n; this.legs.count = n * 2;
-    for (const m of [this.body, this.legs]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+    for (const m of [this.body, this.legs]) { m.instanceMatrix.needsUpdate = true; if (col && m.instanceColor) m.instanceColor.needsUpdate = true; }
   }
 };

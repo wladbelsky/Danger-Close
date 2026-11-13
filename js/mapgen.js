@@ -43,16 +43,6 @@ const MAP = {
     const gx = clamp((x + MAP_HALF) / MAP_CELL, 0, MAP_N - 1e-3), gz = clamp((z + MAP_HALF) / MAP_CELL, 0, MAP_N - 1e-3), i = Math.floor(gx), j = Math.floor(gz), u = gx - i, v = gz - j, k = j * MAP_V + i;
     return lerp(lerp(a[k], a[k + 1], u), lerp(a[k + MAP_V], a[k + MAP_V + 1], u), v);
   },
-  /* a point worth starting over: inside the middle of the map, with a mix of forest and open ground around it */
-  startPoint() {
-    let best = null, score = -1;
-    for (let z = -320; z <= 320; z += 80) for (let x = -320; x <= 320; x += 80) {
-      let m = 0; for (let a = 0; a < 8; a++) m += this.sample(this.forest, x + Math.cos(a * 0.785) * 60, z + Math.sin(a * 0.785) * 60) / 8;
-      const q = 1 - Math.abs(m - 0.4) - Math.hypot(x, z) / 4000;
-      if (q > score) { score = q; best = [x, z]; }
-    }
-    return best;
-  },
   /* a checksum of the map (tests: the same seed gives the same map) */
   hash() { let s = 0; for (let k = 0; k < this.h.length; k += 11) s = (Math.imul(s, 31) + Math.round(this.h[k] * 100) + Math.round(this.forest[k] * 100)) | 0; return s; },
   /* the steepest slope between neighbouring grid vertices (rise over run) */

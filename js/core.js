@@ -17,7 +17,6 @@ function approachAngle(cur, target, maxStep) { const d = angleWrap(target - cur)
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 /* seeded PRNG for everything that must repeat for a map seed (Math.random is consumed by three.js UUIDs) */
 function mulberry32(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-const HTML_ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }, escHtml = s => String(s).replace(/[&<>"]/g, c => HTML_ESC[c]);   // text into innerHTML (the town name is the user's)
 
 /* Settings (overridden by Wallpaper Engine user properties) */
 const CFG = {

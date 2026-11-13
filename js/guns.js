@@ -134,9 +134,8 @@ const GUNS = {
     _gp.set(_gm.x, _gm.y, 0.5).unproject(camera).sub(camera.position).normalize();
     return out.copy(camera.position).addScaledVector(_gp, d);
   },
-  /* over the world in the sensor's target (SENSOR.render) */
+  /* over the world in the sensor's target (SENSOR.render, once pose() said something of it is shown) */
   render() {
-    if (!this.scene || !this.pose()) return;
     const ac = renderer.autoClear; renderer.autoClear = false; renderer.clearDepth(); renderer.render(this.scene, this.cam); renderer.autoClear = ac;
   },
   /* compile its programs under the splash (everything shown once) */
@@ -145,4 +144,4 @@ const GUNS = {
     const p = renderer.compileAsync(this.scene, this.cam); for (const o of hid) o.visible = false; return p;   // (compileAsync takes what is visible at the call)
   }
 };
-const _gn = new THREE.PerspectiveCamera(), _gm = new V3(), _ga = new V3(), _gs = new V3(), _gu = new V3(), _gv = new V3(), _gp = new V3(), _gb = new V3(), _gt = new V3(), _gd = new V3();
+const _gn = new THREE.PerspectiveCamera(), _gm = new V3(), _ga = new V3(), _gs = new V3(), _gu = new V3(), _gv = new V3(), _gp = new V3(), _gt = new V3(), _gd = new V3();

@@ -13,16 +13,15 @@ class Tracers {
     const zero = new THREE.Matrix4().makeScale(0, 0, 0), c = new THREE.Color(0, 0, 0);
     for (let i = 0; i < n; i++) {
       this.mesh.setMatrixAt(i, zero); this.mesh.setColorAt(i, c);
-      this.items.push({ on: false, p: new V3(), v: new V3(), life: 0, max: 1, len: 1, w: 0.1, col: new THREE.Color(), grav: 0, splash: 0 });
+      this.items.push({ on: false, p: new V3(), v: new V3(), life: 0, max: 1, len: 1, w: 0.1, col: new THREE.Color(), grav: 0 });
     }
     this.next = 0; this.mesh.visible = false; scene.add(this.mesh);
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new V3(); this._d = new V3(); this._x = new V3(1, 0, 0);
-    this.onSplash = null;
   }
   spawn(p, v, o) {
     const i = this.next, it = this.items[i]; this.next = (this.next + 1) % this.n;
     it.on = true; it.p.copy(p); it.v.copy(v); it.life = it.max = o.life || 1; it.len = o.len || 1; it.w = o.w || 0.1;
-    it.col.setHex(o.color || 0xffaa55); it.grav = o.grav || 0; it.splash = o.splash || 0;
+    it.col.setHex(o.color || 0xffaa55); it.grav = o.grav || 0;
     this.mesh.setColorAt(i, it.col); this.mesh.instanceColor.needsUpdate = true; this.mesh.visible = true;
     return it;
   }
@@ -33,7 +32,6 @@ class Tracers {
       const it = this.items[i]; if (!it.on) continue;
       changed = true;
       it.v.y -= it.grav * dt; it.p.addScaledVector(it.v, dt); it.life -= dt;
-      if (it.splash && it.p.y < groundH(it.p.x, it.p.z)) { if (this.onSplash) this.onSplash(it.p, it.splash); it.life = 0; }
       if (it.life <= 0) { it.on = false; this._m.makeScale(0, 0, 0); this.mesh.setMatrixAt(i, this._m); continue; }
       active++;
       this._d.copy(it.v).normalize(); this._q.setFromUnitVectors(this._x, this._d);
@@ -133,8 +131,7 @@ class SpriteFX {
 
 /* craters where shells and bombs hit the ground: a low lathe (dark bowl, a raised rim of turned-up earth that catches
    the light, soot-dark ejecta thinning out to the ground) in vertex colours; one instanced mesh, a fixed pool of slots; old
-   ones flatten and shrink away. A hit on a live crater widens it instead of stacking a second one on it (merge); on paved
-   ground they are cleared sooner, a repair (runway crew, a mount back on line) fills them in over 3 s */
+   ones flatten and shrink away. A hit on a live crater widens it instead of stacking a second one on it (merge) */
 const CRATER_PROFILE = [[0, 0.004, 0x15110d, 0.95], [0.4, 0.006, 0x1a1612, 0.95], [0.7, 0.04, 0x221d17, 0.9], [0.95, 0.07, 0x2b241c, 0.72], [1.25, 0.03, 0x2c261e, 0.4], [1.75, 0.0, 0x2e2820, 0]];   // [r, y, colour, alpha]: the ejecta fades into the ground
 function craterGeometry() {
   const geo = new THREE.LatheGeometry(CRATER_PROFILE.map(([r, y]) => new THREE.Vector2(r, y)).reverse(), 11), pos = geo.attributes.position, col = new Float32Array(pos.count * 4), c = new THREE.Color();
@@ -189,8 +186,6 @@ class Scorch {
     const live = this.items.filter(o => o.on && !o.fade).sort((a, b) => a.t - b.t);
     for (let i = 0; i < Scorch.CROWD - free && i < live.length; i++) this.fadeOut(live[i]);
   }
-  /* fill in the craters around p (within r of their rim) */
-  repair(p, r) { for (const it of this.items) if (it.on && Math.hypot(it.p.x - p.x, it.p.z - p.z) < r + it.r * 0.5) this.fadeOut(it); }
   update(dt) {
     let changed = false;
     for (let i = 0; i < this.items.length; i++) {

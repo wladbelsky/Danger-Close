@@ -118,7 +118,7 @@ const LAMPS = {
           if (u.strobe < 0.09) this.put(u.pos.x - c * 7.5, y + 1, u.pos.z - s * 7.5, 2.2, [1, 1, 1], 2.5, k);   // the tail strobe
         } else if (u.kind === 'struct' && BATTLE.base) {                             // the enemy's base
           if (u.type === 'bunker' || u.type === 'mast') this.search(u.pos.x, u.pos.z, Math.atan2(u.pos.z - BATTLE.base.z, u.pos.x - BATTLE.base.x), u.pos.x * 0.37, k, u.type === 'mast' ? 14 : 3.2);   // (outwards from its bunkers and its mast)
-          else if (u.type === 'hq' || u.type === 'tent' || u.type === 'fuel' || u.type === 'ammo') { const q = BASE_LAMP[u.type], cy = Math.cos(u.obj.rotation.y), sy = Math.sin(u.obj.rotation.y); this.pole(u.pos.x + q[0] * cy + q[1] * sy, u.pos.y + 4.85, u.pos.z - q[0] * sy + q[1] * cy, LC_YARD, 13, k * 2.2); }     // (a lamp over each tent and dump: out when it is destroyed)
+          else if (u.type === 'hq' || u.type === 'tent' || u.type === 'fuel' || u.type === 'ammo') { const q = BASE_LAMP[u.type], ry = u.obj.rotation.y + (u.obj.parent ? u.obj.parent.rotation.y : 0), cy = Math.cos(ry), sy = Math.sin(ry); this.pole(u.pos.x + q[0] * cy + q[1] * sy, u.pos.y + 4.85, u.pos.z - q[0] * sy + q[1] * cy, LC_YARD, 13, k * 2.2); }     // (a lamp over each tent and dump: out when it is destroyed; turned as the structure is in the world, the base's own turn included)
         }
       }
       for (const o of LAYOUT.outposts) {   // the allies' outposts: a searchlight on every watchtower, looking outwards over the wall; lamps in the yard
