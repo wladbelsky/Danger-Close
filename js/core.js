@@ -28,7 +28,7 @@ const CFG = {
   lon: -new Date().getTimezoneOffset() / 4,   // longitude estimated from the PC time zone (15 deg per hour)
   sens: 100,          // audio sensitivity, %
   season: 'auto',     // auto (PC date) / spring / summer / autumn / winter
-  vision: 'tv',       // default vision mode: tv / wh / bh / nv / auto (TV by day, white-hot at night)
+  vision: 'auto',     // default vision mode: auto (TV by day, white-hot at night) / tv / wh / bh / nv
   shadows: true,
   seed: 0,            // map seed, 0 = a new map on each launch
   msaa: 4,            // render target samples (0 = off)

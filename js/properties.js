@@ -11,7 +11,7 @@ const WE_PROPERTIES = {
   "order": 1,
   "text": "Vision mode at start",
   "type": "combo",
-  "value": "tv",
+  "value": "auto",
   "options": [
    {
     "label": "TV (daylight camera)",

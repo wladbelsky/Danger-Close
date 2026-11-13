@@ -5,10 +5,10 @@ hills, lakes, a river, towns, roads and a railway, fields and forests — and th
 white-hot or black-hot thermal, or night vision, under a sensor HUD with your own callsign. In silence the allies patrol
 out of their outposts. When music plays the enemy comes in columns and builds a base, and the gunship fires on the beat.
 Day and night follow your PC clock, the land follows the seasons.
-From the author of [Forward Air Base](https://github.com/wladbelsky/air-base-wallpaper) and
-[Code 3](https://github.com/wladbelsky/Code3).
 
 ![A fight at night, white-hot](screenshots/fight-wh.jpg)
+
+- **Live demo** (runs in the browser): https://wladbelsky.github.io/Danger-Close/
 
 ## Install
 
@@ -29,8 +29,8 @@ fullscreen apps by default.
 
 - **Four vision modes**: TV (a low-light daylight camera), thermal white-hot and black-hot, night vision. Thermal shows
   real heat: engines and gun barrels hot, wrecks cooling in stages, the ground warmer than the air at night, water the
-  other way round, smoke cold. Click a mode on the HUD; the **Vision mode at start** property sets the default (or
-  *Auto*: TV by day, thermal at night).
+  other way round, smoke cold. Click a mode on the HUD; the **Vision mode at start** property sets the default — *Auto*
+  out of the box: TV by day, thermal at night.
 - **The HUD**: mode, callsign, compass, altitude ladder, the PC clock, a reticle per weapon, corner brackets on what it
   tracks (allies blue, enemies white), the weapon selector with cosmetic ammunition and reloads. It keeps clear of the
   taskbar (**HUD space kept free at the bottom**) and scales with **HUD scale**.
