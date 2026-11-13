@@ -433,3 +433,32 @@ test('music', async ({ wp }) => {
   console.log('music stat', JSON.stringify(await wp.run(() => BATTLE.stat)));
   await sheet(wp, shots, 2, 'music.png');
 });
+
+/* the helicopters' rocket runs: lined up and diving in, the salvo in flight, the rockets bursting round the target (by day, white-hot at night) */
+test('rocket run', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  const shots = [], snap = async () => shots.push((await wp.page.screenshot()).toString('base64'));
+  for (const [hour, mode] of [[11, 'tv'], [23, 'wh']]) {
+    const q = `?seed=11&hour=${hour}&season=summer&weather=clear&clouds=0&mode=${mode}&transit=0`;
+    if (!shots.length) await wp.boot({ query: q }); else await wp.goto(q);
+    const ok = await wp.run(() => {
+      window.__look = (x, z) => { GUNSHIP.look.set(x, groundH(x, z), z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.ctr.copy(GUNSHIP.look); GUNSHIP.nextWander = 1e9; };
+      __t.sim(5.5, { audio: true }); for (let i = 0; i < 1200 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
+      BATTLE.aimCamera = () => {}; CFG.zoom = 45;
+      let h = null; for (let i = 0; i < 6000 && !h; i++) { __t.sim(0.05, { audio: true }); h = UNITS.find(u => u.kind === 'heli' && u.run && u.run.ph === 'in' && u.run.armed); }
+      if (!h) return false;
+      window.__h = h; window.__tg = h.run.tgt; __look(h.pos.x * 0.6 + __tg.pos.x * 0.4, h.pos.z * 0.6 + __tg.pos.z * 0.4); __t.sim(0.05, { audio: true }); __t.render(); return true;
+    });
+    if (!ok) { console.log('no run found'); continue; }
+    await snap();
+    await wp.run(() => {
+      const h = __h, t = __tg;
+      for (let i = 0; i < 60 && h.run && h.run.ph === 'in'; i++) { __look((h.pos.x + t.pos.x) / 2, (h.pos.z + t.pos.z) / 2); __t.sim(0.05, { audio: true }); }
+      __t.sim(0.3, { audio: true }); __look(t.pos.x * 0.7 + h.pos.x * 0.3, t.pos.z * 0.7 + h.pos.z * 0.3); __t.sim(0.05, { audio: true }); __t.render();
+    });
+    await snap();
+    await wp.run(() => { __t.sim(1.3, { audio: true }); __t.render(); });
+    await snap();
+  }
+  await sheet(wp, shots, 3, 'rocket-run.png');
+});

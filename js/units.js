@@ -172,6 +172,7 @@ class Heli {
     this.rotors = []; this.obj.traverse(o => { if (o.name === 'rotor' || o.name === 'rotor2' || o.name === 'trotor') this.rotors.push(o); });
     this.pos = pad ? new V3(pad.x, pad.y, pad.z) : start.clone(); this.yaw = pad ? pad.a : Math.atan2(-start.z, -start.x); this.v = pad ? 0 : 30; this.bank = 0; this.spin = pad ? 0 : 26; this.state = pad ? 'pad' : 'fly'; this.timer = rand(15, 60);
     this.out = false;   // (crashed or flown away: its owner drops it)
+    this.run = null; this.runNext = T + rand(5, 20);   // (rocket runs: runStep)
     enlist(this, side, 'heli', this.pos, 1.5); this.wps = pad ? [] : this.round();
     TRACKS.push({ obj: this.obj, side, inf: false, h: 2.5 });
     this.pose(0);
@@ -195,15 +196,16 @@ class Heli {
       if (this.spin > 20) p.y += Math.min(4, 1 + (p.y - this.pad.y)) * dt;
       if (p.y > this.pad.y + 30) { this.state = 'fly'; this.wps = this.round(); }
     } else if (this.state === 'fly' || this.state === 'home' || this.state === 'leave') {
-      const w = this.wps[0], dx = w[0] - p.x, dz = w[1] - p.z, d = Math.hypot(dx, dz);
-      const last = this.state === 'home', vt = last ? Math.min(30, Math.max(2, d * 0.18)) : this.tgt ? 8 : 30;   // (slow over what it is shooting at)
-      const want = Math.atan2(dz, dx), turn = clamp(angleWrap(want - this.yaw), -0.45 * dt, 0.45 * dt); this.yaw += turn;
-      this.v += clamp(vt * clamp(1.2 - Math.abs(angleWrap(want - this.yaw)), 0.3, 1) - this.v, -4 * dt, 3 * dt);
+      const R = this.state === 'fly' ? this.runStep() : null;            // (a rocket run steers instead of the round: [x, z, speed, height])
+      const w = R || this.wps[0], dx = w[0] - p.x, dz = w[1] - p.z, d = Math.hypot(dx, dz);
+      const last = this.state === 'home', vt = R ? R[2] : last ? Math.min(30, Math.max(2, d * 0.18)) : this.tgt ? 8 : 30;   // (slow over what it is shooting at)
+      const want = Math.atan2(dz, dx), tr = R ? 0.6 : 0.45, turn = clamp(angleWrap(want - this.yaw), -tr * dt, tr * dt); this.yaw += turn;
+      this.v += clamp(vt * clamp(1.2 - Math.abs(angleWrap(want - this.yaw)), 0.3, 1) - this.v, -4 * dt, (R ? 7 : 3) * dt);
       this.bank += (clamp(turn / dt * 1.4, -0.45, 0.45) - this.bank) * Math.min(1, dt * 2);
       p.x += Math.cos(this.yaw) * this.v * dt; p.z += Math.sin(this.yaw) * this.v * dt;
-      const yt = (last ? this.pad.y + 30 : this.agl(p.x, p.z) + 60); p.y += clamp(yt - p.y, -4 * dt, 5 * dt);
-      if (this.state === 'fly' && !this.pad && this.retreat) { this.state = 'leave'; this.wps = []; }
-      else if (this.state !== 'leave' && d < (last ? 3 : 60)) { this.wps.shift(); if (!this.wps.length) { if (last) this.state = 'down'; else if (!this.pad || AUD.combat) this.wps = this.round(); else { this.state = 'home'; this.wps = [[this.pad.x, this.pad.z]]; } } }
+      const yt = (last ? this.pad.y + 30 : this.agl(p.x, p.z) + (R ? R[3] : 60)); p.y += clamp(yt - p.y, -(R ? 8 : 4) * dt, 5 * dt);
+      if (this.state === 'fly' && !this.pad && this.retreat) { this.state = 'leave'; this.wps = []; this.run = null; }
+      else if (!R && this.state !== 'leave' && d < (last ? 3 : 60)) { this.wps.shift(); if (!this.wps.length) { if (last) this.state = 'down'; else if (!this.pad || AUD.combat) this.wps = this.round(); else { this.state = 'home'; this.wps = [[this.pad.x, this.pad.z]]; } } }
     } else if (this.state === 'down') {
       this.v = Math.max(0, this.v - 4 * dt); this.bank *= 1 - Math.min(1, dt * 2); this.yaw = approachAngle(this.yaw, this.pad.a, dt * 0.4);
       p.x += (this.pad.x - p.x) * Math.min(1, dt); p.z += (this.pad.z - p.z) * Math.min(1, dt);
@@ -213,7 +215,34 @@ class Heli {
     if (this.state === 'pad' || this.state === 'down') this.bank *= 1 - Math.min(1, dt * 2);
     this.pose(dt);
   }
-  die() { delist(this); untrack(this.obj); this.state = 'crash'; this.dir = this.yaw; }
+  /* a rocket run in a fight: at the nearest enemy on the ground within 600 m (from farther out: one too near is first flown away
+     from to 450 m), diving in fast and low; lined up within 240 m it fires a salvo on the next beat (BATTLE.unitsOnBeat; 1.5 s
+     without one, or at 110 m: anyway), breaks away for 3 s and goes back to its round. Every 14–28 s; none in a quiet part */
+  runStep() {
+    const p = this.pos; let R = this.run;
+    if (!R) {
+      if (!AUD.fighting || AUD.calm || this.retreat || T < this.runNext) return null;
+      this.runNext = T + 3;   // (nothing to run at: looked for again in 3 s)
+      let t = null, bd = 600; for (const u of UNITS) { if (u.side === this.side || u.kind === 'heli' || !u.alive) continue; const d = Math.hypot(u.pos.x - p.x, u.pos.z - p.z); if (d < bd) { bd = d; t = u; } }
+      if (!t) return null;
+      R = this.run = { tgt: t, ph: 'in', armed: 0, until: 0, sx: 0, sz: 0 };
+      if (bd < 320) { const k = 450 / Math.max(bd, 1); R.ph = 'setup'; R.sx = clamp(t.pos.x + (p.x - t.pos.x) * k, -900, 900); R.sz = clamp(t.pos.z + (p.z - t.pos.z) * k, -900, 900); }
+    }
+    const o = this._r || (this._r = [0, 0, 0, 0]), t = R.tgt;
+    if (this.retreat || !AUD.fighting || (!t.alive && R.ph !== 'out')) { this.endRun(); return null; }
+    if (R.ph === 'setup') { if (Math.hypot(R.sx - p.x, R.sz - p.z) < 60) R.ph = 'in'; o[0] = R.sx; o[1] = R.sz; o[2] = 36; o[3] = 60; return o; }
+    if (R.ph === 'in') {
+      const dx = t.pos.x - p.x, dz = t.pos.z - p.z, d = Math.hypot(dx, dz), lined = Math.abs(angleWrap(Math.atan2(dz, dx) - this.yaw)) < 0.25;
+      if (!R.armed && lined && d < 240) R.armed = T;                     // (lined up: the salvo goes on the next beat)
+      if (R.armed && (d < 110 || T - R.armed > 1.5)) { BATTLE.stat.salvoLate++; BATTLE.salvo(this, t); }
+      else if (!R.armed && d < 90) { this.endRun(); return null; }       // (overshot without lining up)
+      o[0] = t.pos.x; o[1] = t.pos.z; o[2] = 55; o[3] = 32; return o;
+    }
+    if (T > R.until) { this.endRun(); return null; }
+    o[0] = p.x + Math.cos(this.yaw) * 300; o[1] = p.z + Math.sin(this.yaw) * 300; o[2] = 50; o[3] = 60; return o;   // (breaking away and climbing)
+  }
+  endRun() { this.run = null; this.runNext = T + rand(14, 28); this.wps = this.round(); }
+  die() { delist(this); untrack(this.obj); this.state = 'crash'; this.dir = this.yaw; this.run = null; }
   remove() { delist(this); untrack(this.obj); scene.remove(this.obj); this.out = true; }
   /* a round: 3–4 districts or outposts, not too near the edge; in a fight: round the enemies' base */
   round() {

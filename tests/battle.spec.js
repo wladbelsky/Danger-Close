@@ -111,3 +111,41 @@ test('a weapon picked by hand gives way to the auto-switching once nothing it ma
   expect(r.took, 'the auto-switching took over').not.toBeNull(); expect(r.took).toBeLessThan(6);
   if (r.targets) expect(r.held, 'held while it has targets').toBe(true);
 });
+
+test('helicopters make rocket runs: the salvo mostly on a beat, low but never into the ground', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11' });
+  const r = await wp.run(() => {
+    let minAgl = 1e9; const sides = new Set(), s0 = BATTLE.stat.salvos;
+    const salvo0 = BATTLE.salvo.bind(BATTLE); BATTLE.salvo = (h, t) => { if (h.run && h.run.ph === 'in') sides.add(h.side); salvo0(h, t); };
+    for (let i = 0; i < 3600; i++) {
+      __t.sim(0.05, { audio: true });
+      for (const u of UNITS) if (u.kind === 'heli' && u.run && u.run.ph !== 'setup') minAgl = Math.min(minAgl, u.pos.y - groundH(u.pos.x, u.pos.z));
+    }
+    const { salvos, salvoBeat, salvoLate, splash } = BATTLE.stat;
+    return { salvos: salvos - s0, salvoBeat, salvoLate, splash, minAgl, sides: [...sides] };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.salvos).toBeGreaterThan(2);
+  expect(r.salvoBeat / r.salvos, 'salvos on a beat').toBeGreaterThan(0.6);
+  expect(r.minAgl).toBeGreaterThan(12);
+  expect(r.sides).toContain('ally');
+  expect(r.splash).toBeGreaterThan(0);
+  await wp.sim(12); await wp.sim(3);
+  expect(await wp.run(() => BATTLE.rockets.length)).toBe(0);
+});
+
+test('a blast hurts every enemy round it, not only the kinds its weapon is aimed at; never its own side', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11' });
+  await wp.sim(20, { audio: true });
+  const r = await wp.run(() => {
+    const e = UNITS.find(u => u.side === 'enemy' && u.kind === 'inf' && u.alive), a = UNITS.find(u => u.side === 'ally' && u.kind === 'inf' && u.alive);
+    const log0 = BATTLE.log.length, sp0 = BATTLE.stat.splash;
+    BATTLE.strike(new V3(e.pos.x + 3, e.pos.y, e.pos.z), GUN.hf.r, GUN.hf.dmg, WEAPON.hf, false);   // (a Hellfire is never fired at infantry)
+    const hfLog = BATTLE.log.slice(log0).filter(l => l === 'hf inf').length;
+    BATTLE.splashAt(a.pos, ROCKET.r, ROCKET.dmg, 'ally'); const ownSide = a.alive;
+    BATTLE.splashAt(a.pos, ROCKET.r, ROCKET.dmg, 'enemy');
+    return { eDead: !e.alive, splash: BATTLE.stat.splash - sp0, hfLog, ownSide, aDead: !a.alive };
+  });
+  expect(r).toEqual({ eDead: true, splash: expect.any(Number), hfLog: 0, ownSide: true, aDead: true });
+  expect(r.splash).toBeGreaterThan(1);
+});

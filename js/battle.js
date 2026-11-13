@@ -18,6 +18,11 @@ const FIRE = {
   heli: { range: 260, reload: [1.4, 2.8], n: 2, v: 260, len: 4,   w: 0.2,  acc: 0.4,  dmg: 2.5, mh: 0,   band: 'mid', blast: 0.8 }
 };
 const UNIT_BEAT_MAX = 24;   // unit shots on one beat at most (a volley)
+/* ---- splash: the blast of a bomb, a rocket or a shell hurts every enemy round it, not only the kinds the weapon is aimed at (the
+   table says what a weapon is fired at, not what its blast spares): the gunship's blast radii, metres ---- */
+const SPLASH = { h105: 10, hf: 8, apk: 6, gbu: 14 };
+/* a helicopter's rocket run: it dives in, and on a beat looses a salvo of unguided rockets that burst on and round the target */
+const ROCKET = { n: 8, step: 0.07, v: 220, spread: 7, r: 6, dmg: 2.2, fx: 1.1, ally: 0.6, puff: 5 };   // (puff: metres between the trail's puffs)
 /* the allies fire this many times as often (their helicopters most of all), each round doing less: their damage a second is only
    ALLY_DPS × the enemy's, so the fight looks busier without the allies clearing it before the gunship gets a word in */
 const ALLY_RATE = { inf: 1.6, car: 1.6, apc: 1.6, tank: 1.3, heli: 2.8 }, ALLY_DPS = 1.2;
@@ -121,7 +126,7 @@ function baseModel(type) {
 const RET_ON = 0.07;   // the reticle is "on" a target within this of the frame's centre (in half frame heights): no shot before that
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0);
 const BATTLE = {
-  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0 }, surgeUntil: 0, forceUntil: 0,
+  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
   pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, nextHop: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0,
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
@@ -310,6 +315,7 @@ const BATTLE = {
      every unit in the frame that has reloaded */
   unitsOnBeat(band, st, volley) {
     const all = volley || st > 1.6; let n = 0;
+    for (const h of UNITS) if (h.kind === 'heli' && h.run && h.run.ph === 'in' && h.run.armed && (band !== 'high' || st > 1.4)) { this.stat.salvoBeat++; this.salvo(h, h.run.tgt); }   // (a helicopter lined up on its run: the salvo on this beat)
     for (let i = 0; i < UNITS.length && n < UNIT_BEAT_MAX; i++) {
       const u = UNITS[i]; if (!u.ready || !u.tgt || !u.tgt.alive) continue;
       const mine = FIRE[u.kind].band === band;
@@ -431,11 +437,42 @@ const BATTLE = {
   },
   /* the damage of a hit at p: every enemy the weapon is allowed to hit within r, falling off with the distance */
   strike(p, r, dmg, w, air) {
+    const S = air ? 0 : SPLASH[w.id] || 0; r = Math.max(r, S);   // (a blast: every enemy on the ground within its radius, of any kind)
     for (let i = UNITS.length - 1; i >= 0; i--) {
-      const u = UNITS[i]; if (u.side !== 'enemy' || !w.hitSet.has(u.kind)) continue;
+      const u = UNITS[i], aimed = w.hitSet.has(u.kind); if (u.side !== 'enemy' || (!aimed && !S)) continue;
       const fly = u.kind === 'heli' && u.pos.y > groundH(u.pos.x, u.pos.z) + 8; if (fly !== !!air) continue;
       const d = Math.max(0, Math.hypot(u.pos.x - p.x, u.pos.z - p.z, air ? u.pos.y - p.y : 0) - (u.kind === 'struct' ? 3 : u.kind === 'inf' ? 0 : 1.5)); if (d >= (u.kind === 'struct' ? Math.min(r, 4) : r)) continue;   // (a structure: only what lands on it)
-      this.note(w, u); hurt(u, dmg * (1 - d / r) * (u.kind === 'inf' ? 3 : 1));
+      if (aimed) this.note(w, u); else this.stat.splash++;   // (the weapon's log keeps to its table: what it was fired at)
+      hurt(u, dmg * (1 - d / r) * (u.kind === 'inf' ? 3 : 1));
+    }
+  },
+  /* a blast at p of a unit's weapon (side: who fired): every unit of the other side on the ground within r */
+  splashAt(p, r, dmg, side) {
+    for (let i = UNITS.length - 1; i >= 0; i--) {
+      const u = UNITS[i]; if (u.side === side || !u.alive || (u.kind === 'heli' && u.pos.y > groundH(u.pos.x, u.pos.z) + 8)) continue;
+      const d = Math.max(0, Math.hypot(u.pos.x - p.x, u.pos.z - p.z) - (u.kind === 'struct' ? 3 : u.kind === 'inf' ? 0 : 1.5)); if (d >= (u.kind === 'struct' ? Math.min(r, 4) : r)) continue;
+      if (u.col) u.col.alarm = T + 20; this.stat.splash++; hurt(u, dmg * (1 - d / r) * (u.kind === 'inf' ? 3 : 1));
+    }
+  },
+  /* a helicopter's salvo at t (js/units.js, Heli.runStep): rockets from its pods, one side then the other */
+  salvo(h, t) {
+    const R = h.run; if (!R || R.ph !== 'in') return;
+    R.ph = 'out'; R.until = T + 3; this.stat.salvos++;
+    const dmg = ROCKET.dmg * (h.side === 'ally' ? ROCKET.ally : 1), side = h.side, tx = t.pos.x, tz = t.pos.z;
+    for (let i = 0; i < ROCKET.n; i++) this.after(i * ROCKET.step, () => {
+      if (!h.alive) return;
+      const c = Math.cos(h.yaw), s = Math.sin(h.yaw), sd = i % 2 ? 1.6 : -1.6, from = new V3(h.pos.x - s * sd, h.pos.y - 1, h.pos.z + c * sd);
+      const a = rand(0, TAU), rr = Math.sqrt(Math.random()) * ROCKET.spread, along = rand(-5, 5), to = new V3(tx + Math.cos(a) * rr + c * along, 0, tz + Math.sin(a) * rr + s * along); to.y = groundH(to.x, to.z);
+      const len = from.distanceTo(to), dur = len / ROCKET.v; this.rockets.push({ from, to, t: 0, dur, len, side, dmg, trail: 2 });
+      FX.tracers.spawn(from, _bd.subVectors(to, from).multiplyScalar(1 / dur), { life: dur, len: 7, w: 0.32, color: 0xffe0a0 });   // (the motor's glare, flying itself)
+      FX.flash.spawn(from, { s0: 2.2, s1: 4.5, life: 0.09 }); FX.smoke.spawn(from, { s0: 1.5, s1: 5, life: 1.2, a0: 0.35, color: 0xd8d8d8 });
+    });
+  },
+  flyRockets(dt) {
+    for (let i = this.rockets.length - 1; i >= 0; i--) {
+      const m = this.rockets[i]; m.t += dt; const q = m.t / m.dur;
+      if (q >= 1) { this.rockets.splice(i, 1); hitFx(m.to.x, m.to.y, m.to.z, ROCKET.fx); this.splashAt(m.to, ROCKET.r, m.dmg, m.side); continue; }
+      for (; m.trail < m.len * q; m.trail += ROCKET.puff) { _bp.lerpVectors(m.from, m.to, m.trail / m.len); FX.smoke.spawn(_bp, { s0: 1.2, s1: 4, life: rand(1, 1.6), a0: 0.34, color: 0xd8d8d8 }); }   // (a trail of puffs every few metres, whatever the frame rate)
     }
   },
   note(w, u) { if (u.col) u.col.alarm = T + 20; this.log.push(w.id + ' ' + u.kind); if (this.log.length > 600) this.log.shift(); },
@@ -514,7 +551,7 @@ const BATTLE = {
     if (!war && this.was) this.standDown();
     this.was = war;
     for (let i = this.pend.length - 1; i >= 0; i--) if (T >= this.pend[i].t) { const p = this.pend[i]; this.pend.splice(i, 1); p.fn(); }
-    this.flyMissiles(dt); this.laser(dt);
+    this.flyMissiles(dt); this.flyRockets(dt); this.laser(dt);
     for (let i = UNITS.length - 1; i >= 0; i--) this.think(UNITS[i], dt, fight);
     for (let i = this.cols.length - 1; i >= 0; i--) {
       const E = this.cols[i], c = E.col;
