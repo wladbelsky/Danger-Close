@@ -43,7 +43,7 @@ const HUD = {
   updateDom() {
     for (const b of this.armsEl.children) {
       const w = WEAPON[b.dataset.id], s = ARMS.st[w.id], txt = !w.mag ? 'PWR 100' : s.reload > 0 ? 'RELOAD' : String(s.left).padStart(String(w.rounds).length, '0');
-      const bar = !w.mag ? 1 : s.reload > 0 ? 1 - s.reload / w.reload : 1, key = txt + bar.toFixed(2);
+      const bar = !w.mag ? 1 : s.reload > 0 ? 1 - s.reload / (s.rl || w.reload) : 1, key = txt + bar.toFixed(2);
       if (this.cache[w.id] === key) continue; this.cache[w.id] = key;
       b.querySelector('.am').textContent = txt; b.querySelector('u').style.width = (bar * 100).toFixed(0) + '%';
     }

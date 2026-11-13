@@ -71,3 +71,30 @@ test('a quiet part, then the kick back: one drop each time, a surge; the AA burs
   expect(r.aaBeat).toBeGreaterThan(3);
   expect(r.aaLate, 'AA bursts that found no beat').toBeLessThanOrEqual(r.aaBeat / 4);
 });
+
+test('the tempo from the kicks; faster music, the guns fire faster: between the beats on the kick\'s grid, the 105 mm reloads sooner', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=g25,h105&auto=0&transit=0' });
+  const r = await wp.run(() => {
+    const out = {}, dummy = { alive: true, kind: 'inf', side: 'enemy', pos: new THREE.Vector3(), ah: 1.1 };
+    __t.sim(8, { audio: true, bpm: 90 }); for (let i = 0; i < 1200 && GUNSHIP.state !== 'orbit'; i++) __t.sim(0.05, { audio: true, bpm: 90 });
+    BATTLE.target = () => { dummy.pos.copy(CAM_TGT); return dummy; }; BATTLE.onReticle = () => true;   // (always something under the reticle: the rate is the music's)
+    for (const bpm of [90, 160]) {
+      __t.sim(6, { audio: true, bpm });   // (the tempo settles)
+      ARMS.select('g25'); const s0 = BATTLE.stat.shots, b0 = BATTLE.stat.subShots;
+      __t.sim(40, { audio: true, bpm });
+      const shots = BATTLE.stat.shots - s0, subs = BATTLE.stat.subShots - b0;
+      ARMS.select('h105'); ARMS.st.h105.reload = 0; ARMS.st.h105.mag = 1; ARMS.shoot();
+      out[bpm] = { bpm: AUD.bpm, tempo: AUD.tempo, shots, subs, rate: (shots + subs) / 40, rl: ARMS.st.h105.rl };
+    }
+    out.subOff = BATTLE.stat.subOff;
+    return out;
+  });
+  console.log(JSON.stringify(r));
+  const slow = r['90'], fast = r['160'];
+  expect(Math.abs(slow.bpm - 90)).toBeLessThan(8); expect(Math.abs(fast.bpm - 160)).toBeLessThan(12);   // (the spectrum comes 20 times a second here: the beats' times are rounded to 50 ms)
+  expect(slow.tempo).toBeLessThan(0.05); expect(fast.tempo).toBeGreaterThan(0.9);
+  expect(slow.subs).toBe(0); expect(fast.subs).toBeGreaterThan(fast.shots);
+  expect(fast.rate / slow.rate, 'the 25 mm\'s triggers a second').toBeGreaterThan(2.5);
+  expect(r.subOff, 'between the beats, on the grid').toBeLessThan(0.06);
+  expect(fast.rl).toBeLessThan(slow.rl * 0.6);
+});

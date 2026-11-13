@@ -462,3 +462,30 @@ test('rocket run', async ({ wp }) => {
   }
   await sheet(wp, shots, 3, 'rocket-run.png');
 });
+
+/* an APC lets its infantry out: the first through the rear door, the file running out, the squad spread round it (by day, white-hot at night) */
+test('dismount', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  const shots = [], snap = async () => shots.push((await wp.page.screenshot()).toString('base64'));
+  for (const [hour, mode] of [[11, 'tv'], [23, 'wh']]) {
+    const q = `?seed=11&hour=${hour}&season=summer&weather=clear&clouds=0&mode=${mode}&transit=0`;
+    if (!shots.length) await wp.boot({ query: q }); else await wp.goto(q);
+    const ok = await wp.run(() => {
+      window.__look = (x, z) => { GUNSHIP.look.set(x, groundH(x, z), z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.ctr.copy(GUNSHIP.look); GUNSHIP.nextWander = 1e9; };
+      __t.sim(5.5, { audio: true }); for (let i = 0; i < 1200 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
+      BATTLE.aimCamera = () => {}; CFG.zoom = 170; CFG.fire = 10;
+      let v = null; const d0 = BATTLE.dismount.bind(BATTLE); BATTLE.dismount = u => { const n = BATTLE.stat.dismounts; d0(u); if (BATTLE.stat.dismounts > n && !v) v = u; };
+      for (let i = 0; i < 6000 && !v; i++) __t.sim(0.05, { audio: true });
+      if (!v) return false;
+      window.__v = v; const c = Math.cos(v.yaw), s = Math.sin(v.yaw); window.__lk = [v.pos.x - c * 8, v.pos.z - s * 8];
+      __look(...__lk); __t.sim(1.2, { audio: true }); __look(...__lk); __t.render(); return true;
+    });
+    if (!ok) { console.log('no dismount found'); continue; }
+    await snap();
+    await wp.run(() => { for (let i = 0; i < 50; i++) { __look(...__lk); __t.sim(0.05, { audio: true }); } __t.render(); });
+    await snap();
+    await wp.run(() => { CFG.zoom = 110; for (let i = 0; i < 100; i++) { __look(...__lk); __t.sim(0.05, { audio: true }); } __t.render(); });
+    await snap();
+  }
+  await sheet(wp, shots, 3, 'dismount.png');
+});

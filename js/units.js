@@ -89,7 +89,7 @@ class Vehicle {
   constructor(type, side) {
     this.type = type; this.obj = unitModel(side, type); this.obj.scale.setScalar(ARMOR_SCALE); scene.add(this.obj);
     this.turret = this.obj.getObjectByName('turret'); this.ph = Math.random() * TAU;
-    this.path = null; this.s = 0; this.v = 0; this.yaw = 0; this.laneK = 1; this.vmax = UNIT_SPEED[type]; this.col = null;
+    this.path = null; this.s = 0; this.v = 0; this.yaw = 0; this.laneK = 1; this.vmax = UNIT_SPEED[type]; this.col = null; this.troops = type === 'apc' ? randi(4, 6) : 0;   // (troops: the infantry it carries)
     enlist(this, side, type, this.obj.position, type === 'car' ? 1.3 : 1.9);
     TRACKS.push({ obj: this.obj, side, inf: false, h: type === 'car' ? 1.5 : 2.2 });
   }
@@ -113,7 +113,7 @@ class Vehicle {
     else if (this.turret) this.turret.rotation.y = this.v > 1 ? this.turret.rotation.y * (1 - Math.min(1, dt)) : lerp(this.turret.rotation.y, Math.sin(T * 0.15 + this.ph) * 0.8, Math.min(1, dt));
   }
   /* knocked out: a burning wreck where it stood */
-  die() { this.gone(); blast(this.pos, 1.7); if (this.turret) this.turret.rotation.set(rand(-0.12, 0.12), rand(0, TAU), rand(-0.1, 0.1)); WRECKS.add(this.obj, 1.5); }
+  die() { this.gone(); blast(this.pos, 1.7); if (this.troops) BATTLE.bail(this); if (this.turret) this.turret.rotation.set(rand(-0.12, 0.12), rand(0, TAU), rand(-0.1, 0.1)); WRECKS.add(this.obj, 1.5); }
   /* taken away (out of sight) */
   remove() { this.gone(); scene.remove(this.obj); }
   gone() { delist(this); untrack(this.obj); if (this.col) this.col.drop(this); }
@@ -150,6 +150,7 @@ class Column {
   get done() { return !this.u.length || (this.u[0].s >= this.path.L - 0.5 && this.u.every(v => v.v < 0.3)); }
   update(dt, go) {
     if (!this.u.length) return;
+    if (go && this.u.some(v => v.unload > T)) go = false;   // (waits while an APC lets its infantry out)
     const vmax = Math.min(...this.u.map(v => v.vmax)) * (this.alarm > T ? 1.35 : 1), lead = this.u[0], P = this.path;
     // the leader: slower in bends (the heading change over the next 25 m) and braking to stop at the end
     let vt = 0;
@@ -260,12 +261,18 @@ class Heli {
 /* ---- an infantry squad: the leader walks a loop of waypoints, the others follow in file along the leader's trail ---- */
 class Squad {
   constructor(side, n, x, z, wps) {
-    this.side = side; this.wps = wps; this.wi = 0; this.wait = rand(2, 8);
+    this.side = side; this.wps = wps; this.wi = 0; this.wait = rand(2, 8); this.gap = 4; this.go = 0;   // (go: running out until then, not halting to fight)
     this.m = []; this.flee = false; for (let i = 0; i < n; i++) this.join(x, z);
     this.trail = [[x, z, 0]]; this.D = 0;
     for (const s of this.m) s.position.set(x, groundH(x, z), z);
   }
   join(x, z) { const s = INF.add(this.side, x, z); if (!s) return; enlist(s, this.side, 'inf', s.position, 1.1); s.die = () => { puffDust(s.position); this.lose(s); }; s.remove = () => this.lose(s); this.m.push(s); }
+  /* one more, out of sight: where he would be in the file (not at the gate, walking straight to it through the wall), or, the squad
+     gone, at the start of its loop */
+  refill(x, z) {
+    if (!this.m.length) { this.wi = 0; this.trail = [[x, z, this.D]]; this.join(x, z); return; }
+    const [tx, tz] = this.trailAt(this.D - this.m.length * this.gap); this.join(tx, tz);
+  }
   lose(s) { delist(s); INF.remove(s); const i = this.m.indexOf(s); if (i >= 0) this.m.splice(i, 1); }
   /* running from the camera's point, each for himself, round what is in the way; taken away once out of sight */
   run(dt) {
@@ -281,20 +288,20 @@ class Squad {
   update(dt) {
     const L = this.m[0]; if (!L) return;
     if (this.flee) { this.run(dt); return; }
-    let step = 0; const fight = this.m.some(s => s.tgt);
+    let step = 0; const fight = T > this.go && this.m.some(s => s.tgt), k = T < this.go ? 2 : 1;
     if (fight) { for (const s of this.m) if (s.tgt) s.a = approachAngle(s.a, Math.atan2(s.tgt.pos.z - s.position.z, s.tgt.pos.x - s.position.x), dt * 5); }   // (halted, facing what they shoot at)
     else if (this.wait > 0) this.wait -= dt;
     else {
       const [wx, wz] = this.wps[this.wi], dx = wx - L.position.x, dz = wz - L.position.z, d = Math.hypot(dx, dz);
       if (d < 1) { this.wi = (this.wi + 1) % this.wps.length; this.wait = rand(3, 10); }
-      else { step = Math.min(d, 1.5 * dt); L.position.x += dx / d * step; L.position.z += dz / d * step; L.a = Math.atan2(dz, dx); }
+      else { step = Math.min(d, 1.5 * k * dt); L.position.x += dx / d * step; L.position.z += dz / d * step; L.a = Math.atan2(dz, dx); }
     }
     if (step > 0) { this.D += step; const last = this.trail[this.trail.length - 1]; if (this.D - last[2] > 0.5) { this.trail.push([L.position.x, L.position.z, this.D]); if (this.trail.length > 200) this.trail.shift(); } }
     this.m.forEach((s, i) => {
       if (fight) s.moved = 0;
-      else if (i) {   // in file, 4 m apart, along the trail
-        const [tx, tz] = this.trailAt(this.D - i * 4), dx = tx - s.position.x, dz = tz - s.position.z, d = Math.hypot(dx, dz);
-        if (d > 0.05) { const mv = Math.min(d, 1.9 * dt); s.position.x += dx / d * mv; s.position.z += dz / d * mv; s.a = approachAngle(s.a, Math.atan2(dz, dx), dt * 4); s.moved = mv; } else s.moved = 0;
+      else if (i) {   // in file, 4 m apart (out of a vehicle's door 2 m), along the trail
+        const [tx, tz] = this.trailAt(this.D - i * this.gap), dx = tx - s.position.x, dz = tz - s.position.z, d = Math.hypot(dx, dz);
+        if (d > 0.05) { const mv = Math.min(d, 1.9 * k * dt); s.position.x += dx / d * mv; s.position.z += dz / d * mv; s.a = approachAngle(s.a, Math.atan2(dz, dx), dt * 4); s.moved = mv; } else s.moved = 0;
       } else s.moved = step;
       s.position.y = groundH(s.position.x, s.position.z);
       s.phase += (s.moved || 0) * 3.4; s.stride += ((s.moved > 0.001 ? 1 : 0) - s.stride) * Math.min(1, dt * 5);
@@ -303,7 +310,7 @@ class Squad {
 }
 /* can a soldier walk straight from a to b (no wall, building, water or outpost yard on the way)? */
 function walkable(ax, az, bx, bz) {
-  const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 2));   // (at least 1: a single point, a == b, is tested too, not 0 / 0)
+  const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 0.8));   // (under a 2 m cell's width a step: a diagonal cannot cut a wall's corner; at least 1: a single point, a == b, is tested too)
   for (let i = 0; i <= n; i++) { const x = lerp(ax, bx, i / n), z = lerp(az, bz, i / n); if ((occAt(x, z) & (OCC_BUILD | OCC_WATER | OCC_YARD)) || waterAt(x, z) || Math.abs(x) > MAP_HALF - 40 || Math.abs(z) > MAP_HALF - 40) return false; }
   return true;
 }
@@ -356,7 +363,8 @@ const ALLIES = {
       if (c.u.length < P.full && !P.refill) P.refill = T + rand(50, 100);
       if (P.refill && T > P.refill && away && !war && (P.state === 'park' || !c.u.length)) { for (const v of c.u.slice()) v.remove(); this.garrison(P); P.timer = rand(20, 60); P.refill = 0; }
       if (P.heli.out) { const i = this.helis.indexOf(P.heli); if (i >= 0) { this.helis.splice(i, 1); P.heliAt = T + rand(70, 130); } if (T > P.heliAt && away) this.fly(P); }
-      if (P.squad.m.length < 4 && away && !war) P.squad.join(P.sq[0], P.sq[1]);
+      if (P.squad.m.length < 4 && away && !war) P.squad.refill(P.sq[0], P.sq[1]);
+      if (away && !war && P.state === 'park') for (const v of c.u) if (v.kind === 'apc' && !v.troops) v.troops = randi(4, 6);   // (its infantry back aboard at home)
       if (!c.u.length) continue;
       if (war && P.state !== 'sortie') { if (T > (P.retry || 0)) { if (c.reroute(BATTLE.base.node)) P.state = 'sortie'; else P.retry = T + 5; } }   // (no way there: tried again in 5 s, not every step)
       else if (!war && P.state === 'sortie') { if (P.gateNode >= 0 && c.reroute(P.gateNode, P.drive.slice().reverse())) P.state = 'back'; else { P.state = 'hold'; P.timer = 20; } }

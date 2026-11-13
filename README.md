@@ -66,9 +66,12 @@ fullscreen apps by default.
   a click on one holds it for 30 s, or until nothing it may hit is left round where the aircraft is.
 - **Everything plays to the music**: the soldiers and the technicals fire on the hats, the APCs and helicopters on the snare,
   the tanks on the kick, and a strong beat is a volley; denser music, faster fire (at the same damage); the gunship's bursts
-  grow with the beat. A quiet part calms the fight, the drop after it sets everything off at once. The AA fires on the beat,
+  grow with the beat. The faster the tempo, the faster the guns: the 25 mm, 30 mm and Bofors fire between the beats too, in
+  time with the kick (eighths, sixteenths for the 25 mm), the 105 mm reloads sooner, the ground units fire more often. A quiet part calms the fight, the drop after it sets everything off at once. The AA fires on the beat,
   the flares go on the strong ones. The helicopters of both sides make rocket runs: they dive in fast and low and loose
   a salvo of rockets on a beat.
+- **APCs carry infantry**: halted near the enemy (or at their own base) they let a squad out by the rear door, one by one,
+  and the column waits for them; the soldiers run out in file and spread round. A knocked-out APC lets one to three bail out.
 - **Blasts hurt everything round them**: a 105 mm shell, a bomb or a rocket hits every enemy within its radius, not only
   the kinds the weapon is aimed at (a Hellfire on a tank takes the soldiers beside it too). Never their own side.
 - **The music stops**: 5 s later fire ceases, the enemy pulls back out of the frame and vanishes; the base is removed

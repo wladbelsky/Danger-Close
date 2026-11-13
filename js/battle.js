@@ -38,6 +38,8 @@ const VS = {
    size, the tracer; missile: seconds of flight (it lands on the next beat once past halfway, or at its deadline) ---- */
 /* rounds a trigger by the beat's strength (from a weak beat to the strongest), and the light guns that fire on any beat in dense music */
 const BURST = { g25: [5, 14], b40: [2, 5], apk: [2, 6] }, LIGHT_ARMS = new Set(['g25', 'g30', 'b40']);
+/* fast music: the light guns fire between the beats too, on a grid locked to the kick (subdivisions of a beat at a tempo 0..1 over it) */
+const SUBDIV = { g25: [[0.2, 2], [0.6, 4]], g30: [[0.4, 2]], b40: [[0.4, 2]] };
 const GUN = {
   g25:  { n: 8, step: 0.024, spread: 2.2, dmg: 0.45, r: 2.4, fx: 0.35, tw: 0.16, tl: 7, gap: 0.16 },
   g30:  { n: 1, step: 0,     spread: 1.6, dmg: 3.2,  r: 3.4, fx: 0.8,  tw: 0.28, tl: 8, gap: 0.34 },   // (single aimed rounds, three a second at most)
@@ -126,8 +128,8 @@ function baseModel(type) {
 const RET_ON = 0.07;   // the reticle is "on" a target within this of the frame's centre (in half frame heights): no shot before that
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0);
 const BATTLE = {
-  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
-  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, nextHop: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0,
+  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
+  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, nextHop: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0,
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
     this.beam = new THREE.Mesh(geo, sensorMat(new THREE.MeshBasicMaterial({ color: 0xff4a36, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), 1));   // the laser: a red core
@@ -300,12 +302,49 @@ const BATTLE = {
     const F = FIRE[u.kind]; if (!F) return;
     if (!fight || u.retreat || u.state === 'pad' || u.state === 'crash') { u.tgt = null; return; }
     if (u.tgt && !u.tgt.alive) u.tgt = null;
+    if (u.troops && T > (u.dropT || 0)) this.dismount(u);
     if ((u.think -= dt) <= 0) { u.think = rand(0.7, 1.3); u.tgt = this.pickTarget(u, F); }
     if (u.tgt && (u.cool -= dt) <= 0) { if (!u.ready) u.ready = T; else if (T - u.ready > 3) { this.stat.uLate++; this.unitShot(u); } }   // (reloaded: it waits for a beat; with none, it fires anyway)
   },
+  /* ---- an APC's infantry: halted near the enemy (or at its own base), it lets them out by the rear door one by one; they run
+     out in file and spread round it. If it moves off first, the rest stay aboard for the next halt ---- */
+  dismount(u) {
+    if (u.v > 0.5 || u.col && u.col.alarm > T) return;
+    const t = u.tgt, B = this.base;
+    if (!(t && Math.hypot(t.pos.x - u.pos.x, t.pos.z - u.pos.z) < 200) && !(u.side === 'enemy' && B && Math.hypot(B.x - u.pos.x, B.z - u.pos.z) < 160)) return;
+    u.dropT = T + 3;
+    const c = Math.cos(u.yaw), sn = Math.sin(u.yaw), x = u.pos.x - c * 3.4, z = u.pos.z - sn * 3.4;
+    if (u.pos.y > groundH(u.pos.x, u.pos.z) + 0.3 || !walkable(x, z, x - c * 4, z - sn * 4)) return;   // (not off a bridge, not into a wall)
+    const loop = patrolLoop(u.pos.x, u.pos.z, 18, 40, [x, z]); if (loop.length < 3) return;
+    const q = new Squad(u.side, 0, x, z, loop), n = u.troops; q.from = 'door'; q.wi = 1; q.wait = 0; q.gap = 2; q.go = T + n * 0.6 + 5;
+    this.squads.push(q); this.stat.dismounts++; u.dropT = T + n * 0.6 + 8; u.unload = T + n * 0.6 + 0.4;
+    const out = () => {   // one through the door, facing out
+      if (!u.alive || u.v > 0.5 || !u.troops || q.flee || !this.squads.includes(q)) { u.unload = 0; return false; }
+      const dx = u.pos.x - Math.cos(u.yaw) * 3.4, dz = u.pos.z - Math.sin(u.yaw) * 3.4; if (!walkable(dx, dz, dx, dz)) return false;   // (the door where it is now: it may have crept on)
+      const k = q.m.length; q.join(dx, dz); if (q.m.length === k) return false;
+      const s = q.m[k]; s.a = u.yaw + Math.PI; u.troops--; this.stat.outOf++;
+      this.stat.doorMax = Math.max(this.stat.doorMax, Math.hypot(s.position.x - u.pos.x, s.position.z - u.pos.z)); return true;
+    };
+    if (!out()) { this.squads.splice(this.squads.indexOf(q), 1); return; }
+    for (let i = 1; i < n; i++) this.after(i * 0.6, out);
+  },
+  /* knocked out with its infantry aboard: one to three of them bail out round the wreck and fight on */
+  bail(u) {
+    const n = Math.min(u.troops, randi(1, 3)), p = u.pos.clone(), side = u.side; u.troops = 0;
+    if (!AUD.fighting) return;
+    this.after(rand(0.5, 1), () => {
+      for (let t = 0; t < 8; t++) {
+        const a = rand(0, TAU), x = p.x + Math.cos(a) * 4.5, z = p.z + Math.sin(a) * 4.5; if (!walkable(x, z, x, z)) continue;
+        const loop = patrolLoop(p.x, p.z, 15, 35, [x, z]); if (loop.length < 3) continue;
+        const q = new Squad(side, n, x, z, loop); if (!q.m.length) return;
+        q.from = 'bail'; q.wi = 1; q.wait = 0; q.go = T + 4; for (const s of q.m) { const jx = x + rand(-1.2, 1.2), jz = z + rand(-1.2, 1.2); if (walkable(jx, jz, jx, jz)) s.position.set(jx, groundH(jx, jz), jz); s.a = a; }
+        this.squads.push(q); this.stat.bailed += q.m.length; return;
+      }
+    });
+  },
   /* the pace of the units' fire: up to twice as often in dense music, half in a quiet part, twice more in a drop's surge; each round
      does that much less, so the damage a second (and how long a fight lasts) stays the same */
-  pace() { let r = 0.75 + 1.25 * AUD.drive; if (AUD.calm) r /= 1.5; if (T < this.surgeUntil) r *= 2; return r; },
+  pace() { let r = (0.75 + 1.25 * AUD.drive) * (1 + 0.4 * AUD.tempo); if (AUD.calm) r /= 1.5; if (T < this.surgeUntil) r *= 2; return r; },
   unitShot(u) {
     const F = FIRE[u.kind], r = this.pace(); u.ready = 0;
     u.cool = rand(F.reload[0], F.reload[1]) / (u.side === 'ally' ? ALLY_RATE[u.kind] : 1) / r; this.stat.uShots++;
@@ -371,7 +410,19 @@ const BATTLE = {
     if (!force && (!ok || idle < GUN[w.id].gap || (f < 1 && Math.random() > f))) return;
     const t = this.target(w); if (!t || !this.onReticle(t) || !ARMS.shoot()) return;   // (only at what the reticle is on)
     if (force) this.forceUntil = 0;
-    this.lastShot = T; this.stat.shots++; this.fire(w, t, st);
+    this.lastShot = T; this.shotRT = RT(); this.stat.shots++; this.fire(w, t, st);
+  },
+  /* between the beats: on each point of the grid (the kick's beat split in 2 or 4 by the tempo) the light gun fires a short burst
+     unless a shot went within most of a step before (no ammunition taken: the rate is the music's, the store cosmetic) */
+  subBeat() {
+    const w = ARMS.w, S = w && SUBDIV[w.id]; if (!S || !AUD.beatP || AUD.calm || !AUD.fighting) { this.gridN = -1; return; }
+    let n = 1; for (const [t, k] of S) if (AUD.tempo > t) n = k; if (n < 2) { this.gridN = -1; return; }
+    const q = AUD.beatP / n, now = RT(), g = Math.floor((now - AUD.kickT) / q); if (g === this.gridN || now - AUD.kickT > AUD.beatP * 2) return;
+    this.gridN = g;
+    const f = CFG.fire / 100; if (GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled || now - this.shotRT < q * 0.6 || !ARMS.ready(w) || (f < 1 && Math.random() > f)) return;
+    const t = this.target(w); if (!t || !this.onReticle(t)) return;
+    this.shotRT = now; this.stat.subShots++; this.stat.subOff = Math.max(this.stat.subOff, Math.abs((now - AUD.kickT) - g * q));
+    this.fire(w, t, 1.15);
   },
   /* a drop (js/audio.js): for 4 s everybody fires twice as often; a volley now, the AA and the flares, and the heaviest weapon there is */
   onDrop() {
@@ -551,7 +602,7 @@ const BATTLE = {
     if (!war && this.was) this.standDown();
     this.was = war;
     for (let i = this.pend.length - 1; i >= 0; i--) if (T >= this.pend[i].t) { const p = this.pend[i]; this.pend.splice(i, 1); p.fn(); }
-    this.flyMissiles(dt); this.flyRockets(dt); this.laser(dt);
+    this.flyMissiles(dt); this.flyRockets(dt); this.laser(dt); this.subBeat();
     for (let i = UNITS.length - 1; i >= 0; i--) this.think(UNITS[i], dt, fight);
     for (let i = this.cols.length - 1; i >= 0; i--) {
       const E = this.cols[i], c = E.col;

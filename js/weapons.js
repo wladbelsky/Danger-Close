@@ -20,6 +20,7 @@ for (const w of WEAPONS) w.hitSet = new Set(w.hits.split(' '));
 const WEAPON = Object.fromEntries(WEAPONS.map(w => [w.id, w]));
 
 /* the selected weapon and the state of each one's ammunition */
+const TEMPO_GUNS = new Set(['g25', 'g30', 'h105', 'b40']);   // (the guns: they fire faster in faster music)
 const ARMS = {
   cur: null, st: {},
   enabled() { return WEAPONS.filter(w => CFG.weapons.includes(w.id)); },
@@ -36,7 +37,7 @@ const ARMS = {
     const w = this.w; if (!w) return false; const s = this.st[w.id];
     if (!w.mag) return true;                                              // (the laser has no ammunition)
     if (s.reload > 0 || s.left <= 0) return false;
-    s.left = Math.max(0, s.left - w.use); s.mag -= w.use; if (s.mag <= 0 || s.left <= 0) s.reload = w.reload; return true;
+    s.left = Math.max(0, s.left - w.use); s.mag -= w.use; if (s.mag <= 0 || s.left <= 0) s.reload = s.rl = w.reload / (TEMPO_GUNS.has(w.id) ? 1 + AUD.tempo : 1); return true;   // (the guns reload up to twice as fast in fast music)
   },
   update(dt) {
     for (const w of WEAPONS) { const s = this.st[w.id]; if (s.reload > 0 && (s.reload -= dt) <= 0) { s.reload = 0; s.mag = Math.min(w.mag, s.left || (s.left = w.rounds, w.mag)); } }   // (cosmetic: an empty store refills)

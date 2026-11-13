@@ -134,6 +134,30 @@ test('helicopters make rocket runs: the salvo mostly on a beat, low but never in
   expect(await wp.run(() => BATTLE.rockets.length)).toBe(0);
 });
 
+test('APCs let their infantry out by the rear door near the enemy; a knocked-out one lets some bail out', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11' });
+  const r = await wp.run(() => {
+    const sides = new Set(); let bad = 0;
+    const out0 = BATTLE.dismount.bind(BATTLE); BATTLE.dismount = u => { const n = BATTLE.stat.dismounts; out0(u); if (BATTLE.stat.dismounts > n) sides.add(u.side); };
+    for (let i = 0; i < 3600; i++) {
+      __t.sim(0.05, { audio: true });
+      if (i % 20 === 0) for (const sd of INF.list) { const p = sd.position, w = waterAt(p.x, p.z); if (w === 1 || w === 2 || (occAt(p.x, p.z) & (OCC_WATER | OCC_BUILD))) bad++; }
+    }
+    // an APC with its infantry aboard knocked out in the fight
+    const v = UNITS.find(u => u.kind === 'apc' && u.alive && !u.retreat && BATTLE.cols.some(E => E.col === u.col)); let bailed = -1;
+    if (v) { v.troops = 5; const b0 = BATTLE.stat.bailed; hurt(v, 99); __t.sim(1.5, { audio: true }); bailed = BATTLE.stat.bailed - b0; }
+    const { dismounts, outOf, doorMax } = BATTLE.stat;
+    return { dismounts, outOf, doorMax, bad, bailed, sides: [...sides] };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.dismounts).toBeGreaterThan(1);
+  expect(r.outOf / r.dismounts, 'soldiers out of each APC').toBeGreaterThan(3.5);
+  expect(r.doorMax, 'out by the door, not anywhere').toBeLessThan(3.6);
+  expect(r.bad, 'soldiers in water or walls').toBe(0);
+  expect(r.bailed).toBeGreaterThanOrEqual(1);
+  expect(r.bailed).toBeLessThanOrEqual(3);
+});
+
 test('a blast hurts every enemy round it, not only the kinds its weapon is aimed at; never its own side', async ({ wp }) => {
   await wp.boot({ query: '?hour=12&seed=11' });
   await wp.sim(20, { audio: true });

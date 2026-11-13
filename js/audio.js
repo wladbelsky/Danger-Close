@@ -6,6 +6,7 @@
 const ARM_DELAY = 5, DISARM_DELAY = 5, RESUME_DELAY = 1;
 const AUD = {
   level: 0, heavy: 0, lastActive: -99, soundStart: -1, raw: new Float32Array(128), combat: false, holdUntil: 0,
+  kicks: [], beatP: 0, bpm: 0, kickT: -99, tempo: 0,   // (the kicks' times, the beat's period and bpm from them, the last kick, how fast the music is 0..1)
   short: 0, long: 0, lastCall: -1, calmFrom: -1, calmT: -99, calmStart: -99, lastDrop: -99, armedAt: -99, drops: 0,   // (loudness over ~0.6 s and ~8 s; a quiet part's start and end; the last drop)
   get active() { return RT() - this.lastActive < 1.6; },
   get drive() { return smoothstep(0.15, 0.6, this.heavy); },                                             // how hard the music drives the fight, 0..1
@@ -48,7 +49,7 @@ function onAudio(arr) {
     const fluxHit = e > thr * 0.6 && flux > fm + fs * (1.6 / sens) && flux > 0.02 / sens;
     if ((energyHit || fluxHit) && RT() - b.last > b.gap) {
       b.last = RT(); const st = clamp(Math.max(e / Math.max(avg, 0.01), 1 + flux / Math.max(fm, 0.005) * 0.15), 1, 3);
-      BATTLE.onBeat(key, st); if (key === 'low') kick = st;
+      BATTLE.onBeat(key, st); if (key === 'low') { kick = st; tempoKick(RT()); }
     }
     b.peak = Math.max(e, b.peak * 0.9985, 0.05); b.norm = e / b.peak;   // automatic gain: the loudness per band
     b.prev = e; b.val = e; tot += e;
@@ -61,10 +62,20 @@ function onAudio(arr) {
   else if (!AUD.active) AUD.soundStart = -1;
   dynamics(kick);
 }
+/* the tempo from the kicks: the median of the last intervals, each folded into one beat of 80–180 bpm (a kick on every other beat,
+   or two on one, still give the beat); the last kick anchors the grid the guns fire on between the beats */
+function tempoKick(now) {
+  const K = AUD.kicks; K.push(now); if (K.length > 17) K.shift();
+  const iv = []; for (let i = 1; i < K.length; i++) { let d = K[i] - K[i - 1]; if (d > 2) continue; while (d < 0.333) d *= 2; while (d > 0.75) d /= 2; iv.push(d); }
+  AUD.kickT = now; if (iv.length < 4) return;
+  iv.sort((a, b) => a - b); const p = iv[iv.length >> 1];
+  AUD.beatP = AUD.beatP ? AUD.beatP + (p - AUD.beatP) * 0.3 : p; AUD.bpm = 60 / AUD.beatP;
+}
 /* the music's shape: a quiet part (the last ~0.6 s under half the last ~8 s) and a drop (a kick that brings the loudness back
    within 20 s of a quiet part of 2 s or more that began after the fight was armed) */
 function dynamics(kick) {
   const now = RT(), dt = AUD.lastCall < 0 ? 0 : clamp(now - AUD.lastCall, 0, 0.25); AUD.lastCall = now;
+  const tt = AUD.beatP && now - AUD.kickT < 2.5 ? smoothstep(95, 150, AUD.bpm) : 0; AUD.tempo += (tt - AUD.tempo) * (1 - Math.exp(-dt / 1.5));   // (no kick for 2.5 s: no tempo)
   const L = AUD.level; AUD.short += (L - AUD.short) * (1 - Math.exp(-dt / 0.6)); AUD.long += (L - AUD.long) * (1 - Math.exp(-dt / 8));
   if (AUD.short < AUD.long * 0.5 && AUD.long > 0.004) { if (AUD.calmFrom < 0) AUD.calmFrom = now; if (now - AUD.calmFrom >= 2) { AUD.calmT = now; AUD.calmStart = AUD.calmFrom; } }
   else if (AUD.short > AUD.long * 0.7) AUD.calmFrom = -1;
