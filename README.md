@@ -44,7 +44,8 @@ fullscreen apps by default.
 ## The fight
 
 - **Music arms it**: after 5 s of sound the enemy arrives — always out of sight — in columns along the roads, squads and
-  helicopters, and builds a base on a cleared site. The camera goes there.
+  helicopters, and builds a base on a cleared site. The camera goes there. They keep coming: a wrecked base is soon rebuilt,
+  and when nothing is left in view the next ones are called in at once.
 - **The allies** are always out: garrisons in walled outposts, patrols, helicopters; in a fight they drive to the base
   and fight it out. Both sides shoot at each other.
 - **The gunship fires on the beat**, only at what is under the reticle and only at what its weapon may hit:
@@ -62,6 +63,8 @@ fullscreen apps by default.
 | Laser (red, lights up what it hits) | + | + | + | + | + | held on the beat |
 | Railgun | + | + | + | + | + | strong, through a column |
 
+  The light guns cut down infantry and cars but only wear down armour: an APC takes a long hammering from the 25 mm, a tank
+  shrugs it off.
   The first three are on by default; each is a property. Automatic switching picks one for the targets and the music;
   a click on one holds it for 30 s, or until nothing it may hit is left round where the aircraft is.
 - **Everything plays to the music**: the soldiers and the technicals fire on the hats, the APCs and helicopters on the snare,
@@ -82,8 +85,9 @@ fullscreen apps by default.
 - About 2 × 2 km, made from a **seed** (0 = a new map every start): gentle hills, lakes and a river, a town and villages,
   a station on the railway, farms, roads with bridges, fields and forests.
 - **Seasons** by the PC date (or fixed): spring green, autumn colours, snow and bare trees in winter.
-- **Weather**: rain, snow, fog, clouds drifting under the aircraft; anti-aircraft fire rising past the lens with flares
-  in reply (looks only).
+- **Weather**: rain, snow, fog, clouds drifting under the aircraft; anti-aircraft fire rising past the lens — from the
+  base's gun and the machine guns on the enemy vehicles' roofs, turned up at you — with flares in reply (looks only).
+  A missile shows its body, a steady flame and a thick trail; a flare sputters, sheds sparks and droops.
 - **At night**: lit windows, street lamps, headlights, searchlights on the outposts' towers, navigation lights on the
   helicopters; their light falls on the ground and stops at walls and buildings.
 

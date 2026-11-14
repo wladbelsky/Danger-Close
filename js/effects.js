@@ -212,3 +212,39 @@ function blast(p, s) {
   for (let i = 0; i < 14; i++) { const a = rand(0, TAU), v = rand(30, 80) * Math.sqrt(s); FX.tracers.spawn(_bq, _bv.set(Math.cos(a) * v, rand(6, 36), Math.sin(a) * v), { life: rand(0.14, 0.4), len: rand(1.4, 4) * Math.sqrt(s), w: 0.14, color: 0xffd8a0, grav: 28 }); }
   FX.scorch.spawn(p, s * 1.8, 30);
 }
+
+/* ---- missiles in flight: a body you can see at the gunship's zoom, the motor's steady glare and a tongue of flame behind
+   it, and a dense trail of smoke laid every few metres (whatever the speed). Unlike a flare, which sputters, sheds sparks and
+   droops: see AA in js/weather.js ---- */
+function mergeGeos(list) {
+  const pos = [], nor = [];
+  for (const g0 of list) { const g = g0.index ? g0.toNonIndexed() : g0; pos.push(g.attributes.position.array); nor.push(g.attributes.normal.array); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(concatF32(pos), 3)); geo.setAttribute('normal', new THREE.BufferAttribute(concatF32(nor), 3)); return geo;
+}
+class Bodies {
+  constructor(scene, n) {
+    const body = new THREE.CylinderGeometry(0.09, 0.09, 1.4, 8).rotateZ(-Math.PI / 2), nose = new THREE.ConeGeometry(0.09, 0.32, 8).rotateZ(-Math.PI / 2).translate(0.86, 0, 0), parts = [body, nose];
+    for (let i = 0; i < 4; i++) { parts.push(new THREE.BoxGeometry(0.26, 0.2, 0.014).translate(-0.56, 0.17, 0).rotateX(Math.PI / 4 + i * Math.PI / 2)); parts.push(new THREE.BoxGeometry(0.1, 0.09, 0.012).translate(0.5, 0.12, 0).rotateX(Math.PI / 4 + i * Math.PI / 2)); }   // tail fins, canards
+    const mat = sensorMat(new THREE.MeshPhongMaterial({ color: 0x55584f, flatShading: true, shininess: 30, specular: 0x333333 }), 0.6);
+    this.mesh = new THREE.InstancedMesh(mergeGeos(parts), mat, n); this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.frustumCulled = false; this.mesh.count = 0; this.mesh.visible = false; scene.add(this.mesh);
+    this.n = n; this.k = 0; this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new V3(); this._x = new V3(1, 0, 0);
+  }
+  /* one body this step at p, nose along dir (unit), s: its scale (1: a 1.7 m missile) */
+  add(p, dir, s) { if (this.k >= this.n) return; this._q.setFromUnitVectors(this._x, dir); this.mesh.setMatrixAt(this.k++, this._m.compose(p, this._q, this._s.setScalar(s))); }
+  /* after the step's updates: what was added is what shows */
+  flush() { this.mesh.count = this.k; this.mesh.visible = this.k > 0; if (this.k) this.mesh.instanceMatrix.needsUpdate = true; this.k = 0; }
+}
+const _mfT = new V3(), _mfV = new V3();
+/* a missile's look this step: m keeps its trail's last puff (m.trail), p its position, dir its heading (unit); o: { s scale,
+   motor (false: a glide bomb), pool (the glare's sprites: FX.flare near the lens) } */
+function missileFx(m, p, dir, o) {
+  const s = o.s || 1; FX.bodies.add(p, dir, s); if (o.motor === false) return;
+  _mfT.copy(p).addScaledVector(dir, -0.75 * s);
+  (o.pool || FX.flash).spawn(_mfT, { s0: 1.5 * s, s1: 1.1 * s, life: 0.06, color: 0xffd8a0 });
+  FX.tracers.spawn(_mfT, _mfV.copy(dir).multiplyScalar(0.01), { life: 0.06, len: 4 * s, w: 1.5 * s, color: 0xffb860 });   // (a tongue of flame trailing back from the tail)
+  if (!m.trail) m.trail = _mfT.clone();
+  let d = m.trail.distanceTo(_mfT), n = 0;
+  for (; d >= 4 && n < 14; d -= 4, n++) { m.trail.lerp(_mfT, 4 / d); FX.smoke.spawn(m.trail, { s0: 0.9 * s, s1: rand(3.5, 5.5) * s, life: rand(2.2, 3.2), a0: 0.5, color: 0xc4c4be, v: _mfV.set(rand(-0.6, 0.6), rand(0.2, 0.8), rand(-0.6, 0.6)), drag: 0.6 }); }
+  if (n === 14) m.trail.copy(_mfT);
+}

@@ -173,3 +173,57 @@ test('a blast hurts every enemy round it, not only the kinds its weapon is aimed
   expect(r).toEqual({ eDead: true, splash: expect.any(Number), hfLog: 0, ownSide: true, aDead: true });
   expect(r.splash).toBeGreaterThan(1);
 });
+
+test('the light guns barely scratch an APC; a map with one base site gets its base back on the ruin', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11' });
+  await wp.sim(5.5, { audio: true });
+  await wp.until(() => BATTLE.base && GUNSHIP.state === 'orbit', 60, { audio: true });
+  const r = await wp.run(() => {
+    const rounds = (id, kind) => {   // (direct hits of one round each until it dies)
+      const v = new Vehicle(kind, 'enemy'); v.pos.set(BATTLE.base.x + 40, 0, BATTLE.base.z); v.pos.y = groundH(v.pos.x, v.pos.z);
+      let n = 0; while (v.alive && n < 500) { BATTLE.strike(v.pos, GUN[id].r, GUN[id].dmg, WEAPON[id], false); n++; } return n;
+    };
+    const inf = UNITS.find(u => u.side === 'enemy' && u.kind === 'inf' && u.alive); let infN = 0;
+    if (inf) { BATTLE.strike(inf.pos, GUN.g25.r, GUN.g25.dmg, WEAPON.g25, false); infN = inf.alive ? 2 : 1; }
+    const out = { sites: LAYOUT.sites.length, infN, g25car: rounds('g25', 'car'), g25apc: rounds('g25', 'apc'), g30car: rounds('g30', 'car'), g30apc: rounds('g30', 'apc') };
+    const site = BATTLE.base.site; for (const p of BATTLE.base.parts) hurt(p, 1e3);
+    __t.sim(0.1, { audio: true }); out.wrecked = !BATTLE.base;
+    for (let i = 0; i < 2400 && !BATTLE.base; i++) __t.sim(0.05, { audio: true });
+    out.back = !!BATTLE.base && BATTLE.base.site === site; out.after = Math.round(T - site.restUntil + 300);
+    return out;
+  });
+  console.log(JSON.stringify(r));
+  expect(r.sites).toBe(1);
+  expect(r.infN, 'a soldier: one round').toBe(1);
+  expect(r.g25car).toBeLessThan(20); expect(r.g25apc).toBeGreaterThan(80);
+  expect(r.g30car).toBeLessThanOrEqual(2); expect(r.g30apc).toBeGreaterThanOrEqual(7);
+  expect(r.wrecked).toBe(true); expect(r.back, 'a new base on the only site').toBe(true);
+  expect(r.after).toBeGreaterThanOrEqual(40); expect(r.after).toBeLessThan(120);
+});
+
+test('a vehicle firing up at the aircraft raises its roof machine gun and the tracers leave its muzzle; missiles fly with a body, flares without', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=hf&auto=0&transit=0' });
+  const r = await wp.run(() => {
+    const v = new Vehicle('apc', 'enemy'); v.obj.position.set(CAM_TGT.x, groundH(CAM_TGT.x, CAM_TGT.z), CAM_TGT.z);   // (under the camera: the aircraft some 45° up) v.yaw = 1; v.obj.rotation.set(0, -1, 0, 'YZX');
+    const out = { mgs: ['tank', 'apc', 'car'].map(k => !!unitModel('enemy', k).getObjectByName('mg')), rest: v.mg.rotation.z };
+    v.aaUntil = T + 99; AA.bursts.push({ u: v, wait: 0, n: 6, tick: 0, col: 0xa8ff8a, ox: 16, oy: 6 });
+    const spawn0 = FX.tracers.spawn, from = []; FX.tracers.spawn = (p, vel, o) => { from.push(p.distanceTo(v.mgMuzzle(new THREE.Vector3()))); return spawn0.call(FX.tracers, p, vel, o); };
+    let up = 0; for (let i = 0; i < 100; i++) { v.aimMG(0.05); __t.sim(0.05); up = Math.max(up, v.mg.rotation.z); }
+    FX.tracers.spawn = spawn0;
+    const near = from.filter(d => d < 0.05).length;
+    out.raised = up; out.after = v.mg.rotation.z; out.near = near; out.shots = from.length;
+    // a Hellfire on its way: a body each step; flares: none
+    __t.sim(5.5, { audio: true }); let bodies = 0, steps = 0;
+    for (let i = 0; i < 3000 && !BATTLE.missiles.length; i++) __t.sim(0.05, { audio: true });
+    for (let i = 0; i < 10 && BATTLE.missiles.length; i++) { __t.sim(0.05, { audio: true }); steps++; bodies += FX.bodies.mesh.count; }
+    out.missile = { steps, bodies };
+    for (const m of BATTLE.missiles.splice(0)) {} AA.sams.length = 0; AA.drop(6); let fb = 0; for (let i = 0; i < 20; i++) { __t.sim(0.05); fb += FX.bodies.mesh.count; }
+    out.flareBodies = fb;
+    return out;
+  });
+  expect(r.mgs).toEqual([true, true, true]);
+  expect(Math.abs(r.rest)).toBeLessThan(1e-6); expect(r.raised, 'raised at the aircraft').toBeGreaterThan(0.5); expect(r.after, 'and lowered after').toBeLessThan(r.raised - 0.3);
+  expect(r.near, 'tracers from the muzzle').toBeGreaterThanOrEqual(5);
+  expect(r.missile.steps).toBeGreaterThan(3); expect(r.missile.bodies).toBeGreaterThanOrEqual(r.missile.steps);
+  expect(r.flareBodies).toBe(0);
+});

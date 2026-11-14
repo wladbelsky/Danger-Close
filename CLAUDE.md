@@ -41,6 +41,17 @@ Update the status here when a stage is finished. The full approved design is sum
     `kickT`, `tempo` 0..1 = 95–150 bpm, gone 2.5 s after the last kick); the light guns fire between the beats on a grid locked to the
     kick (`SUBDIV`, `BATTLE.subBeat`: eighths, sixteenths for the 25 mm; no ammunition taken), the guns reload up to twice as fast
     (`TEMPO_GUNS`), the units' pace ×(1 + 0.4·tempo). The outposts' squads refill in their file (`Squad.refill`), not at the gate — done.
+17. **More enemies, lighter guns**: the 25 mm and 30 mm do less (`GUN` dmg 0.34 / 2.4, a soldier still dies of one round) and hardly
+    hurt armour (`ARMOR`: ×0.6 / 0.8 on cars, ×0.2 / 0.4 on APCs — some 100 rounds of 25 mm or 8 of 30 mm for an APC); the shots between
+    the beats do half (`fire(…, dk)`). More arrive and sooner (columns up to 14 vehicles every 6–12 s, 6 squads, 3 field fights); 6 s with
+    no enemy in the frame calls the next arrivals at once (`fedT`, `rushT`, `stat.rush`); a wrecked base is rebuilt in 12–20 s, on its
+    own ruin 40 s on if the map has no other site (`pickSite`: seed 11 has one) — done.
+18. **Closer looks**: the vehicles in more detail for the top of the zoom (road wheels and tracks, ERA, sights, smoke launchers,
+    stowage, antennas, wheel hubs, glass; `tracks`, `smokers`, `mgGun` in js/armor.js); a machine gun on the roof of every enemy
+    vehicle (`mg`, dynamic) turns up at the aircraft while its crew fires up at it (`Vehicle.aimMG`, `mgMuzzle`; AA bursts wait for
+    it and leave its muzzle). Missiles (the gunship's, the SAMs) fly with a body (`Bodies`, `FX.bodies`, `MISSILE_S`), a steady
+    glare and a tongue of flame, a dense trail laid every 4 m (`missileFx`); flares pop, sputter, shed thin sparks and only wisp.
+    Sheets: vehicles-close.png, missiles-flares.png. The sub-beats no longer fire off the grid when they resume — done.
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -89,13 +100,13 @@ Update the status here when a stage is finished. The full approved design is sum
 | `js/core.js` | utils, `mulberry32`, `CFG`, `WIND`, `groundH`, `SEASONS`, sun position, sky palette, `TEX` |
 | `js/sensor.js` | `SENSOR` (modes, render target, post shader), `SU` shared uniforms, `sensorHook` / `sensorMat` (the heat term) |
 | `js/models.js` | mesh helpers (`M`, `HOT`, `box`, `cyl`, `taper`, `prism`, `strut`…), `mergeStatic` (bakes `aHeat`), `disposeTree`, seasonal materials |
-| `js/armor.js` | vehicle models facing +x (×`ARMOR_SCALE`): T-90, BTR (enemy), Abrams, Bradley, Humvee (ally), technical (enemy car); `WRECK_MATS`, `toWreck` |
+| `js/armor.js` | vehicle models facing +x (×`ARMOR_SCALE`): T-90, BTR (enemy), Abrams, Bradley, Humvee (ally), technical (enemy car), each with a roof machine gun `mg` (not the Bradley); `WRECK_MATS`, `toWreck` |
 | `js/helis.js` | helicopter models (FAB airframes, ×`HELI_SCALE` = 10): AH-64, UH-60 (ally), Mi-24, Ka-52 (enemy); rotors named `rotor` / `rotor2` / `trotor` |
 | `js/mapgen.js` | `MAP` (seeded heights and masks on a 4 m grid, built as a generator run in slices), `vnoise`, `groundH` (exactly the mesh's triangles), `groundN` |
 | `js/layout.js` | `LAYOUT`: outposts (`OP_W`×`OP_D` walled compounds beside a country road: parts, gate, inner drive, pad), lakes, the river, towns, the railway, roads (A* on a 16 m grid, profiles, carving into `MAP.h`), streets, building lots, the station, farms, tracks, fields; the occupancy grid `OCC` (2 m cells, `OCC_*` flags: `occAt`), `MAP.water` / `MAP.wl` (`waterAt`, `waterLevelAt`), the land-use canvas (fields as premultiplied rgb(coverage, row angle, crop)) |
 | `js/terrain.js` | `TERRAIN`: ground chunks (16×16 of 128 m), the ground material (mask + tiled detail in world space, `GROUND_PAL` per season), vegetation (one InstancedMesh per kind and chunk; roles fixed per seed, shapes per season) |
 | `js/structures.js` | `STRUCT`: water (lakes, river), road / rail ribbons draped on the carved ground (decal materials: no depth write, polygon offset, renderOrder), bridges, the station, buildings (`BUILDERS`) merged per town / farm |
-| `js/effects.js` | `Tracers`, `SpriteFX`, `Scorch`, `blast` |
+| `js/effects.js` | `Tracers`, `SpriteFX`, `Scorch`, `blast`, missiles in flight (`Bodies`, `missileFx`) |
 | `js/infantry.js` | `INF`: every soldier in two InstancedMeshes (bodies; legs swinging), instance colour = side; a soldier is its own HUD track |
 | `js/units.js` | `UNIT_TYPES`, `ROADNET` (a node per road sample, ends joined to other roads, A*), `Path` (lane to the right), `Vehicle`, `Column` (leader + gap; `follow` turns round on a reversed path), `Heli` (pad → up → fly a round → home → down), `Squad` (file along the leader's trail; `flee`), `walkable` / `patrolLoop`, `ALLIES` (a garrison per outpost; sorties to the enemy base in a fight, losses replaced out of sight); combatants: `UNITS`, `enlist` / `delist` / `hurt`, `unitModel` (a prototype per model, cloned: no geometry per spawn), `Column.reroute` (from where it stands; the rear leads if the way goes back) |
 | `js/weapons.js` | `WEAPONS` (name, zoom factor, reticle, `hits` = the kinds it may hit, `band` = the beat that fires it, `use`, cosmetic rounds / magazine / reload), `ARMS` (the selected weapon, ammunition state) |
@@ -112,7 +123,7 @@ Update the status here when a stage is finished. The full approved design is sum
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=68`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=69`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

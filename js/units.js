@@ -88,7 +88,7 @@ const _va = new V3(), _vb = new V3(), _vc = new V3();
 class Vehicle {
   constructor(type, side) {
     this.type = type; this.obj = unitModel(side, type); this.obj.scale.setScalar(ARMOR_SCALE); scene.add(this.obj);
-    this.turret = this.obj.getObjectByName('turret'); this.ph = Math.random() * TAU;
+    this.turret = this.obj.getObjectByName('turret'); this.mg = this.obj.getObjectByName('mg'); this.aaUntil = 0; this.mgOff = 9; this.ph = Math.random() * TAU;   // (mg: the machine gun on the roof, raised at the aircraft while it fires up: AA in js/weather.js)
     this.path = null; this.s = 0; this.v = 0; this.yaw = 0; this.laneK = 1; this.vmax = UNIT_SPEED[type]; this.col = null; this.troops = type === 'apc' ? randi(4, 6) : 0;   // (troops: the infantry it carries)
     enlist(this, side, type, this.obj.position, type === 'car' ? 1.3 : 1.9);
     TRACKS.push({ obj: this.obj, side, inf: false, h: type === 'car' ? 1.5 : 2.2 });
@@ -111,7 +111,17 @@ class Vehicle {
     this.obj.rotation.set(0, -this.yaw, pitch, 'YZX');
     if (this.turret && this.tgt) this.turret.rotation.y = approachAngle(this.turret.rotation.y, this.yaw - Math.atan2(this.tgt.pos.z - _vc.z, this.tgt.pos.x - _vc.x), dt * 1.6);   // (onto its target)
     else if (this.turret) this.turret.rotation.y = this.v > 1 ? this.turret.rotation.y * (1 - Math.min(1, dt)) : lerp(this.turret.rotation.y, Math.sin(T * 0.15 + this.ph) * 0.8, Math.min(1, dt));
+    if (this.mg) this.aimMG(dt);
   }
+  /* the roof machine gun: turned and raised at the aircraft while its crew fires up at it, else back level */
+  aimMG(dt) {
+    const m = this.mg; let yaw = 0, pitch = 0, k = dt * 1.2;
+    if (T < this.aaUntil) { m.parent.updateWorldMatrix(true, false); m.parent.worldToLocal(_va.copy(camera.position)).sub(m.position); yaw = Math.atan2(-_va.z, _va.x); pitch = Math.atan2(_va.y, Math.hypot(_va.x, _va.z)); k = dt * 3.5; }
+    this.mgOff = Math.abs(angleWrap(yaw - m.rotation.y)) + Math.abs(pitch - m.rotation.z);
+    m.rotation.y = approachAngle(m.rotation.y, yaw, k); m.rotation.z += clamp(pitch - m.rotation.z, -k, k);
+  }
+  /* the muzzle of the roof machine gun in the world (out) */
+  mgMuzzle(out) { const m = this.mg; m.updateWorldMatrix(true, false); return m.localToWorld(out.set(m.userData.muzzle, 0.008, 0)); }
   /* knocked out: a burning wreck where it stood */
   die() { this.gone(); blast(this.pos, 1.7); if (this.troops) BATTLE.bail(this); if (this.turret) this.turret.rotation.set(rand(-0.12, 0.12), rand(0, TAU), rand(-0.1, 0.1)); WRECKS.add(this.obj, 1.5); }
   /* taken away (out of sight) */

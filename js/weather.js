@@ -105,29 +105,34 @@ const AA = {
       if (this.samDue && T - this.samDue > 1.5) this.sam();
     } else this.gunDue = this.samDue = 0;
     for (let i = this.bursts.length - 1; i >= 0; i--) {
-      const b = this.bursts[i]; if (!b.u.alive || b.n <= 0) { this.bursts.splice(i, 1); continue; }
+      const b = this.bursts[i]; if (!b.u.alive || b.n <= 0) { if (b.u.mg) b.u.aaUntil = T + 1.5; this.bursts.splice(i, 1); continue; }   // (the machine gun stays up a moment, then comes down)
       if ((b.tick -= dt) > 0) continue; b.tick = 0.07; b.n--; this.shots++;
-      if (b.u.type === 'aa' && b.u.aimOff > 0.25) { b.tick = 0; b.n++; this.shots--; continue; }   // (the gun is still turning: the burst waits)
+      if (((b.u.type === 'aa' && b.u.aimOff > 0.25) || (b.u.mg && b.u.mgOff > 0.2)) && (b.wait += 0.07) < 2.5) { b.tick = 0; b.n++; this.shots--; continue; }   // (the gun is still turning up at the aircraft: the burst waits)
       this.basis(); _wp.set(b.u.pos.x, b.u.pos.y + 2.2, b.u.pos.z);
-      if (b.u.type === 'aa') { const k = 2.2 / (Math.hypot(camera.position.x - _wp.x, camera.position.z - _wp.z) || 1); _wp.x += (camera.position.x - _wp.x) * k; _wp.z += (camera.position.z - _wp.z) * k; _wp.y += 1; }   // (from the muzzles)
+      if (b.u.mg) b.u.mgMuzzle(_wp);   // (a vehicle's: from its roof machine gun)
+      else if (b.u.type === 'aa') { const k = 2.2 / (Math.hypot(camera.position.x - _wp.x, camera.position.z - _wp.z) || 1); _wp.x += (camera.position.x - _wp.x) * k; _wp.z += (camera.position.z - _wp.z) * k; _wp.y += 1; }   // (from the muzzles)
       _wq.copy(camera.position).addScaledVector(_wr, b.ox + rand(-3, 3)).addScaledVector(_wu, b.oy + rand(-3, 3)).sub(_wp); const d = _wq.length();
       FX.tracers.spawn(_wp, _wq.multiplyScalar(430 / d), { life: d / 430, len: 7, w: 0.34, color: b.col });
-      if (b.n % 3 === 0) FX.flash.spawn(_wp, { s0: 2, s1: 4, life: 0.08 });
+      if (b.n % 3 === 0) FX.flash.spawn(_wp, b.u.mg ? { s0: 1.1, s1: 2.2, life: 0.06 } : { s0: 2, s1: 4, life: 0.08 });
     }
     for (let i = this.sams.length - 1; i >= 0; i--) {
       const m = this.sams[i]; m.p += dt / m.dur;
       if (!m.flared && m.p > 0.3) { m.flared = true; this.drop(6); }
       const q = m.p, a = (1 - q) * (1 - q), b = 2 * q * (1 - q), c = q * q; _wp.set(m.a.x * a + m.c.x * b + m.b.x * c, m.a.y * a + m.c.y * b + m.b.y * c, m.a.z * a + m.c.z * b + m.b.z * c);   // (a curve: it turns after the flares)
       if (m.p >= m.end) { this.sams.splice(i, 1); if (m.end < 1) hitFx(_wp.x, _wp.y, _wp.z, 1.6, true); continue; }
-      FX.flare.spawn(_wp, { s0: 2.6, s1: 1.4, life: 0.07 });
-      if ((m.puff -= dt) <= 0) { m.puff = 0.03; FX.smoke.spawn(_wp, { s0: 1.4, s1: 5, life: 1.6, a0: 0.4, color: 0xdcdcdc }); }
+      _wq.set(m.c.x - m.a.x + q * (m.a.x + m.b.x - 2 * m.c.x), m.c.y - m.a.y + q * (m.a.y + m.b.y - 2 * m.c.y), m.c.z - m.a.z + q * (m.a.z + m.b.z - 2 * m.c.z)).normalize();   // (the curve's heading)
+      missileFx(m, _wp, _wq, { s: 1.1, pool: FX.flare });
     }
     for (let i = this.flares.length - 1; i >= 0; i--) {
       const f = this.flares[i]; if ((f.wait -= dt) > 0) continue;
+      if (!f.lit) { f.lit = true; FX.flare.spawn(f.p, { s0: 3.5, s1: 6, life: 0.12, a0: 0.8 }); FX.smoke.spawn(f.p, { s0: 1, s1: 3.5, life: 0.8, a0: 0.3, color: 0xe0e0e0 }); }   // (the pop as it is thrown out)
       f.life -= dt; if (f.life <= 0) { this.flares.splice(i, 1); continue; }
       f.v.y -= 6 * dt; f.v.multiplyScalar(1 - 0.5 * dt); f.p.addScaledVector(f.v, dt);
-      FX.flare.spawn(f.p, { s0: 1.5 * Math.min(1, f.life), s1: 0.7, life: 0.09 });
-      if ((f.puff -= dt) <= 0) { f.puff = 0.06; FX.smoke.spawn(f.p, { s0: 0.6, s1: 2.6, life: 1.2, a0: 0.28, color: 0xe8e8e8 }); }
+      const k = Math.min(1, f.life / 0.6);   // (burning out: it shrinks and reddens)
+      FX.flare.spawn(f.p, { s0: rand(0.9, 2.2) * (0.4 + 0.6 * k), s1: 0.5, life: 0.07, color: k < 1 ? 0xff9a50 : 0xfffaf0 });   // (sputtering: a new size every frame)
+      if (Math.random() < 0.3 * k) FX.flare.spawn(f.p, { s0: rand(3.5, 5.5), s1: 2.5, life: 0.06, a0: 0.3 });   // (now and then its glare blooms)
+      if (Math.random() < 0.45 * k) FX.tracers.spawn(f.p, _wq.set(rand(-4, 4), rand(-2, 3), rand(-4, 4)).addScaledVector(f.v, 0.4), { life: rand(0.25, 0.5), len: rand(0.8, 1.6), w: 0.07, color: 0xffe0a8, grav: 16 });   // (sparks dropping off: thin streaks)
+      if ((f.puff -= dt) <= 0) { f.puff = 0.05; FX.smoke.spawn(f.p, { s0: 0.35, s1: rand(1.4, 2.4), life: rand(0.8, 1.3), a0: 0.2, color: 0xf2f2f2, rise: 0.6 }); }   // (only a thin wisp: no trail like a missile's)
     }
   },
   /* a beat in a fight (js/battle.js): a due burst starts, a due missile goes on a kick or a strong beat; flares on some strong beats */
@@ -140,7 +145,8 @@ const AA = {
   /* a burst of tracers from an enemy near the sensor's point (big: a longer one) */
   burst(big) {
     this.gunDue = 0; const u = this.source(false); if (!u) return;
-    this.basis(); this.bursts.push({ u, n: (u.type === 'aa' ? randi(10, 16) : randi(4, 8)) + (big ? 6 : 0), tick: 0, col: Math.random() < 0.6 ? 0xa8ff8a : 0xff8850, ox: rand(9, 24) * (Math.random() < 0.5 ? -1 : 1), oy: rand(-12, 14) });
+    if (u.mg) u.aaUntil = T + 99;   // (its machine gun turns up at the aircraft first)
+    this.basis(); this.bursts.push({ u, wait: 0, n: (u.type === 'aa' ? randi(10, 16) : randi(4, 8)) + (big ? 6 : 0), tick: 0, col: Math.random() < 0.6 ? 0xa8ff8a : 0xff8850, ox: rand(9, 24) * (Math.random() < 0.5 ? -1 : 1), oy: rand(-12, 14) });
     if (Math.random() < 0.15) this.drop(3);
   },
   sam() { this.samDue = 0; const u = this.source(true); if (u) this.launch(u); },
