@@ -35,9 +35,10 @@ fullscreen apps by default.
   tracks (allies blue, enemies white), the weapon selector with cosmetic ammunition and reloads. It keeps clear of the
   taskbar (**HUD space kept free at the bottom**) and scales with **HUD scale**.
 - **The camera**: a left orbit over one area, a transit to another every few minutes in silence; in a fight it slews
-  onto the enemy, each weapon with its own zoom.
+  onto the enemy, each weapon with its own zoom — lazily in a quiet part, fast and sharp when the music drives hard.
 - **The big guns in frame**: the barrels of the 105 mm and the railgun (while enabled) at the bottom right, fixed to the
-  aircraft — they move in the frame as the sensor turns and zooms, recoil on every shot, flash, smoke and heat up.
+  aircraft — they move in the frame as the sensor turns and zooms, recoil on every shot, flash, smoke and heat up. The
+  other guns sit on the same side of the fuselage, out of the frame: their rounds come in from its right edge.
 
 ![Night vision](screenshots/fight-nv.jpg)
 
@@ -65,7 +66,8 @@ fullscreen apps by default.
 
   The light guns cut down infantry and cars but only wear down armour: an APC takes a long hammering from the 25 mm, a tank
   shrugs it off.
-  The first three are on by default; each is a property. Automatic switching picks one for the targets and the music;
+  The first three are on by default; each is a property. Automatic switching picks one for the targets and the music,
+  and while the one in hand reloads it fires another;
   a click on one holds it for 30 s, or until nothing it may hit is left round where the aircraft is.
 - **Everything plays to the music**: the soldiers and the technicals fire on the hats, the APCs and helicopters on the snare,
   the tanks on the kick, and a strong beat is a volley; denser music, faster fire (at the same damage); the gunship's bursts

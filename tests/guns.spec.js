@@ -58,3 +58,19 @@ test('looking far down or to the nose, the barrels stay at the bottom and never 
   });
   for (const o of r) { expect(o.top, `the barrels' highest point in the frame, ${JSON.stringify(o)}`).toBeLessThan(-0.1); expect(o.near, `the lens never inside a barrel (their radius is under 0.16), ${JSON.stringify(o)}`).toBeGreaterThan(0.3); }
 });
+
+const GUN_SIDE_D_ = 90;
+test('the guns with no barrel in the frame fire from its right edge, low down, like the drawn ones', async ({ wp }) => {
+  await wp.boot({ query: '?hour=11&seed=11&weather=clear&transit=0&weapons=g25,g30,b40,las&auto=0' });
+  const r = await wp.run(() => {
+    __t.sim(1); const at = {};
+    for (const id of ['g25', 'g30', 'b40', 'las']) { ARMS.select(id); const p = BATTLE.muzzle(new THREE.Vector3()), d = p.distanceTo(camera.position); p.project(camera); at[id] = { x: p.x, y: p.y, d }; }
+    ARMS.select('g25'); const spawn = FX.tracers.spawn, starts = [];
+    FX.tracers.spawn = function (p, v, o) { if (o && o.color === 0xffc070) starts.push(p.clone().project(camera)); return spawn.apply(this, arguments); };
+    for (let i = 0; i < 1200 && starts.length < 10; i++) __t.sim(0.05, { audio: true });
+    FX.tracers.spawn = spawn;
+    return { at, n: starts.length, right: starts.filter(s => s.x > 1 && s.y < 0).length };
+  });
+  for (const id in r.at) { const a = r.at[id]; expect(a.x, id).toBeGreaterThan(1); expect(a.x, id).toBeLessThan(1.2); expect(a.y, id).toBeLessThan(0); expect(a.d, id).toBeCloseTo(GUN_SIDE_D_, 0); }
+  expect(r.n).toBeGreaterThanOrEqual(10); expect(r.right, 'the 25 mm\'s rounds from the right edge').toBe(r.n);
+});

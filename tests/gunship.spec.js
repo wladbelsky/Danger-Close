@@ -79,3 +79,23 @@ test('brackets keep their size at any zoom: allies blue, enemies white', async (
   expect(r.sizes[1]).toBeCloseTo(r.sizes[0], 5);
   expect(r.sides).toEqual(['ally', 'enemy']);
 });
+
+test('the slew onto a target is quicker the harder and faster the music, sluggish in a quiet part', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&transit=0' });
+  const r = await wp.run(() => {
+    Object.defineProperty(AUD, 'fighting', { get: () => true, configurable: true });
+    BATTLE.focus = { alive: true }; BATTLE.surgeUntil = 0; GUNSHIP.nextWander = 1e9;
+    const time = (heavy, tempo, calm) => {
+      AUD.heavy = heavy; AUD.tempo = tempo; AUD.calmFrom = calm ? RT() - 5 : -1;
+      GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0);
+      for (let i = 0; i < 200; i++) GUNSHIP.update(0.05);   // (the stiffness eases to the music's)
+      const k = GUNSHIP.slewK; GUNSHIP.track({ x: GUNSHIP.look.x + 60, z: GUNSHIP.look.z });
+      let n = 0; for (; n < 400; n++) { GUNSHIP.update(0.05); if (Math.hypot(GUNSHIP.look.x - GUNSHIP.aim.x, GUNSHIP.look.z - GUNSHIP.aim.z) < 3) break; }
+      return { k, t: n * 0.05 };
+    };
+    return { calm: time(0.1, 0, true), mid: time(0.4, 0.3, false), hard: time(1, 1, false) };
+  });
+  expect(r.calm.k).toBeCloseTo(0.6, 1); expect(r.hard.k).toBeCloseTo(1.7, 1);
+  expect(r.mid.t).toBeLessThan(r.calm.t); expect(r.hard.t).toBeLessThan(r.mid.t);
+  expect(r.hard.t, 'driving music: the slew onto a target 60 m off').toBeLessThan(r.calm.t * 0.5);
+});

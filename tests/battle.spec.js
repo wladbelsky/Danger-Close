@@ -227,3 +227,18 @@ test('a vehicle firing up at the aircraft raises its roof machine gun and the tr
   expect(r.missile.steps).toBeGreaterThan(3); expect(r.missile.bodies).toBeGreaterThanOrEqual(r.missile.steps);
   expect(r.flareBodies).toBe(0);
 });
+
+test('the auto-switching fires another weapon while the one in hand reloads for a while', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=g25,h105&transit=0' });
+  const r = await wp.run(() => {
+    const e = { alive: true, side: 'enemy', kind: 'car', pos: CAM_TGT.clone(), ah: 1.6 }; UNITS.push(e);
+    const at = (rl) => { ARMS.select('h105'); ARMS.st.h105.reload = rl; BATTLE.manualUntil = 0; BATTLE.autoTick = 0; BATTLE.nextSwitch = T + 100; BATTLE.autoArm(); return ARMS.cur; };
+    const out = { ready: at(0), short: at(1), long: at(2.4) };
+    UNITS.splice(UNITS.indexOf(e), 1); ARMS.st.h105.reload = 0; BATTLE.stat.hops = 0;
+    __t.sim(90, { audio: true, bpm: 90 }); out.hops = BATTLE.stat.hops; out.shots = BATTLE.stat.shots;
+    return out;
+  });
+  expect(r.ready, 'loaded: it stays').toBe('h105'); expect(r.short, 'a short reload: it stays').toBe('h105');
+  expect(r.long, 'a long reload: the 25 mm meanwhile').toBe('g25');
+  expect(r.hops, 'in a fight').toBeGreaterThan(0);
+});

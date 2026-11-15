@@ -534,3 +534,21 @@ test('missiles and flares', async ({ wp }) => {
   await wp.run(() => { SENSOR.set('tv'); HUD.markModes(); const u = UNITS.find(o => o.side === 'enemy' && o.alive && o.kind !== 'struct' && o.kind !== 'heli' && o.kind !== 'inf') || UNITS.find(o => o.side === 'enemy' && o.alive && o.kind === 'inf'); AA.launch(u); __t.sim(1.2, { audio: true }); }); await snap();
   await sheet(wp, shots, 2, 'missiles-flares.png');
 });
+
+/* the guns with no barrel drawn fire from the frame's right edge, beside the 105 mm's barrel: a frame just after a shot of each */
+test('side guns', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 960, height: 540 });
+  const shots = [];
+  for (const id of ['g25', 'g30', 'b40', 'las']) {
+    const q = `?hour=11&seed=11&season=summer&weather=clear&clouds=0&weapons=${id},h105&auto=0`;
+    if (!shots.length) await wp.boot({ query: q }); else await wp.goto(q);
+    await wp.run((id) => {
+      ARMS.select(id); __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
+      const sp = FX.tracers.spawn; let streak = false; FX.tracers.spawn = function (p, v, o) { if (o && o.color === 0xffd090) streak = true; return sp.apply(this, arguments); };   // (the streak in from the edge: one step old)
+      for (let k = 0; k < 3; k++) { streak = false; for (let i = 0; i < 3000 && (id === 'las' ? !BATTLE.beam.visible : !streak); i++) __t.sim(0.05, { audio: true }); }
+      FX.tracers.spawn = sp; __t.sim(0.05, { audio: true }); __t.render();
+    }, id);
+    shots.push((await wp.page.screenshot()).toString('base64'));
+  }
+  await sheet(wp, shots, 2, 'side-guns.png');
+});

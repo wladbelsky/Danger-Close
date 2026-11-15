@@ -62,6 +62,8 @@ const PREF = {
 const ARMOR = { g25: { car: 0.6, apc: 0.2 }, g30: { car: 0.8, apc: 0.4 } };
 /* the missiles' and the bomb's bodies in flight, a scale on a 1.7 m missile (js/effects.js: missileFx) */
 const MISSILE_S = { hf: 1, apk: 1.1, gbu: 1.2, aim: 1.6 };
+/* the auto-switching changes weapon while the one in hand reloads longer than this (or two beats), seconds */
+const RELOAD_HOP = 1.5;
 const HEAVY_ARMS = new Set(['h105', 'hf', 'gbu', 'rail', 'apk']);
 const QRF_TYPES = [['tank', 'apc'], ['apc', 'car'], ['tank', 'car', 'car'], ['apc', 'apc']];
 const WAVES = [['car', 'car'], ['apc', 'car'], ['tank', 'apc'], ['tank', 'tank', 'apc'], ['car', 'apc', 'apc'], ['tank', 'car', 'car']];
@@ -132,7 +134,7 @@ function baseModel(type) {
 const RET_ON = 0.07;   // the reticle is "on" a target within this of the frame's centre (in half frame heights): no shot before that
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0);
 const BATTLE = {
-  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
+  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
   pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, nextHop: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0,
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
@@ -391,8 +393,13 @@ const BATTLE = {
   },
 
   /* ---- the gunship ---- */
-  /* where the rounds come from: just under the lens (they fly away from the viewer and shrink onto the target) */
-  muzzle(out, side) { this.barrel = !side && !!GUNS.muzzleAt(ARMS.cur, out, 45); if (this.barrel) return out; const e = camera.matrixWorld.elements; return out.copy(camera.position).addScaledVector(_bt.set(e[4], e[5], e[6]), -5.5).addScaledVector(_bt.set(e[0], e[1], e[2]), side || -1.5); },
+  /* where the rounds come from: the gun's barrel in the frame, else its mount on the same side of the fuselage just out of the frame
+     (js/guns.js); side: a missile off a pylon, metres to the side under the lens */
+  muzzle(out, side) {
+    this.barrel = !side && !!GUNS.muzzleAt(ARMS.cur, out, 45); if (this.barrel) return out;
+    if (!side) return GUNS.sideAt(ARMS.cur, out, GUN_SIDE_D);
+    const e = camera.matrixWorld.elements; return out.copy(camera.position).addScaledVector(_bt.set(e[4], e[5], e[6]), -5.5).addScaledVector(_bt.set(e[0], e[1], e[2]), side);
+  },
   /* the target for a weapon: the one it is on while that is alive and in the frame, else the nearest to the frame's centre */
   target(w) {
     const f = this.focus; if (f && f.alive && w.hitSet.has(f.kind) && this.inFrame(f.pos)) return f;
@@ -418,6 +425,7 @@ const BATTLE = {
     if (!force && (!ok || idle < GUN[w.id].gap || (f < 1 && Math.random() > f))) return;
     const t = this.target(w); if (!t || !this.onReticle(t) || !ARMS.shoot()) return;   // (only at what the reticle is on)
     if (force) this.forceUntil = 0;
+    if (ARMS.st[w.id].reload > 0) this.autoTick = Math.min(this.autoTick, T + 0.3);   // (it has to reload: another weapon may take over meanwhile)
     this.lastShot = T; this.shotRT = RT(); this.stat.shots++; this.fire(w, t, st);
   },
   /* between the beats: on each point of the grid (the kick's beat split in 2 or 4 by the tempo) the light gun fires a short burst
@@ -461,7 +469,7 @@ const BATTLE = {
   },
   /* the camera onto a unit: a little ahead of a moving one, so the slew's lag leaves the reticle on it */
   lookAt(u) {
-    this.velOf(u, _bd); _bp.set(u.pos.x + _bd.x * (2 / SLEW_LOCK + 0.125), 0, u.pos.z + _bd.z * (2 / SLEW_LOCK + 0.125));
+    this.velOf(u, _bd); const lead = 2 / (SLEW_LOCK * GUNSHIP.slewK) + 0.125; _bp.set(u.pos.x + _bd.x * lead, 0, u.pos.z + _bd.z * lead);
     const h = u.pos.y - groundH(u.pos.x, u.pos.z); if (h > 3) { _bd.subVectors(CAM_TGT, camera.position).normalize(); _bp.addScaledVector(_bd, -h / _bd.y); }   // (one in the air: the ground point behind it on the line of sight)
     GUNSHIP.track(_bp);
   },
@@ -478,7 +486,7 @@ const BATTLE = {
       if (G.missile) { this.missiles.push({ w, G, tgt: G.spread < 2 ? t : null, from: this.muzzle(new V3(), rand(-1, 1) > 0 ? rand(8, 14) : rand(-14, -8)).addScaledVector(_bt.set(camera.matrixWorld.elements[4], camera.matrixWorld.elements[5], camera.matrixWorld.elements[6]), -3), to, p: 0, t: 0, dur: G.missile, rush: false, puff: 0, fx, dmg }); return; }
       this.muzzle(_bm); _bt.subVectors(to, _bm); const d = _bt.length();
       FX.tracers.spawn(_bm, _bt.multiplyScalar(1 / fl), { life: fl, len: G.tl, w: G.tw, color: 0xffc070 });
-      if (this.barrel) FX.tracers.spawn(_bm, _bt, { life: 0.08, len: 45, w: G.tw * 2.5, color: 0xffd090 });   // (out of the barrel in the frame: a streak back to the muzzle for the first frames)
+      const sl = this.barrel ? 45 : GUN_SIDE_D; FX.tracers.spawn(_bm, _bt, { life: this.barrel ? 0.08 : 0.12, len: sl, w: G.tw * (this.barrel ? 2.5 : 1.3), color: 0xffd090 });   // (out of the barrel in the frame, or in from its edge: a streak back to the muzzle for the first frames)
       this.after(fl, () => { hitFx(to.x, to.y, to.z, fx); this.strike(to, G.r, dmg, w, false); });
     });
   },
@@ -590,14 +598,17 @@ const BATTLE = {
   autoArm() {
     if (!CFG.autoArms || T < this.manualUntil || T < this.autoTick) return;
     this.autoTick = T + 1;
+    const w0 = ARMS.w, s0 = w0 && ARMS.st[w0.id], hop = w0 && w0.mag && s0.reload > Math.max(RELOAD_HOP, 2 * (AUD.beatP || 0.5));   // (the weapon in hand reloads for a while: one that is ready fires meanwhile)
     const cnt = {}; let any = false; for (const u of UNITS) if (u.side === 'enemy' && this.inFrame(u.pos)) { cnt[u.kind] = (cnt[u.kind] || 0) + 1; any = true; }
     if (!any) return;
-    let best = null, bs = 0, cur = 0;   // (switching at once if the one in hand has nothing to do here, else after its dwell)
+    let best = null, bs = 0, cur = 0, alt = null, as = 0;   // (switching at once if the one in hand has nothing to do here, else after its dwell)
     for (const w of ARMS.enabled()) {
       let s = 0; for (const k of w.hitSet) if (cnt[k]) s += Math.min(4, cnt[k]) * ((PREF[w.id] && PREF[w.id][k]) || 1);
       s *= (HEAVY_ARMS.has(w.id) ? 0.6 + 0.8 * AUD.heavy : 1.2 - 0.4 * AUD.heavy) * (ARMS.ready(w) ? 1 : 0.5);
       if (w.id === ARMS.cur) cur = s; if (s > bs) { bs = s; best = w; }
+      if (w.id !== ARMS.cur && ARMS.ready(w) && s > as) { as = s; alt = w; }
     }
+    if (hop && alt) { ARMS.select(alt.id); this.focus = null; HUD.markArms(); this.stat.hops++; this.nextSwitch = T + s0.reload + rand(0.5, 2); return; }   // (the reloaded one may win it back soon after)
     if (best && best.id !== ARMS.cur && (cur === 0 || (T > this.nextSwitch && bs > cur * 1.2))) { ARMS.select(best.id); this.focus = null; HUD.markArms(); this.nextSwitch = T + rand(7, 12); }
   },
 

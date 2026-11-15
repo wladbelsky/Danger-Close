@@ -11,6 +11,10 @@
    shot (white on the thermal sensor) and cool down slowly. Lit like the world: the sun / moon and the sky turned into view space.
    Its materials skip the lamps' light map (a view-space scene has no place in the world): their own program (customProgramCacheKey). */
 const GUN_FOV = 40, GUN_TOP = -0.22, GUN_LEFT = 0.12, GUN_MOUNTS = ['h105', 'rail'];   // (how far the sensor's turn may bring the muzzles towards the middle: frame units, -1…1)   // (forward to aft along the fuselage)
+/* the guns with no barrel drawn (or theirs not shown yet): mounted on the same side of the fuselage, forward of the big ones (the nose
+   is to the right), just out of the frame at its right edge; a shot starts on the line of sight through that point (frame units, -1..1) */
+const GUN_SIDE_D = 90;   // (metres out: further than a barrel's 45, so the round is seen coming in from the edge a little longer)
+const GUN_SIDE = { g25: [1.1, -0.38], g30: [1.1, -0.3], b40: [1.08, -0.6], las: [1.06, -0.5], h105: [1.06, -0.78], rail: [1.06, -0.88] };
 const GUNS = {
   scene: null, cam: null, models: {}, cur: null,
   init() {
@@ -139,6 +143,11 @@ const GUNS = {
     const g = this.models[id]; if (!g || g.k < 0.3) return null;
     this.pose(); g.root.localToWorld(_gm.set(0, 0, g.muzzle + 0.3)).project(this.cam);
     _gp.set(_gm.x, _gm.y, 0.5).unproject(camera).sub(camera.position).normalize();
+    return out.copy(camera.position).addScaledVector(_gp, d);
+  },
+  /* where a shot of a gun with no barrel shown starts: d metres out on the line of sight through its mount just out of the frame */
+  sideAt(id, out, d) {
+    const s = GUN_SIDE[id] || GUN_SIDE.b40; _gp.set(s[0], s[1], 0.5).unproject(camera).sub(camera.position).normalize();
     return out.copy(camera.position).addScaledVector(_gp, d);
   },
   /* over the world in the sensor's target (SENSOR.render, once pose() said something of it is shown) */

@@ -2,12 +2,15 @@
 /* ===== The gunship: a slow left orbit over a district, the sensor slewing between points of interest in it, a transit to
    another district every few minutes in silence; the zoom per weapon. It moves the camera's look-at point (main.js turns it into a pose).
    Runtime choices (start district, wander) use Math.random: they need not repeat for a seed, only the map does.            */
-const SLEW_LOCK = 2.6;          // the slew's stiffness while the sensor is on a target (0.9 when just looking around)
+const SLEW_LOCK = 2.6;          // the slew's stiffness while the sensor is on a target (0.9 when just looking around), at a middling music
+/* the music sets how quick the slew onto a target is: sluggish in a quiet part, snappy when the music drives hard and fast (a factor
+   on SLEW_LOCK; a drop's surge quicker still), eased so the change never jerks the picture */
+const SLEW_MUSIC = { calm: 0.6, base: 0.6, drive: 0.7, tempo: 0.4, surge: 1.25, ease: 1.5 };
 const GS_MARGIN = 260;          // districts keep this far from the map's edge (the frame is clamped inside the map anyway)
 const _gsa = new V3();
 const GUNSHIP = {
   state: 'orbit', list: [], home: null, look: new V3(), aim: new V3(), aimS: new V3(), vel: new V3(), ctr: new V3(),   // (ctr: what the aircraft circles)
-  zm: 1, applied: 0, nextTransit: 0, nextWander: 0, tr: null, ao: 0, next: null, settled: 0,
+  zm: 1, slewK: 1, applied: 0, nextTransit: 0, nextWander: 0, tr: null, ao: 0, next: null, settled: 0,
   /* the districts worth orbiting: towns, the station, a bridge, lakes, farms, fields and roads out in the country */
   districts() {
     const out = [], sp = LAYOUT.spots(), M = MAP_HALF - GS_MARGIN;
@@ -67,7 +70,9 @@ const GUNSHIP = {
       if (T >= this.nextTransit && CFG.transitMin > 0 && !AUD.combat) this.startTransit();
       else if (T >= this.nextWander) { this.wanderPoint(this.aim); this.nextWander = T + rand(12, 22); }
       // a critically damped slew towards an eased aim point (no overshoot; the easing takes the kick out of the start)
-      const lock = AUD.fighting && BATTLE.focus, w = lock ? SLEW_LOCK : 0.9;   // (on a target: a quick, firm slew that keeps the reticle on it)
+      const S = SLEW_MUSIC, kT = !AUD.fighting ? 1 : (AUD.calm ? S.calm : S.base + S.drive * AUD.drive + S.tempo * AUD.tempo) * (T < BATTLE.surgeUntil ? S.surge : 1);
+      this.slewK += (kT - this.slewK) * Math.min(1, dt * S.ease);
+      const lock = AUD.fighting && BATTLE.focus, w = lock ? SLEW_LOCK * this.slewK : 0.9;   // (on a target: a quick, firm slew that keeps the reticle on it)
       this.aimS.lerp(this.aim, Math.min(1, dt * (lock ? 8 : 0.9))); _gsa.subVectors(this.aimS, this.look).multiplyScalar(w * w).addScaledVector(this.vel, -2 * w);
       this.vel.addScaledVector(_gsa, dt); this.look.addScaledVector(this.vel, dt);
     }
