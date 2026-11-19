@@ -83,6 +83,12 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   round the point is clear (`slow()`, `breakUntil`, `stat.breaks`: no arrivals at all meanwhile). The sensor slews to the next
   target as quickly as onto one (`BATTLE.chase` holds the lock) and looks again 0.8 s after a kill (was 4). No shot for 2 s: some
   5–10 % of a fight at 124–150 bpm instead of 30–50 %.
+- **No jumps sideways on the road**: a column under fire steers across the road (`laneT`, `weaveUntil`, at most `WEAVE_RATE` 2
+  lane widths a second, the nose turned into the swerve, kerb to kerb every 1.8–2.6 s) instead of being put there at once; a
+  `Path` keeps the lane's offset continuous (the right of travel per point, `N`, the mean of the segments either side; the offset
+  `W` eased onto a single track), so no vehicle jumps 1–2.5 m at a corner, a junction or a narrowing any more. The feed sends a
+  fireteam of the allies too when none of theirs is within 150 m (`edgeSquad(side)`, every 15 s at most); slow music's break
+  starts once the frame is clear with at most two stragglers about, and it never rushes.
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -154,7 +160,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=73`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=74`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

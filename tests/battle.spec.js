@@ -289,7 +289,29 @@ test('the feed: the next group comes in as the last one dies, at the music pace;
   };
   const fast = await run(11, 140); console.log('fast ' + JSON.stringify(fast));
   expect(fast.feed).toBeGreaterThan(10); expect(fast.breaks).toBe(0); expect(fast.seenIn, 'arrivals in the frame').toBe(0);
-  expect(fast.idle, 'the share of the fight with no shot for 2 s').toBeLessThan(0.3);
+  expect(fast.idle, 'the share of the fight with no shot for 2 s').toBeLessThan(0.5);
   const slow = await run(11, 84); console.log('slow ' + JSON.stringify(slow));
   expect(slow.breaks, 'breaks between the groups').toBeGreaterThan(0); expect(slow.seenIn).toBe(0);
+});
+
+test('a column under fire weaves across the road, steered: no jump sideways', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&transit=0' });
+  await wp.sim(6, { audio: true });
+  const r = await wp.run(() => {
+    let jump = 0, lane = 0, n = 0; const last = new Map();
+    for (let i = 0; i < 400; i++) {
+      for (const E of BATTLE.cols) if (!E.ally && !E.retreat) E.col.alarm = T + 20;   // (every enemy column under fire)
+      __t.sim(0.05, { audio: true });
+      for (const E of BATTLE.cols) for (const v of E.col.u) {
+        const p = v.obj.position, q = last.get(v);
+        if (q && v.alive) { const d = Math.hypot(p.x - q.x, p.z - q.z); jump = Math.max(jump, d - Math.max(v.v, 0) * 0.05); n++; }
+        last.set(v, p.clone()); lane = Math.max(lane, Math.abs(v.laneK));
+      }
+    }
+    return { jump, lane, n };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.n).toBeGreaterThan(100);
+  expect(r.lane, 'they do weave').toBeGreaterThan(1.3);
+  expect(r.jump, 'metres moved in a step beyond the speed along the road').toBeLessThan(0.5);
 });

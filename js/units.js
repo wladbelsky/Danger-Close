@@ -64,6 +64,10 @@ class Path {
     this.p = pts; this.S = [0];
     for (let i = 1; i < pts.length; i++) this.S.push(this.S[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
     this.L = this.S[this.S.length - 1];
+    // the right of the direction of travel at each point (the mean of the segments either side) and the lane's offset there: both
+    // taken between points, so the lane bends round a corner or a junction and narrows onto a single track without a jump
+    this.N = pts.map((q, i) => { const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], d = Math.hypot(b.x - a.x, b.z - a.z) || 1; return [-(b.z - a.z) / d, (b.x - a.x) / d]; });
+    this.W = pts.map(q => { const hw = q.hw || 0; return Math.min(1.8, hw * 0.45) * smoothstep(2.1, 2.9, hw); });
   }
   static fromNodes(nodes, head, tail) {
     const N = ROADNET, pts = (head || []).slice();
@@ -75,9 +79,8 @@ class Path {
   at(s, laneK, out) {
     s = clamp(s, 0, this.L); const S = this.S; let lo = 0, hi = S.length - 1;
     while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S[m] <= s) lo = m; else hi = m; }
-    const a = this.p[lo], b = this.p[hi], L = S[hi] - S[lo] || 1, t = (s - S[lo]) / L, tx = (b.x - a.x) / L, tz = (b.z - a.z) / L;
-    const hw = lerp(a.hw, b.hw, t), lane = hw > 2.5 ? Math.min(1.8, hw * 0.45) : 0;
-    const x = lerp(a.x, b.x, t) - tz * lane * laneK, z = lerp(a.z, b.z, t) + tx * lane * laneK;
+    const a = this.p[lo], b = this.p[hi], L = S[hi] - S[lo] || 1, t = (s - S[lo]) / L, na = this.N[lo], nb = this.N[hi];
+    const w = lerp(this.W[lo], this.W[hi], t) * laneK, x = lerp(a.x, b.x, t) + lerp(na[0], nb[0], t) * w, z = lerp(a.z, b.z, t) + lerp(na[1], nb[1], t) * w;
     const y = (a.y === a.y && b.y === b.y) ? lerp(a.y, b.y, t) : groundH(x, z);
     return out.set(x, y, z);
   }
@@ -85,6 +88,8 @@ class Path {
 
 /* ---- a ground vehicle on a path ---- */
 const _va = new V3(), _vb = new V3(), _vc = new V3();
+/* a vehicle swerving across the road under fire (BATTLE: laneT, weaveUntil) changes its lane factor at most this fast, per second */
+const WEAVE_RATE = 2;
 class Vehicle {
   constructor(type, side) {
     this.type = type; this.obj = unitModel(side, type); this.obj.scale.setScalar(ARMOR_SCALE); scene.add(this.obj);
@@ -103,8 +108,11 @@ class Vehicle {
   }
   dirAt(s) { this.path.at(s - 3, 0, _va); this.path.at(s + 3, 0, _vb); return Math.atan2(_vb.z - _va.z, _vb.x - _va.x); }
   pose(dt, snap) {
-    const P = this.path; this.laneK += (1 - this.laneK) * (snap ? 1 : Math.min(1, dt * 0.6));
-    const yt = this.dirAt(this.s); this.yaw = snap ? yt : approachAngle(this.yaw, yt, dt * 1.4);
+    const P = this.path, k0 = this.laneK, weave = !snap && T < (this.weaveUntil || 0);
+    if (weave) this.laneK += clamp(this.laneT - this.laneK, -dt * WEAVE_RATE, dt * WEAVE_RATE);   // (swerving across the road: steered, never a jump)
+    else this.laneK += (1 - this.laneK) * (snap ? 1 : Math.min(1, dt * 0.6));
+    let yt = this.dirAt(this.s); if (weave && dt > 0) yt += Math.atan2((this.laneK - k0) / dt * 1.8, Math.max(this.v, 2));   // (the nose turned the way it swerves)
+    this.yaw = snap ? yt : approachAngle(this.yaw, yt, dt * (weave ? 2.5 : 1.4));
     P.at(this.s, this.laneK, _vc); this.obj.position.copy(_vc);
     const c = Math.cos(this.yaw), s = Math.sin(this.yaw), f = groundH(_vc.x + c * 2.5, _vc.z + s * 2.5), b = groundH(_vc.x - c * 2.5, _vc.z - s * 2.5);
     const pitch = _vc.y > groundH(_vc.x, _vc.z) + 0.3 ? 0 : Math.atan2(f - b, 5);   // (on a bridge deck: level)
