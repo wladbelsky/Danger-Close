@@ -45,8 +45,9 @@ fullscreen apps by default.
 ## The fight
 
 - **Music arms it**: after 5 s of sound the enemy arrives — always out of sight — in columns along the roads, squads and
-  helicopters, and builds a base on a cleared site. The camera goes there. They keep coming: a wrecked base is soon rebuilt,
-  and when nothing is left in view the next ones are called in at once.
+  helicopters, and builds a base on a cleared site. The camera stays where it is and they come to it; it moves to the base or
+  another fight only in a quiet part of the music. They keep coming: a wrecked base is soon rebuilt, and when nothing is left
+  in view the next ones are called in at once.
 - **The allies** are always out: garrisons in walled outposts, patrols, helicopters; in a fight they drive to the base
   and fight it out. Both sides shoot at each other.
 - **The gunship fires on the beat**, only at what is under the reticle and only at what its weapon may hit:
@@ -64,8 +65,9 @@ fullscreen apps by default.
 | Laser (red, lights up what it hits) | + | + | + | + | + | held on the beat |
 | Railgun | + | + | + | + | + | strong, through a column |
 
-  The light guns cut down infantry and cars but only wear down armour: an APC takes a long hammering from the 25 mm, a tank
-  shrugs it off.
+  The light guns cut down infantry and cars but only wear down armour: an APC takes a long hammering from the 25 mm (the
+  rounds glance off in sparks), a tank shrugs it off. The guns open up as a target comes onto the reticle, their rounds
+  walking onto it, and now and then a shot lands wide.
   The first three are on by default; each is a property. Automatic switching picks one for the targets and the music,
   and while the one in hand reloads it fires another;
   a click on one holds it for 30 s, or until nothing it may hit is left round where the aircraft is.
@@ -79,6 +81,8 @@ fullscreen apps by default.
   and the column waits for them; the soldiers run out in file and spread round. A knocked-out APC lets one to three bail out.
 - **Blasts hurt everything round them**: a 105 mm shell, a bomb or a rocket hits every enemy within its radius, not only
   the kinds the weapon is aimed at (a Hellfire on a tank takes the soldiers beside it too). Never their own side.
+- **Hits show**: a knocked-out vehicle cooks off on the next strong beats (a tank may throw its turret), soldiers near a
+  hit throw themselves flat for a moment, a column under fire weaves across the road.
 - **The music stops**: 5 s later fire ceases, the enemy pulls back out of the frame and vanishes; the base is removed
   once it is out of view. Infantry vanish in a puff of dust, vehicles lie as wrecks and sink. No civilians, no blood.
 
@@ -89,7 +93,7 @@ fullscreen apps by default.
 - **Seasons** by the PC date (or fixed): spring green, autumn colours, snow and bare trees in winter.
 - **Weather**: rain, snow, fog, clouds drifting under the aircraft; anti-aircraft fire rising past the lens — from the
   base's gun and the machine guns on the enemy vehicles' roofs, turned up at you — with flares in reply (looks only).
-  A missile shows its body, a steady flame and a thick trail; a flare sputters, sheds sparks and droops.
+  A missile shows a light body, a flame of its own and a thick trail; a flare is a falling light with a little smoke.
 - **At night**: lit windows, street lamps, headlights, searchlights on the outposts' towers, navigation lights on the
   helicopters; their light falls on the ground and stops at walls and buildings.
 

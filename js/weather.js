@@ -125,14 +125,10 @@ const AA = {
     }
     for (let i = this.flares.length - 1; i >= 0; i--) {
       const f = this.flares[i]; if ((f.wait -= dt) > 0) continue;
-      if (!f.lit) { f.lit = true; FX.flare.spawn(f.p, { s0: 3.5, s1: 6, life: 0.12, a0: 0.8 }); FX.smoke.spawn(f.p, { s0: 1, s1: 3.5, life: 0.8, a0: 0.3, color: 0xe0e0e0 }); }   // (the pop as it is thrown out)
       f.life -= dt; if (f.life <= 0) { this.flares.splice(i, 1); continue; }
       f.v.y -= 6 * dt; f.v.multiplyScalar(1 - 0.5 * dt); f.p.addScaledVector(f.v, dt);
-      const k = Math.min(1, f.life / 0.6);   // (burning out: it shrinks and reddens)
-      FX.flare.spawn(f.p, { s0: rand(0.9, 2.2) * (0.4 + 0.6 * k), s1: 0.5, life: 0.07, color: k < 1 ? 0xff9a50 : 0xfffaf0 });   // (sputtering: a new size every frame)
-      if (Math.random() < 0.3 * k) FX.flare.spawn(f.p, { s0: rand(3.5, 5.5), s1: 2.5, life: 0.06, a0: 0.3 });   // (now and then its glare blooms)
-      if (Math.random() < 0.45 * k) FX.tracers.spawn(f.p, _wq.set(rand(-4, 4), rand(-2, 3), rand(-4, 4)).addScaledVector(f.v, 0.4), { life: rand(0.25, 0.5), len: rand(0.8, 1.6), w: 0.07, color: 0xffe0a8, grav: 16 });   // (sparks dropping off: thin streaks)
-      if ((f.puff -= dt) <= 0) { f.puff = 0.05; FX.smoke.spawn(f.p, { s0: 0.35, s1: rand(1.4, 2.4), life: rand(0.8, 1.3), a0: 0.2, color: 0xf2f2f2, rise: 0.6 }); }   // (only a thin wisp: no trail like a missile's)
+      FX.flare.spawn(f.p, { s0: 1.5 * Math.min(1, f.life), s1: 0.7, life: 0.09 });
+      if ((f.puff -= dt) <= 0) { f.puff = 0.06; FX.smoke.spawn(f.p, { s0: 0.6, s1: 2.6, life: 1.2, a0: 0.28, color: 0xe8e8e8 }); }
     }
   },
   /* a beat in a fight (js/battle.js): a due burst starts, a due missile goes on a kick or a strong beat; flares on some strong beats */

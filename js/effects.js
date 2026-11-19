@@ -213,36 +213,66 @@ function blast(p, s) {
   FX.scorch.spawn(p, s * 1.8, 30);
 }
 
-/* ---- missiles in flight: a body you can see at the gunship's zoom, the motor's steady glare and a tongue of flame behind
-   it, and a dense trail of smoke laid every few metres (whatever the speed). Unlike a flare, which sputters, sheds sparks and
-   droops: see AA in js/weather.js ---- */
+/* ---- missiles in flight: a light body with a dark nose you can see at the gunship's zoom (drawn MISSILE_LOOK × its size), a
+   flame of its own out of the tail (a cone of light: a white-hot core, an orange tongue, fading to nothing; bright past a sunlit
+   white, so the sensor's bloom catches it; white-hot on the thermal sensor), and a dense trail of smoke laid every few metres
+   (whatever the speed). A flare is only a light that falls, with a little smoke: see AA in js/weather.js ---- */
+const MISSILE_LOOK = 2.5;
+/* geometries merged into one, with vertex colours: list of [geometry, colour] or [geometry, fn(x, y, z) → [r, g, b] (linear)] */
 function mergeGeos(list) {
-  const pos = [], nor = [];
-  for (const g0 of list) { const g = g0.index ? g0.toNonIndexed() : g0; pos.push(g.attributes.position.array); nor.push(g.attributes.normal.array); }
-  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(concatF32(pos), 3)); geo.setAttribute('normal', new THREE.BufferAttribute(concatF32(nor), 3)); return geo;
+  const pos = [], nor = [], col = [], c = new THREE.Color();
+  for (const [g0, k] of list) {
+    const g = g0.index ? g0.toNonIndexed() : g0, P = g.attributes.position.array, C = new Float32Array(P.length);
+    if (typeof k !== 'function') c.setHex(k);
+    for (let i = 0; i < P.length; i += 3) { const v = typeof k === 'function' ? k(P[i], P[i + 1], P[i + 2]) : [c.r, c.g, c.b]; C[i] = v[0]; C[i + 1] = v[1]; C[i + 2] = v[2]; }
+    pos.push(P); nor.push(g.attributes.normal.array); col.push(C);
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(concatF32(pos), 3)); geo.setAttribute('normal', new THREE.BufferAttribute(concatF32(nor), 3)); geo.setAttribute('color', new THREE.BufferAttribute(concatF32(col), 3)); return geo;
 }
-class Bodies {
-  constructor(scene, n) {
-    const body = new THREE.CylinderGeometry(0.09, 0.09, 1.4, 8).rotateZ(-Math.PI / 2), nose = new THREE.ConeGeometry(0.09, 0.32, 8).rotateZ(-Math.PI / 2).translate(0.86, 0, 0), parts = [body, nose];
-    for (let i = 0; i < 4; i++) { parts.push(new THREE.BoxGeometry(0.26, 0.2, 0.014).translate(-0.56, 0.17, 0).rotateX(Math.PI / 4 + i * Math.PI / 2)); parts.push(new THREE.BoxGeometry(0.1, 0.09, 0.012).translate(0.5, 0.12, 0).rotateX(Math.PI / 4 + i * Math.PI / 2)); }   // tail fins, canards
-    const mat = sensorMat(new THREE.MeshPhongMaterial({ color: 0x55584f, flatShading: true, shininess: 30, specular: 0x333333 }), 0.6);
-    this.mesh = new THREE.InstancedMesh(mergeGeos(parts), mat, n); this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.frustumCulled = false; this.mesh.count = 0; this.mesh.visible = false; scene.add(this.mesh);
+/* an instanced pool drawn this step only: add() what shows, flush() after the step's updates */
+class StepPool {
+  constructor(scene, geo, mat, n, order) {
+    this.mesh = new THREE.InstancedMesh(geo, mat, n); this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.frustumCulled = false; this.mesh.count = 0; this.mesh.visible = false; if (order) this.mesh.renderOrder = order; scene.add(this.mesh);
     this.n = n; this.k = 0; this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new V3(); this._x = new V3(1, 0, 0);
   }
-  /* one body this step at p, nose along dir (unit), s: its scale (1: a 1.7 m missile) */
-  add(p, dir, s) { if (this.k >= this.n) return; this._q.setFromUnitVectors(this._x, dir); this.mesh.setMatrixAt(this.k++, this._m.compose(p, this._q, this._s.setScalar(s))); }
-  /* after the step's updates: what was added is what shows */
+  put(p, dir, sx, sy, sz) { if (this.k >= this.n) return; this._q.setFromUnitVectors(this._x, dir); this.mesh.setMatrixAt(this.k++, this._m.compose(p, this._q, this._s.set(sx, sy, sz))); }
   flush() { this.mesh.count = this.k; this.mesh.visible = this.k > 0; if (this.k) this.mesh.instanceMatrix.needsUpdate = true; this.k = 0; }
+}
+class Bodies extends StepPool {
+  constructor(scene, n) {
+    const light = 0xd8d8d0, dark = 0x2e302c, fin = 0xa8aaa2, parts = [
+      [new THREE.CylinderGeometry(0.09, 0.09, 1.4, 10).rotateZ(-Math.PI / 2), light],                       // the body
+      [new THREE.ConeGeometry(0.09, 0.32, 10).rotateZ(-Math.PI / 2).translate(0.86, 0, 0), dark],           // the seeker's nose
+      [new THREE.CylinderGeometry(0.094, 0.094, 0.08, 10).rotateZ(-Math.PI / 2).translate(0.42, 0, 0), dark],   // a band behind it
+      [new THREE.CylinderGeometry(0.07, 0.085, 0.08, 10).rotateZ(-Math.PI / 2).translate(-0.74, 0, 0), dark]   // the nozzle
+    ];
+    for (let i = 0; i < 4; i++) { parts.push([new THREE.BoxGeometry(0.34, 0.26, 0.02).translate(-0.52, 0.2, 0).rotateX(Math.PI / 4 + i * Math.PI / 2), fin]); parts.push([new THREE.BoxGeometry(0.12, 0.1, 0.016).translate(0.5, 0.13, 0).rotateX(Math.PI / 4 + i * Math.PI / 2), fin]); }   // tail fins, canards
+    super(scene, mergeGeos(parts), sensorMat(new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: true, shininess: 40, specular: 0x444444 }), 0.6), n);
+  }
+  /* one body this step at p, nose along dir (unit), s: its scale (1: a 1.7 m missile, drawn MISSILE_LOOK times that) */
+  add(p, dir, s) { const k = s * MISSILE_LOOK; this.put(p, dir, k, k, k); }
+}
+class Plumes extends StepPool {
+  constructor(scene, n) {
+    // cones along -x from the nozzle (x = 0) to the tip (x = -1); colours in linear light, over 1 where it is hottest
+    const cone = (r, h, seg) => { const g = new THREE.ConeGeometry(r, h, seg, 4, true); g.rotateZ(Math.PI / 2); g.translate(-h / 2, 0, 0); return g; };
+    const tongue = (x) => { const t = clamp(-x, 0, 1), f = Math.pow(1 - t, 1.6); return [3.2 * f, 1.5 * f * f + 0.25 * f, 0.35 * f * f * f]; };
+    const core = (x) => { const t = clamp(-x / 0.45, 0, 1), f = Math.pow(1 - t, 2); return [7 * f, 6.2 * f, 4.6 * f]; };
+    const mat = sensorMat(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }), 1);
+    super(scene, mergeGeos([[cone(0.5, 1, 12), tongue], [cone(0.2, 0.45, 10), core]]), mat, n, 7);
+  }
+  /* the flame at a missile's nozzle p (dir: its heading), s: its scale; it flickers, a new length and width every step */
+  add(p, dir, s) { const k = s * MISSILE_LOOK; this.put(p, dir, k * rand(1.1, 1.7), k * rand(0.3, 0.38), k * rand(0.3, 0.38)); }
 }
 const _mfT = new V3(), _mfV = new V3();
 /* a missile's look this step: m keeps its trail's last puff (m.trail), p its position, dir its heading (unit); o: { s scale,
    motor (false: a glide bomb), pool (the glare's sprites: FX.flare near the lens) } */
 function missileFx(m, p, dir, o) {
   const s = o.s || 1; FX.bodies.add(p, dir, s); if (o.motor === false) return;
-  _mfT.copy(p).addScaledVector(dir, -0.75 * s);
-  (o.pool || FX.flash).spawn(_mfT, { s0: 1.5 * s, s1: 1.1 * s, life: 0.06, color: 0xffd8a0 });
-  FX.tracers.spawn(_mfT, _mfV.copy(dir).multiplyScalar(0.01), { life: 0.06, len: 4 * s, w: 1.5 * s, color: 0xffb860 });   // (a tongue of flame trailing back from the tail)
+  _mfT.copy(p).addScaledVector(dir, -0.78 * s * MISSILE_LOOK);   // (the nozzle)
+  FX.plumes.add(_mfT, dir, s);
+  (o.pool || FX.flash).spawn(_mfT, { s0: 1.4 * s, s1: 1 * s, life: 0.05, color: 0xffe2b8, a0: 0.8 });   // (the glare round the nozzle)
   if (!m.trail) m.trail = _mfT.clone();
   let d = m.trail.distanceTo(_mfT), n = 0;
   for (; d >= 4 && n < 14; d -= 4, n++) { m.trail.lerp(_mfT, 4 / d); FX.smoke.spawn(m.trail, { s0: 0.9 * s, s1: rand(3.5, 5.5) * s, life: rand(2.2, 3.2), a0: 0.5, color: 0xc4c4be, v: _mfV.set(rand(-0.6, 0.6), rand(0.2, 0.8), rand(-0.6, 0.6)), drag: 0.6 }); }

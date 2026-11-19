@@ -13,7 +13,7 @@
 const GUN_FOV = 40, GUN_TOP = -0.22, GUN_LEFT = 0.12, GUN_MOUNTS = ['h105', 'rail'];   // (how far the sensor's turn may bring the muzzles towards the middle: frame units, -1…1)   // (forward to aft along the fuselage)
 /* the guns with no barrel drawn (or theirs not shown yet): mounted on the same side of the fuselage, forward of the big ones (the nose
    is to the right), just out of the frame at its right edge; a shot starts on the line of sight through that point (frame units, -1..1) */
-const GUN_SIDE_D = 90;   // (metres out: further than a barrel's 45, so the round is seen coming in from the edge a little longer)
+const GUN_SIDE_D = 32;   // (metres out: just past the lens's near plane (30 m), so the round flashes in from the edge and is on the centre within a frame or two, like a gun beside the sensor)
 const GUN_SIDE = { g25: [1.1, -0.38], g30: [1.1, -0.3], b40: [1.08, -0.6], las: [1.06, -0.5], h105: [1.06, -0.78], rail: [1.06, -0.88] };
 const GUNS = {
   scene: null, cam: null, models: {}, cur: null,

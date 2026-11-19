@@ -213,7 +213,7 @@ test('battle', async ({ wp }) => {
   await wp.boot({ query: '?hour=11&seed=11&season=summer' });
   const shots = [], snap = async () => shots.push((await wp.page.screenshot()).toString('base64')), at = async (fn, arg) => { await wp.run(fn, arg); await snap(); };
   await wp.run(`window.__shot = ${afterShot.toString()}`);
-  await at(() => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(1.5, { audio: true }); __shot(); });
+  await at(() => { __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(1.5, { audio: true }); __shot(); });
   await at(() => { __t.sim(8, { audio: true }); SENSOR.set('wh'); HUD.markModes(); updateEnvironment(); __shot(); });
   await at(() => { __t.sim(25, { audio: true }); SENSOR.set('tv'); HUD.markModes(); updateEnvironment(); __shot(); });
   await at(() => { __t.sim(60, { audio: true }); SENSOR.set('bh'); HUD.markModes(); updateEnvironment(); __shot(); });
@@ -228,7 +228,7 @@ test('weapons firing', async ({ wp }) => {
     const q = `?hour=11&seed=11&season=summer&weapons=${id}&auto=0`;
     if (!shots.length) await wp.boot({ query: q }); else await wp.goto(q);
     await wp.run((id) => {
-      __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
+      __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
       const hit = () => id === 'las' ? BATTLE.beam.visible : BATTLE.missiles.some(m => m.p > 0.5) || BATTLE.stat.shots > (window.__n || 0);
       window.__n = 0; for (let k = 0; k < (id === 'aim' ? 1 : 3); k++) { window.__n = BATTLE.stat.shots; for (let i = 0; i < 3000 && !hit(); i++) __t.sim(0.05, { audio: true }); }
       __t.sim(BATTLE.missiles.length || id === 'las' ? 0.1 : 0.35, { audio: true }); __t.render();
@@ -249,7 +249,7 @@ test('weather', async ({ wp }) => {
   await view('hour=9&season=autumn&weather=fog&clouds=0');
   await view('hour=9&season=autumn&weather=fog&clouds=0&mode=wh');
   await view('hour=23&season=summer&weather=clear&clouds=0');
-  const fight = () => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(4, { audio: true }); };
+  const fight = () => { __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(4, { audio: true }); };
   await wp.goto('?seed=11&hour=11&season=summer&weather=clear'); await wp.run(`(${fight})()`);
   await wp.run(() => { AA.nextGun = 0; for (let i = 0; i < 400 && !AA.bursts.length; i++) __t.sim(0.05, { audio: true }); __t.sim(0.75, { audio: true }); __t.render(); }); await snap();
   await wp.run(() => { const u = AA.source(true) || AA.source(false); AA.launch(u); __t.sim(1.5, { audio: true }); __t.render(); }); await snap();
@@ -272,7 +272,7 @@ test('lighting', async ({ wp }) => {
   await view('spot=town&hour=23.5&season=summer&mode=bh');
   await view('spot=town&hour=23.5&season=summer&mode=nv');
   await wp.goto('?seed=11&hud=0&weather=clear&clouds=0&hour=12&season=summer');
-  await wp.run(() => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); const n = BATTLE.stat.shots; for (let i = 0; i < 400 && BATTLE.stat.shots < n + 2; i++) __t.sim(0.05, { audio: true }); __t.sim(0.4, { audio: true }); __t.render(); }); await snap();
+  await wp.run(() => { __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); const n = BATTLE.stat.shots; for (let i = 0; i < 400 && BATTLE.stat.shots < n + 2; i++) __t.sim(0.05, { audio: true }); __t.sim(0.4, { audio: true }); __t.render(); }); await snap();
   await wp.run(() => { CFG.fixedHour = 23.5; updateEnvironment(); const n = BATTLE.stat.shots; for (let i = 0; i < 400 && BATTLE.stat.shots < n + 1; i++) __t.sim(0.05, { audio: true }); __t.sim(0.4, { audio: true }); __t.render(); }); await snap();
   await wp.run(() => { SENSOR.set('wh'); updateEnvironment(); const n = BATTLE.stat.shots; for (let i = 0; i < 400 && BATTLE.stat.shots < n + 1; i++) __t.sim(0.05, { audio: true }); __t.sim(0.4, { audio: true }); __t.render(); }); await snap();
   await sheet(wp, shots, 3, 'lighting.png');
@@ -292,7 +292,7 @@ test('night lights', async ({ wp }) => {
   await at(() => { const o = LAYOUT.outposts[0]; CFG.zoom = 60; __follow({ x: o.x, z: o.z }); __t.sim(0.05); __t.render(); });
   await wp.goto('?hour=23.5&seed=11&season=summer&weather=clear&clouds=0&mode=tv&aa=0');
   await wp.run(`window.__follow = ${follow.toString()}`);
-  await at(() => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(1, { audio: true }); CFG.zoom = 70; if (BATTLE.base) __follow(BATTLE.base); __t.sim(0.5, { audio: true }); __t.render(); });
+  await at(() => { __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(1, { audio: true }); CFG.zoom = 70; if (BATTLE.base) __follow(BATTLE.base); __t.sim(0.5, { audio: true }); __t.render(); });
   await sheet(wp, shots, 3, 'night-lights.png');
 });
 
@@ -315,7 +315,7 @@ test('big guns', async ({ wp }) => {
   for (const id of ['h105', 'rail']) {
     await wp.goto(`?hour=11&seed=11&season=summer&weather=clear&clouds=0&mode=tv&weapons=${id}&auto=0&aa=0`);
     await at((id) => {
-      __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
+      __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
       const n = BATTLE.stat.shots + 1; for (let i = 0; i < 4000 && BATTLE.stat.shots < n; i++) __t.sim(0.05, { audio: true });
       __t.render();
     }, id);
@@ -329,7 +329,7 @@ test('big guns', async ({ wp }) => {
 const GIF = { size: 256, render: 768, frames: 40, fps: 10, colors: 64 };
 const FIGHT = (q) => `?seed=${q.seed}&hour=${q.hour}&season=${q.season}&weather=clear&clouds=0&mode=${q.mode}&transit=0&aa=0`;
 async function intoFight(wp) {   // music until the gunship is over the enemy and has fired a few times
-  await wp.run(() => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 1200 && (GUNSHIP.state === 'transit' || BATTLE.stat.shots < 6); i++) __t.sim(0.05, { audio: true }); });
+  await wp.run(() => { __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 1200 && (GUNSHIP.state === 'transit' || BATTLE.stat.shots < 6); i++) __t.sim(0.05, { audio: true }); });
 }
 const grab = (size) => {   // the picture with the HUD over it, downscaled in halving steps (in the task of the render: the WebGL buffer is still there)
   __t.render();
@@ -346,7 +346,7 @@ test.describe('gif', () => {
     test.setTimeout(6 * 60 * 1000);
     await wp.boot({ query: FIGHT(q) + '&weapons=g25&auto=0&enemies=200' });   // (the 25 mm: a stream of tracers on every beat)
     await intoFight(wp); await wp.run(() => {
-      BATTLE.nextHop = 1e9; CFG.zoom = 135; __t.sim(1.5, { audio: true });   // (closer; no hop to another fight while it records)
+      GUNSHIP.nextLeave = 1e9; CFG.zoom = 135; __t.sim(1.5, { audio: true });   // (closer; no hop to another fight while it records)
       const at = []; for (let i = 0, n = BATTLE.stat.shots; i < 2400; i++) { __t.sim(0.05, { audio: true }); if (BATTLE.stat.shots > n) { n = BATTLE.stat.shots; at.push(T); } if (at.filter(t => T - t < 1.6).length >= 4 && ARMS.st.g25.reload <= 0 && ARMS.st.g25.mag >= 200) break; }   // (start in a burst: four volleys in the last 1.6 s, a full magazine)
       for (const u of UNITS) if (u.side === 'enemy' && u.kind !== 'struct') u.hp = 1e6;   // (staged for the preview: the targets outlast the clip, the 25 mm keeps firing at them)
       window.__s0 = BATTLE.stat.shots;
@@ -406,7 +406,7 @@ test('laser', async ({ wp }) => {
     const q = `?seed=11&hour=${hour}&season=summer&weather=clear&clouds=0&mode=${mode}&transit=0&aa=0&weapons=las&auto=0`;
     if (!shots.length) await wp.boot({ query: q }); else await wp.goto(q);
     await wp.run((zoom) => {
-      __t.sim(5.5, { audio: true }); for (let i = 0; i < 1200 && (GUNSHIP.state === 'transit' || BATTLE.stat.out < 1); i++) __t.sim(0.05, { audio: true });
+      __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 1200 && (GUNSHIP.state === 'transit' || BATTLE.stat.out < 1); i++) __t.sim(0.05, { audio: true });
       for (let i = 0; i < 2400 && !BATTLE.beam.visible; i++) __t.sim(0.05, { audio: true });
       __t.sim(0.3, { audio: true }); for (let i = 0; i < 200 && !BATTLE.beam.visible; i++) __t.sim(0.05, { audio: true });
       if (zoom) { CFG.zoom = zoom; __t.sim(1.5, { audio: true }); for (let i = 0; i < 400 && !BATTLE.beam.visible; i++) __t.sim(0.05, { audio: true }); }
@@ -424,7 +424,7 @@ test('music', async ({ wp }) => {
   const shots = [], at = async (fn) => { await wp.run(fn); shots.push((await wp.page.screenshot()).toString('base64')); };
   const onKick = () => { for (let i = 0; i < 60; i++) { const was = BANDS.low.last; __t.sim(0.05, { audio: true }); if (BANDS.low.last !== was && BANDS.low.last - was > 0.4) break; } __t.render(); };
   await wp.run(`window.__kick = ${onKick.toString()}`);
-  await at(() => { __t.sim(5.5, { audio: true }); for (let i = 0; i < 1200 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(12, { audio: true }); __kick(); });
+  await at(() => { __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 1200 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true }); __t.sim(12, { audio: true }); __kick(); });
   await at(() => { __t.sim(0.4, { audio: true }); __t.render(); });
   await at(() => { CFG.fixedHour = 23.5; SENSOR.set('wh'); HUD.markModes(); updateEnvironment(); __t.sim(3, { audio: true }); __kick(); });
   await at(() => { __t.sim(0.4, { audio: true }); __t.render(); });
@@ -443,7 +443,7 @@ test('rocket run', async ({ wp }) => {
     if (!shots.length) await wp.boot({ query: q }); else await wp.goto(q);
     const ok = await wp.run(() => {
       window.__look = (x, z) => { GUNSHIP.look.set(x, groundH(x, z), z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.ctr.copy(GUNSHIP.look); GUNSHIP.nextWander = 1e9; };
-      __t.sim(5.5, { audio: true }); for (let i = 0; i < 1200 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
+      __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 1200 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
       BATTLE.aimCamera = () => {}; CFG.zoom = 45;
       let h = null; for (let i = 0; i < 6000 && !h; i++) { __t.sim(0.05, { audio: true }); h = UNITS.find(u => u.kind === 'heli' && u.run && u.run.ph === 'in' && u.run.armed); }
       if (!h) return false;
@@ -472,7 +472,7 @@ test('dismount', async ({ wp }) => {
     if (!shots.length) await wp.boot({ query: q }); else await wp.goto(q);
     const ok = await wp.run(() => {
       window.__look = (x, z) => { GUNSHIP.look.set(x, groundH(x, z), z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.ctr.copy(GUNSHIP.look); GUNSHIP.nextWander = 1e9; };
-      __t.sim(5.5, { audio: true }); for (let i = 0; i < 1200 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
+      __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 1200 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
       BATTLE.aimCamera = () => {}; CFG.zoom = 170; CFG.fire = 10;
       let v = null; const d0 = BATTLE.dismount.bind(BATTLE); BATTLE.dismount = u => { const n = BATTLE.stat.dismounts; d0(u); if (BATTLE.stat.dismounts > n && !v) v = u; };
       for (let i = 0; i < 6000 && !v; i++) __t.sim(0.05, { audio: true });
@@ -524,7 +524,7 @@ test('missiles and flares', async ({ wp }) => {
   await wp.boot({ query: '?hour=10&seed=11&season=summer&weapons=hf&auto=0&transit=0&weather=clear&clouds=0' });
   const shots = [], snap = async () => { await wp.run(() => __t.render()); shots.push((await wp.page.screenshot()).toString('base64')); };
   await wp.run(() => {
-    SENSOR.manual = true; __t.sim(5.5, { audio: true }); for (let i = 0; i < 1200 && (GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled); i++) __t.sim(0.05, { audio: true });
+    SENSOR.manual = true; __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 1200 && (GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled); i++) __t.sim(0.05, { audio: true });
     CFG.aa = false; for (let i = 0; i < 3000 && !BATTLE.missiles.length; i++) __t.sim(0.05, { audio: true });
     AA.drop(6); __t.sim(0.25, { audio: true });
   });
@@ -532,6 +532,8 @@ test('missiles and flares', async ({ wp }) => {
   await wp.run(() => __t.sim(0.25, { audio: true })); await snap();
   await wp.run(() => { SENSOR.set('wh'); HUD.markModes(); AA.drop(6); for (let i = 0; i < 3000 && !BATTLE.missiles.length; i++) __t.sim(0.05, { audio: true }); __t.sim(0.4, { audio: true }); }); await snap();
   await wp.run(() => { SENSOR.set('tv'); HUD.markModes(); const u = UNITS.find(o => o.side === 'enemy' && o.alive && o.kind !== 'struct' && o.kind !== 'heli' && o.kind !== 'inf') || UNITS.find(o => o.side === 'enemy' && o.alive && o.kind === 'inf'); AA.launch(u); __t.sim(1.2, { audio: true }); }); await snap();
+  await wp.run(() => { SENSOR.set('nv'); HUD.markModes(); for (let i = 0; i < 3000 && !BATTLE.missiles.length; i++) __t.sim(0.05, { audio: true }); __t.sim(0.5, { audio: true }); }); await snap();
+  await wp.run(() => { SENSOR.set('tv'); HUD.markModes(); CFG.zoom = 200; for (let i = 0; i < 3000 && !BATTLE.missiles.some(m => m.p > 0.45 && m.p < 0.7); i++) __t.sim(0.05, { audio: true }); }); await snap();   // (zoomed in: the body and its flame)
   await sheet(wp, shots, 2, 'missiles-flares.png');
 });
 
@@ -543,7 +545,7 @@ test('side guns', async ({ wp }) => {
     const q = `?hour=11&seed=11&season=summer&weather=clear&clouds=0&weapons=${id},h105&auto=0`;
     if (!shots.length) await wp.boot({ query: q }); else await wp.goto(q);
     await wp.run((id) => {
-      ARMS.select(id); __t.sim(5.5, { audio: true }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
+      ARMS.select(id); __t.sim(5.5, { audio: true }); if (BATTLE.base) GUNSHIP.goTo({ n: 'obj', x: BATTLE.base.x, z: BATTLE.base.z }); for (let i = 0; i < 600 && GUNSHIP.state === 'transit'; i++) __t.sim(0.05, { audio: true });
       const sp = FX.tracers.spawn; let streak = false; FX.tracers.spawn = function (p, v, o) { if (o && o.color === 0xffd090) streak = true; return sp.apply(this, arguments); };   // (the streak in from the edge: one step old)
       for (let k = 0; k < 3; k++) { streak = false; for (let i = 0; i < 3000 && (id === 'las' ? !BATTLE.beam.visible : !streak); i++) __t.sim(0.05, { audio: true }); }
       FX.tracers.spawn = sp; __t.sim(0.05, { audio: true }); __t.render();
@@ -551,4 +553,29 @@ test('side guns', async ({ wp }) => {
     shots.push((await wp.page.screenshot()).toString('base64'));
   }
   await sheet(wp, shots, 2, 'side-guns.png');
+});
+
+/* what the hits do: a wreck cooking off on a beat, a tank's turret thrown up, soldiers flat after a near miss, 25 mm rounds glancing
+   off an APC; TV then white-hot */
+test('reactions', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 960, height: 540 });
+  await wp.boot({ query: '?hour=11&seed=11&season=summer&weather=clear&clouds=0&transit=0&aa=0&weapons=g25&auto=0' });
+  const shots = [], snap = async () => { await wp.run(() => { INF.update(); __t.render(); }); shots.push((await wp.page.screenshot()).toString('base64')); };
+  await wp.run(() => {
+    SENSOR.manual = true; __t.sim(6, { audio: true }); CFG.fire = 0; CFG.zoom = 170; GUNSHIP.nextWander = 1e9; GUNSHIP.nextLeave = 1e9; BATTLE.aimCamera = () => {};
+    for (const u of UNITS.slice()) if (u.kind !== 'struct' && Math.hypot(u.pos.x - CAM_TGT.x, u.pos.z - CAM_TGT.z) < 120) u.remove();   // (a clear stage)
+    window.__at = (dx, dz) => { const p = new THREE.Vector3(CAM_TGT.x + dx, 0, CAM_TGT.z + dz); p.y = groundH(p.x, p.z); return p; };
+    window.__steps = (n) => { for (let i = 0; i < n; i++) { __t.sim(0.05, { audio: true }); INF.update(); } };
+    __t.sim(1);
+  });
+  const scene = async (mode) => {
+    await wp.run((mode) => { SENSOR.set(mode); HUD.markModes(); const v = new Vehicle('apc', 'enemy'); v.obj.position.copy(__at(-6, 4)); window.__v = v; let n = BATTLE.stat.cooks; hurt(v, 1e4); for (let i = 0; i < 200 && BATTLE.stat.cooks === n; i++) __steps(1); __steps(2); }, mode); await snap();   // a pop
+    if (mode === 'tv') {
+      await wp.run(() => { COOK.toss = 1; const v = new Vehicle('tank', 'enemy'); v.obj.position.copy(__at(10, -6)); const y0 = v.turret.position.y; hurt(v, 1e4); for (let i = 0; i < 300 && !(v.turret.position.y - y0 > 0.9); i++) __steps(1); COOK.toss = 0.35; }); await snap();   // the turret thrown up
+      await wp.run(() => { const p = __at(0, 12), q = new Squad('enemy', 5, p.x, p.z, [[p.x, p.z], [p.x + 25, p.z]]); q.wait = 0; BATTLE.squads.push(q); __steps(60); const L = q.m[1] || q.m[0], hx = L.position.x + 5, hz = L.position.z; BATTLE.strike(new THREE.Vector3(hx, groundH(hx, hz), hz), GUN.g30.r, GUN.g30.dmg, WEAPON.g30, false); hitFx(hx, 0, hz, 0.8); __steps(8); }); await snap();   // flat
+    }
+    await wp.run(() => { for (const u of UNITS.slice()) if (u.kind === 'apc' && u.alive) u.remove(); const v = new Vehicle('apc', 'enemy'); v.obj.position.copy(__at(-10, -8)); for (let k = 0; k < 3; k++) { BATTLE.ricoN = 0; for (let i = 0; i < 6; i++) BATTLE.strike(v.pos, GUN.g25.r, GUN.g25.dmg * 0.01, WEAPON.g25, false); __steps(1); } }); await snap();   // ricochets
+  };
+  await scene('tv'); await scene('wh');
+  await sheet(wp, shots, 3, 'reactions.png');
 });

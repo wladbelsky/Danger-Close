@@ -77,7 +77,7 @@ test('the tempo from the kicks; faster music, the guns fire faster: between the 
   const r = await wp.run(() => {
     const out = {}, dummy = { alive: true, kind: 'inf', side: 'enemy', pos: new THREE.Vector3(), ah: 1.1 };
     __t.sim(8, { audio: true, bpm: 90 }); for (let i = 0; i < 1200 && GUNSHIP.state !== 'orbit'; i++) __t.sim(0.05, { audio: true, bpm: 90 });
-    BATTLE.target = () => { dummy.pos.copy(CAM_TGT); return dummy; }; BATTLE.onReticle = () => true;   // (always something under the reticle: the rate is the music's)
+    BATTLE.target = () => { dummy.pos.copy(CAM_TGT); return dummy; }; BATTLE.onReticle = () => true; BATTLE.near = () => true;   // (always something under the reticle: the rate is the music's)
     for (const bpm of [90, 160]) {
       __t.sim(6, { audio: true, bpm });   // (the tempo settles)
       ARMS.select('g25'); const s0 = BATTLE.stat.shots, b0 = BATTLE.stat.subShots;

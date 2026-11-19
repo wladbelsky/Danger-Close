@@ -46,15 +46,17 @@ const INF = {
   remove(s) { const i = this.list.indexOf(s); if (i >= 0) { this.list.splice(i, 1); this.dirty = true; } untrack(s); },
   /* the instances from the soldiers, once a frame (their colours only when the list changed: a slot's side changes only then) */
   update() {
-    let n = 0; const col = this.dirty; this.dirty = false;
+    let n = 0; const col = this.dirty, dt = clamp(T - (this.t0 == null ? T : this.t0), 0, 0.1); this.dirty = false; this.t0 = T;
     for (const s of this.list) {
       if (!s.visible) continue;
-      _ie.set(0, -s.a, 0); _iq.setFromEuler(_ie); _im.compose(s.position, _iq, _is); this.body.setMatrixAt(n, _im); if (col) this.body.setColorAt(n, INF_COL[s.side]);
+      const dn = s.downUntil > T ? 1 : 0; s.downK = (s.downK || 0) + clamp(dn - (s.downK || 0), -dt / 0.5, dt / 0.25);   // (flat under fire: down in a quarter second, up in half)
+      const k = s.downK * s.downK * (3 - 2 * s.downK), lie = -Math.PI / 2 * k; _ip.copy(s.position); _ip.y += 0.18 * k;
+      _ie.set(0, -s.a, lie); _iq.setFromEuler(_ie); _im.compose(_ip, _iq, _is); this.body.setMatrixAt(n, _im); if (col) this.body.setColorAt(n, INF_COL[s.side]);
       const sw = Math.sin(s.phase) * 0.5 * s.stride;
-      for (let k = 0; k < 2; k++) {
-        const side = k ? 1 : -1; _io.set(0, 0.9, side * 0.1).applyQuaternion(_iq); _ip.copy(s.position).add(_io);
-        _ie.set(0, -s.a, sw * side); _iq.setFromEuler(_ie); _im.compose(_ip, _iq, _is); this.legs.setMatrixAt(n * 2 + k, _im); if (col) this.legs.setColorAt(n * 2 + k, INF_COL[s.side]);
-        _ie.set(0, -s.a, 0); _iq.setFromEuler(_ie);
+      for (let j = 0; j < 2; j++) {
+        const side = j ? 1 : -1; _io.set(0, 0.9, side * 0.1).applyQuaternion(_iq); _ip.copy(s.position).add(_io); _ip.y += 0.18 * k;
+        _ie.set(0, -s.a, lie + sw * side); _iq.setFromEuler(_ie); _im.compose(_ip, _iq, _is); this.legs.setMatrixAt(n * 2 + j, _im); if (col) this.legs.setColorAt(n * 2 + j, INF_COL[s.side]);
+        _ie.set(0, -s.a, lie); _iq.setFromEuler(_ie);
       }
       n++;
     }

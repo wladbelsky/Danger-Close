@@ -132,10 +132,19 @@ function baseModel(type) {
 }
 
 const RET_ON = 0.07;   // the reticle is "on" a target within this of the frame's centre (in half frame heights): no shot before that
+/* a gun already fires at a target this near the reticle (half frame heights): its rounds land under the reticle and walk onto the
+   target as the sensor comes round; the missiles, the laser and the railgun wait for it to be on */
+const RET_NEAR = 0.4, NEAR_ARMS = new Set(['g25', 'g30', 'b40', 'h105']);
+/* a trigger on target that lands off it anyway: [chance, metres off from, to] (the 25 mm sprays as it is) */
+const MISS = { g30: [0.25, 3, 7], b40: [0.2, 3, 8], h105: [0.2, 5, 12] };
+/* a light gun's round glancing off armour: the chance of a ricochet per hit by kind; at most RICO_MAX of them a step */
+const RICO = { g25: { car: 0.3, apc: 1 }, g30: { car: 0.4, apc: 1 }, b40: { apc: 0.7 } }, RICO_MAX = 8;
+/* a knocked-out vehicle cooks off: pops by kind, the first not before COOK.first s, each on a strong beat (or COOK.late s on), COOK.gap s apart */
+const COOK = { tank: 3, apc: 2, car: 1, first: 0.6, gap: 0.5, late: 1.6, toss: 0.35 };
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0);
 const BATTLE = {
-  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
-  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, nextHop: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0,
+  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, prone: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
+  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], ricoN: 0, atP: new V3(),
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
     this.beam = new THREE.Mesh(geo, sensorMat(new THREE.MeshBasicMaterial({ color: 0xff4a36, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), 1));   // the laser: a red core
@@ -195,15 +204,23 @@ const BATTLE = {
   /* ---- arming and standing down ---- */
   start() {
     if (!this.base) { const s = this.pickSite(); if (s) this.buildBase(s); }
-    if (this.base) GUNSHIP.goTo({ n: 'obj', x: this.base.x, z: this.base.z });
-    this.nextWave = T + rand(3, 8); this.nextHeli = T + rand(25, 50); this.nextSquad = T + rand(8, 16); this.fedT = 0; this.seekT = T + 6; this.nextQrf = T + 3; this.nextAsq = T + 6; this.nextField = T + rand(6, 12); this.nextHop = T + rand(45, 65); this.spots = []; this.wantGo = null; this.waitT = 0;
+    this.nextWave = T + rand(3, 8); this.nextHeli = T + rand(3, 8); this.nextSquad = T + rand(8, 16); this.fedT = 0; this.seekT = T + 6; this.nextQrf = T + 3; this.nextAsq = T + 6; this.nextField = T + rand(6, 12); this.spots = []; this.waitT = 0;
+    this.wantGo = this.base ? { n: 'obj', x: this.base.x, z: this.base.z } : null;   // (the camera stays: the base is where it goes on its next allowed transit)
+    this.firstWave();
+  },
+  /* the first arrivals: a column on a road into the camera's zone from just out of sight (150–250 m), the allies to meet it */
+  firstWave() {
+    const node = ROADNET.nearest(GUNSHIP.look.x, GUNSHIP.look.z, 250); if (node < 0) return;
+    if (this.columnTo('enemy', node, pick(WAVES), true)) this.stat.first = T; else this.columnTo('enemy', node, pick(WAVES));
+    this.columnTo('ally', node, pick(QRF_TYPES));
   },
   standDown() {
     this.downT = T; this.focus = null;
     for (const E of this.cols) if (!E.retreat) this.retreatCol(E);
     for (const s of this.squads) { s.flee = true; for (const m of s.m) m.retreat = true; }
     for (const h of this.helis) h.retreat = true;
-    if (CFG.transitMin > 0) GUNSHIP.nextTransit = Math.min(GUNSHIP.nextTransit, T + rand(12, 20));   // (the camera leaves; the base goes once out of sight)
+    for (const c of this.cooks) c.n = 1;   // (what was still to pop goes up once more, then it is over)
+    if (CFG.transitMin > 0 && this.base && Math.hypot(this.base.x - GUNSHIP.look.x, this.base.z - GUNSHIP.look.z) < ZONE.r) GUNSHIP.nextTransit = Math.min(GUNSHIP.nextTransit, T + rand(12, 20));   // (the camera leaves the base, which goes once out of sight)
   },
   /* a column drives off towards a road far from the camera */
   retreatCol(E) {
@@ -215,11 +232,20 @@ const BATTLE = {
 
   /* ---- arrivals: always out of sight ---- */
   hidden(x, z, m) { return !VIEW.onScreen(_bp.set(x, groundH(x, z), z), m) && Math.hypot(x - CAM_TGT.x, z - CAM_TGT.z) > 300; },
+  /* out of sight, but close: well off the frame and 1.6 × its half diagonal on the ground away, 150 m at least (arrivals in the zone) */
+  hiddenNear(x, z) {
+    const vh = camera.position.distanceTo(CAM_TGT) * Math.tan(camera.fov * DEG / 2), hd = Math.hypot(vh * camera.aspect, vh * 1.42);
+    return !VIEW.onScreen(_bp.set(x, groundH(x, z), z), 0.5) && Math.hypot(x - CAM_TGT.x, z - CAM_TGT.z) > Math.max(150, 1.6 * hd);
+  },
+  /* nothing left round the camera's zone that an enabled weapon may hit */
+  dry() { const en = ARMS.enabled(); return !UNITS.some(u => u.alive && u.side === 'enemy' && en.some(w => w.hitSet.has(u.kind)) && Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z) < ZONE.r); },
+  /* the next arrivals now (at most every 12 s; the caps still hold) */
+  rush() { if (T <= this.rushT) return; this.rushT = T + 12; this.stat.rush++; this.nextWave = this.nextSquad = this.nextField = 0; this.nextBase = Math.min(this.nextBase, T + 2); },
   waves() {
     const k = CFG.enemies / 100; if (k <= 0 || GUNSHIP.state === 'transit') return;
     // nothing of the enemy's in the frame for 6 s: the next arrivals (and a new base, if there is none) are called now (at most every 12 s; the caps still hold)
     let seen = false; for (const u of UNITS) if (u.side === 'enemy' && u.kind !== 'struct' && this.inFrame(u.pos)) { seen = true; break; }
-    if (seen || !this.fedT) this.fedT = T; else if (T - this.fedT > 6 && T > this.rushT) { this.rushT = T + 12; this.stat.rush++; this.nextWave = this.nextSquad = this.nextField = 0; this.nextBase = Math.min(this.nextBase, T + 2); }
+    if (seen || !this.fedT) this.fedT = T; else if (T - this.fedT > 6) this.rush();
     if (T > this.nextWave) { this.nextWave = T + rand(6, 12) / k; let n = 0; for (const E of this.cols) if (!E.retreat && !E.ally) n += E.col.u.length; if (n < Math.round(14 * k)) this.spawnColumn(); }
     if (T > this.nextSquad) { this.nextSquad = T + rand(10, 20) / k; if (this.base && this.squads.filter(s => !s.flee && s.side === 'enemy').length < Math.round(6 * k)) this.squadAt('enemy', this.base.x, this.base.z, 95, 170, 60, 150); }
     if (T > this.nextField) { this.nextField = T + rand(25, 45) / k; this.spots = this.spots.filter(s => this.hot(s, 200)); if (this.spots.length < 3) this.spawnField(); }
@@ -244,20 +270,20 @@ const BATTLE = {
     if (!(nodes.length > 110 && this.allyRoom() && this.columnOn('ally', nodes.slice(50, 90).reverse(), pick(QRF_TYPES)))) this.columnTo('ally', dest, pick(QRF_TYPES));
   },
   /* a column of a side driving to a road node from 180–420 m away (out of sight, not next to the other side) */
-  columnTo(side, node, types) {
+  columnTo(side, node, types, near) {
     const N = ROADNET; if (node < 0) return false;
     if (side === 'ally' && !this.allyRoom()) return false;
     for (let t = 0; t < 80; t++) {
       const c = randi(0, N.n - 1), x = N.X[c], z = N.Z[c], d = Math.hypot(x - N.X[node], z - N.Z[node]);
-      if (d < 180 || d > 420 || N.BR[c] || !this.hidden(x, z, 0.8) || UNITS.some(u => u.side !== side && Math.hypot(u.pos.x - x, u.pos.z - z) < 110)) continue;
-      const nodes = N.route(c, node); if (!nodes || nodes.length < 30 || nodes.length > 220) continue;
-      if (this.columnOn(side, nodes, types)) return true;
+      if (d < (near ? 150 : 180) || d > (near ? 250 : 420) || N.BR[c] || !(near ? this.hiddenNear(x, z) : this.hidden(x, z, 0.8)) || UNITS.some(u => u.side !== side && Math.hypot(u.pos.x - x, u.pos.z - z) < 110)) continue;
+      const nodes = N.route(c, node); if (!nodes || nodes.length < (near ? 20 : 30) || nodes.length > 220) continue;
+      if (this.columnOn(side, nodes, types, near)) return true;
     }
     return false;
   },
   /* a column of a side placed at the start of a run of road nodes, if that is out of sight */
-  columnOn(side, nodes, types) {
-    const path = Path.fromNodes(nodes), q = path.p[Math.min(path.p.length - 1, 14)]; if (!this.hidden(path.p[0].x, path.p[0].z, 0.8) || !this.hidden(q.x, q.z, 0.8)) return false;
+  columnOn(side, nodes, types, near) {
+    const path = Path.fromNodes(nodes), q = path.p[Math.min(path.p.length - 1, 14)], H = near ? (x, z) => this.hiddenNear(x, z) : (x, z) => this.hidden(x, z, 0.8); if (!H(path.p[0].x, path.p[0].z) || !H(q.x, q.z)) return false;
     const col = new Column(types.map(k => new Vehicle(k, side))); col.place(path);
     for (const v of col.u) this.seen('in', v.pos);
     this.cols.push({ col, hold: false, retreat: false, ally: side === 'ally' }); return true;
@@ -276,28 +302,30 @@ const BATTLE = {
     const opts = this.dests(); if (opts.length) c.reroute(pick(opts));
   },
   dests() {
-    const opts = []; if (this.base && this.base.node >= 0) opts.push(this.base.node, this.base.node);
-    for (const P of ALLIES.posts) if (P.gateNode >= 0) opts.push(P.gateNode);
-    const h = ROADNET.nearest(GUNSHIP.home.x, GUNSHIP.home.z, 160); if (h >= 0) opts.push(h);
+    const opts = [], h = ROADNET.nearest(GUNSHIP.look.x, GUNSHIP.look.z, 250); if (h >= 0) opts.push(h, h, h);   // (mostly into the camera's zone: they come to the aircraft)
+    if (this.base && this.base.node >= 0) opts.push(this.base.node);
+    const posts = ALLIES.posts.filter(P => P.gateNode >= 0); if (posts.length) opts.push(pick(posts).gateNode);
     return opts;
   },
   /* a squad of a side appearing r0–r1 from a point (out of sight) and walking a loop l0–l1 round it */
-  squadAt(side, cx, cz, r0, r1, l0, l1) {
+  squadAt(side, cx, cz, r0, r1, l0, l1, near) {
     for (let t = 0; t < 20; t++) {
       const a = rand(0, TAU), r = rand(r0, r1), x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
-      if (!this.hidden(x, z, 0.5) || !walkable(x, z, x, z)) continue;
+      if (!(near ? this.hiddenNear(x, z) : this.hidden(x, z, 0.5)) || !walkable(x, z, x, z)) continue;
       const loop = patrolLoop(cx, cz, l0, l1, [x, z]); if (loop.length < 3) continue;
-      const s = new Squad(side, randi(4, 6), x, z, loop); this.squads.push(s); for (const m of s.m) this.seen('in', m.position); return;
+      const s = new Squad(side, randi(4, 6), x, z, loop); if (near) { s.go = T + 60; s.wait = 0; } this.squads.push(s); for (const m of s.m) this.seen('in', m.position); return s;
     }
   },
   /* a fight out in the country, away from the base: enemies at a district (a squad or two, a column driving in) and allies coming for them */
   spawnField() {
-    const B = this.base, c = GUNSHIP.list.filter(d => d.n !== 'outpost' && this.hidden(d.x, d.z, 0.9) && (!B || Math.hypot(d.x - B.x, d.z - B.z) > 350) && !this.spots.some(s => Math.hypot(d.x - s.x, d.z - s.z) < 300));
+    const L = GUNSHIP.look, zone = !this.spots.some(s => Math.hypot(L.x - s.x, L.z - s.z) < 300);   // (the first one in the camera's zone: its squads come in, running, from just out of sight)
+    const B = this.base, c = zone ? [{ x: L.x, z: L.z }] : GUNSHIP.list.filter(d => d.n !== 'outpost' && this.hidden(d.x, d.z, 0.9) && (!B || Math.hypot(d.x - B.x, d.z - B.z) > 350) && !this.spots.some(s => Math.hypot(d.x - s.x, d.z - s.z) < 300));
     if (!c.length) return;
     const d = pick(c), node = ROADNET.nearest(d.x, d.z, 160); this.spots.push({ x: d.x, z: d.z });
-    this.squadAt('enemy', d.x, d.z, 10, 60, 25, 70); if (Math.random() < 0.6) this.squadAt('enemy', d.x, d.z, 10, 60, 25, 70);
+    const [r0, r1] = zone ? [150, 240] : [10, 60];
+    this.squadAt('enemy', d.x, d.z, r0, r1, 25, 70, zone); if (Math.random() < 0.6) this.squadAt('enemy', d.x, d.z, r0, r1, 25, 70, zone);
     this.columnTo('enemy', node, pick(WAVES)); this.columnTo('ally', node, pick(QRF_TYPES));
-    if (CFG.allies > 0) this.squadAt('ally', d.x, d.z, 70, 130, 50, 110);
+    if (CFG.allies > 0) this.squadAt('ally', d.x, d.z, zone ? 150 : 70, zone ? 240 : 130, 50, 110, zone);
   },
   /* are there allied vehicles within 200 m of p? */
   backed(p) { return UNITS.some(u => u.side === 'ally' && u.kind !== 'inf' && u.kind !== 'heli' && Math.hypot(u.pos.x - p.x, u.pos.z - p.z) < 200); },
@@ -314,6 +342,7 @@ const BATTLE = {
     if (u.tgt && !u.tgt.alive) u.tgt = null;
     if (u.troops && T > (u.dropT || 0)) this.dismount(u);
     if ((u.think -= dt) <= 0) { u.think = rand(0.7, 1.3); u.tgt = this.pickTarget(u, F); }
+    if (u.downUntil > T) { u.ready = 0; return; }   // (lying flat under the gunship's fire)
     if (u.tgt && (u.cool -= dt) <= 0) { if (!u.ready) u.ready = T; else if (T - u.ready > 3) { this.stat.uLate++; this.unitShot(u); } }   // (reloaded: it waits for a beat; with none, it fires anyway)
   },
   /* ---- an APC's infantry: halted near the enemy (or at its own base), it lets them out by the rear door one by one; they run
@@ -409,7 +438,7 @@ const BATTLE = {
   },
   onBeat(band, st) {
     if (!ready || !AUD.fighting || paused) return;
-    this.unitsOnBeat(band, st, false); AA.onBeat(band, st);
+    this.unitsOnBeat(band, st, false); AA.onBeat(band, st); this.cookBeat(band, st);
     for (const m of this.missiles) if (m.p > 0.55) m.rush = true;                     // what is in flight lands on this beat
     this.gunOnBeat(band, st, false);
   },
@@ -423,10 +452,11 @@ const BATTLE = {
     let ok = w.band === 'strong' ? (strong || (band === 'low' && idle > w.reload + 2.5)) : (w.band === band || idle > 1.4 / Math.min(2, f) || (LIGHT_ARMS.has(w.id) && AUD.drive > 0.6));   // (music with no such beats: any beat will do after a while; dense music: any beat for the light guns)
     if (AUD.calm && st <= 1.45) ok = false;                                            // (a quiet part: only the strong beats)
     if (!force && (!ok || idle < GUN[w.id].gap || (f < 1 && Math.random() > f))) return;
-    const t = this.target(w); if (!t || !this.onReticle(t) || !ARMS.shoot()) return;   // (only at what the reticle is on)
+    const t = this.target(w), k = t ? this.shotAt(w, t) : 0; if (!k || !ARMS.shoot()) return;   // (at what the reticle is on, or a gun's at what it is coming onto)
+    this.noteShot(k);
     if (force) this.forceUntil = 0;
     if (ARMS.st[w.id].reload > 0) this.autoTick = Math.min(this.autoTick, T + 0.3);   // (it has to reload: another weapon may take over meanwhile)
-    this.lastShot = T; this.shotRT = RT(); this.stat.shots++; this.fire(w, t, st);
+    this.lastShot = T; this.shotRT = RT(); this.stat.shots++; this.fire(w, t, st, 1, k > 1 ? this.atP : null);
   },
   /* between the beats: on each point of the grid (the kick's beat split in 2 or 4 by the tempo) the light gun fires a short burst
      unless a shot went within most of a step before (no ammunition taken: the rate is the music's, the store cosmetic) */
@@ -436,9 +466,9 @@ const BATTLE = {
     const q = AUD.beatP / n, now = RT(), g = Math.floor((now - AUD.kickT) / q); if (g === this.gridN || now - AUD.kickT > AUD.beatP * 2) return;
     const fresh = this.gridN < 0; this.gridN = g; if (fresh) return;   // (just back on the grid: wait for its next point, not fire off it)
     const f = CFG.fire / 100; if (GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled || now - this.shotRT < q * 0.6 || !ARMS.ready(w) || (f < 1 && Math.random() > f)) return;
-    const t = this.target(w); if (!t || !this.onReticle(t)) return;
-    this.shotRT = now; this.stat.subShots++; this.stat.subOff = Math.max(this.stat.subOff, Math.abs((now - AUD.kickT) - g * q));
-    this.fire(w, t, 1.15, 0.5);   // (half the damage: faster music, more fire, not a quicker fight)
+    const t = this.target(w), k = t ? this.shotAt(w, t) : 0; if (!k) return;
+    this.noteShot(k); this.shotRT = now; this.stat.subShots++; this.stat.subOff = Math.max(this.stat.subOff, Math.abs((now - AUD.kickT) - g * q));
+    this.fire(w, t, 1.15, 0.5, k > 1 ? this.atP : null);   // (half the damage: faster music, more fire, not a quicker fight)
   },
   /* a drop (js/audio.js): for 4 s everybody fires twice as often; a volley now, the AA and the flares, and the heaviest weapon there is */
   onDrop() {
@@ -462,11 +492,26 @@ const BATTLE = {
   onReticle(u) { return this.onAim(u) || this.offT > 5; },   // (or it could not be brought there for a while)
   /* is it where the sensor points? At the map's edge the frame stops short of the point it is turned to (clampFrame): then
      what counts is that point, wherever it shows in the frame (else a wide lens, the 105 mm's, may never fire there) */
-  onAim(u) {
-    const n = VIEW.ndc(u.pos), ax = n.x * camera.aspect, ay = n.y; if (Math.hypot(ax, ay) < RET_ON) return true;
+  onAim(u, r = RET_ON) {
+    const n = VIEW.ndc(u.pos), ax = n.x * camera.aspect, ay = n.y; if (Math.hypot(ax, ay) < r) return true;
     if (Math.hypot(GUNSHIP.look.x - CAM_TGT.x, GUNSHIP.look.z - CAM_TGT.z) < 0.5) return false;
-    const m = VIEW.ndc(_bla.copy(GUNSHIP.look)); return Math.hypot(ax - m.x * camera.aspect, ay - m.y) < RET_ON;
+    const m = VIEW.ndc(_bla.copy(GUNSHIP.look)); return Math.hypot(ax - m.x * camera.aspect, ay - m.y) < r;
   },
+  /* near the reticle: a gun may already fire */
+  near(u) { return this.onAim(u, RET_NEAR); },
+  /* the ground under the reticle (the frame's centre) */
+  aimPoint(out) { return out.set(CAM_TGT.x, groundH(CAM_TGT.x, CAM_TGT.z), CAM_TGT.z); },
+  /* where a trigger at t goes: 0 no shot, 1 the target, 2 off it (MISS), 3 under the reticle while the target is only near it;
+     2 and 3 put the point in atP */
+  shotAt(w, t) {
+    if (this.onReticle(t)) {
+      const M = MISS[w.id]; if (!M || Math.random() >= M[0]) return 1;
+      const a = rand(0, TAU), r = rand(M[1], M[2]), x = t.pos.x + Math.cos(a) * r, z = t.pos.z + Math.sin(a) * r; this.atP.set(x, groundH(x, z), z); return 2;
+    }
+    if (!NEAR_ARMS.has(w.id) || !this.near(t)) return 0;
+    this.aimPoint(this.atP); return 3;
+  },
+  noteShot(k) { if (k === 2) this.stat.miss++; else if (k === 3) this.stat.near++; },
   /* the camera onto a unit: a little ahead of a moving one, so the slew's lag leaves the reticle on it */
   lookAt(u) {
     this.velOf(u, _bd); const lead = 2 / (SLEW_LOCK * GUNSHIP.slewK) + 0.125; _bp.set(u.pos.x + _bd.x * lead, 0, u.pos.z + _bd.z * lead);
@@ -474,19 +519,20 @@ const BATTLE = {
     GUNSHIP.track(_bp);
   },
   velOf(u, out) { const v = u.v || 0, a = u.yaw || 0; return u.kind === 'inf' ? out.set(0, 0, 0) : out.set(Math.cos(a) * v, 0, Math.sin(a) * v); },
-  /* a trigger pull at t; the beat's strength st sets how many rounds (BURST) and how big the blasts look (not their damage) */
-  fire(w, t, st, dk = 1) {
-    const G = GUN[w.id]; GUNS.shot(w.id);
+  /* a trigger pull at t; the beat's strength st sets how many rounds (BURST) and how big the blasts look (not their damage); at: a point
+     to put them on instead (a miss, or the ground under the reticle: no lead) */
+  fire(w, t, st, dk = 1, at = null) {
+    const G = GUN[w.id], A = at && at.clone(); GUNS.shot(w.id);
     if (w.id === 'rail') { this.rail(w, G, t); return; }
     const k = clamp(((st || 1.5) - 1) / 1.5, 0, 1), B = BURST[w.id], n = B ? Math.round(lerp(B[0], B[1], k)) : G.n, fx = G.fx * (0.85 + 0.35 * k), dmg = G.dmg * G.n / n * dk;   // (a trigger does the same damage, in more or fewer rounds)
     this.lastBurst = n;
     for (let i = 0; i < n; i++) this.after(i * G.step, () => {
       const a = rand(0, TAU), r = Math.sqrt(Math.random()) * G.spread, fl = G.missile || 0.28; this.velOf(t, _bd);
-      const to = new V3(t.pos.x + _bd.x * (G.missile ? 0 : fl) + Math.cos(a) * r, 0, t.pos.z + _bd.z * (G.missile ? 0 : fl) + Math.sin(a) * r); to.y = G.air ? t.pos.y + t.ah : groundH(to.x, to.z);
-      if (G.missile) { this.missiles.push({ w, G, tgt: G.spread < 2 ? t : null, from: this.muzzle(new V3(), rand(-1, 1) > 0 ? rand(8, 14) : rand(-14, -8)).addScaledVector(_bt.set(camera.matrixWorld.elements[4], camera.matrixWorld.elements[5], camera.matrixWorld.elements[6]), -3), to, p: 0, t: 0, dur: G.missile, rush: false, puff: 0, fx, dmg }); return; }
+      const lead = A || G.missile ? 0 : fl, to = new V3((A || t.pos).x + _bd.x * lead + Math.cos(a) * r, 0, (A || t.pos).z + _bd.z * lead + Math.sin(a) * r); to.y = G.air ? t.pos.y + t.ah : groundH(to.x, to.z);
+      if (G.missile) { this.missiles.push({ w, G, tgt: G.spread < 2 && !A ? t : null, from: this.muzzle(new V3(), rand(-1, 1) > 0 ? rand(8, 14) : rand(-14, -8)).addScaledVector(_bt.set(camera.matrixWorld.elements[4], camera.matrixWorld.elements[5], camera.matrixWorld.elements[6]), -3), to, p: 0, t: 0, dur: G.missile, rush: false, puff: 0, fx, dmg }); return; }
       this.muzzle(_bm); _bt.subVectors(to, _bm); const d = _bt.length();
       FX.tracers.spawn(_bm, _bt.multiplyScalar(1 / fl), { life: fl, len: G.tl, w: G.tw, color: 0xffc070 });
-      const sl = this.barrel ? 45 : GUN_SIDE_D; FX.tracers.spawn(_bm, _bt, { life: this.barrel ? 0.08 : 0.12, len: sl, w: G.tw * (this.barrel ? 2.5 : 1.3), color: 0xffd090 });   // (out of the barrel in the frame, or in from its edge: a streak back to the muzzle for the first frames)
+      FX.tracers.spawn(_bm, _bt, this.barrel ? { life: 0.08, len: 45, w: G.tw * 2.5, color: 0xffd090 } : { life: 0.06, len: 20, w: G.tw * 1.3, color: 0xffd090 });   // (out of the barrel in the frame, or in from its edge: a streak back to the muzzle for the first frames)
       this.after(fl, () => { hitFx(to.x, to.y, to.z, fx); this.strike(to, G.r, dmg, w, false); });
     });
   },
@@ -509,6 +555,49 @@ const BATTLE = {
       const d = Math.max(0, Math.hypot(u.pos.x - p.x, u.pos.z - p.z, air ? u.pos.y - p.y : 0) - (u.kind === 'struct' ? 3 : u.kind === 'inf' ? 0 : 1.5)); if (d >= (u.kind === 'struct' ? Math.min(r, 4) : r)) continue;   // (a structure: only what lands on it)
       if (aimed) this.note(w, u); else this.stat.splash++;   // (the weapon's log keeps to its table: what it was fired at)
       const A = ARMOR[w.id]; hurt(u, dmg * (1 - d / r) * (u.kind === 'inf' ? 3 : 1) * (A && A[u.kind] || 1));
+      const ri = aimed && u.alive && RICO[w.id] && RICO[w.id][u.kind]; if (ri && Math.random() < ri) this.ricochet(u);
+    }
+    if (!air) this.duck(p, Math.max(6, r * 2.5));
+  },
+  /* a round of a light gun glancing off armour: a spark and one to three bright streaks bouncing up and away */
+  ricochet(u) {
+    if (this.ricoN >= RICO_MAX) return; this.ricoN++; this.stat.ricochet++;
+    const p = new V3(u.pos.x + rand(-1, 1), u.pos.y + u.ah * rand(0.4, 0.9), u.pos.z + rand(-1, 1)); _bd.subVectors(p, camera.position).normalize();
+    FX.flash.spawn(p, { s0: 1.4, s1: 2.6, life: 0.05, color: 0xfff4e0 });
+    for (let i = 0, n = randi(1, 3); i < n; i++) { _bt.set(_bd.x + rand(-0.7, 0.7), Math.abs(_bd.y) * 0.5 + rand(0.3, 1), _bd.z + rand(-0.7, 0.7)).normalize().multiplyScalar(rand(45, 90)); FX.tracers.spawn(p, _bt, { life: rand(0.15, 0.35), len: rand(2, 4), w: 0.12, color: 0xfff0c8, grav: 9.8 }); }
+  },
+  /* the gunship's round landing at p: the enemy's soldiers within r that are still standing hit the dirt for a moment (they neither
+     walk nor fire; js/infantry.js lays them down) */
+  duck(p, r) {
+    for (const u of UNITS) {
+      if (u.kind !== 'inf' || u.side !== 'enemy' || Math.abs(u.pos.x - p.x) > r || Math.abs(u.pos.z - p.z) > r || Math.hypot(u.pos.x - p.x, u.pos.z - p.z) > r) continue;
+      if (!(u.downUntil > T)) this.stat.prone++; u.downUntil = Math.max(u.downUntil || 0, T + rand(1.5, 3.5)); u.ready = 0;
+    }
+  },
+  /* ---- a knocked-out vehicle cooking off: its pops wait for strong beats ---- */
+  cookOff(v) {
+    const n = v.kind === 'car' ? (Math.random() < 0.5 ? COOK.car : 0) : COOK[v.kind] || 0; if (!n || !AUD.fighting) return;
+    this.cooks.push({ v, pos: v.pos.clone(), n, next: T + COOK.first, late: T + COOK.first + COOK.late });
+  },
+  cookBeat(band, st) { if (AUD.calm || !(st > 1.45 || band === 'low')) return; for (let i = this.cooks.length - 1; i >= 0; i--) if (T >= this.cooks[i].next) { this.stat.cookBeat = (this.stat.cookBeat || 0) + 1; this.pop(i); } },
+  pop(i) {
+    const c = this.cooks[i], k = c.v.kind === 'tank' ? 1 : c.v.kind === 'apc' ? 0.8 : 0.6, p = c.pos; c.n--; this.stat.cooks++;
+    blast(p, rand(0.5, 1) * k);
+    _bp.set(p.x, groundH(p.x, p.z) + 1.6, p.z);
+    for (let j = 0, n = randi(6, 10); j < n; j++) FX.tracers.spawn(_bp, _bd.set(rand(-9, 9), rand(14, 32), rand(-9, 9)), { life: rand(0.5, 1), len: rand(1.5, 3), w: 0.14, color: 0xffd890, grav: 22 });   // (rounds and sparks thrown up)
+    for (let j = 0; j < 3; j++) FX.smoke.spawn(_bp, { s0: 3 * k, s1: rand(9, 14) * k, life: rand(3, 5), a0: 0.55, color: 0x161412, rise: 0.8, v: _bd.set(rand(-1, 1) + WIND.x, rand(4, 8), rand(-1, 1) + WIND.z), drag: 0.6 });
+    if (!c.n) { this.cooks.splice(i, 1); const t = c.v.turret; if (t && c.v.kind === 'tank' && Math.random() < COOK.toss) { this.stat.tosses++; this.tosses.push({ t, y0: t.position.y, x0: t.position.x, r0: t.rotation.clone(), a: 0, vy: rand(11, 13), sx: rand(-1.5, 1.5), spin: [rand(-4, 4), rand(-3, 3), rand(-4, 4)] }); } return; }
+    c.next = T + COOK.gap; c.late = T + COOK.gap + COOK.late;
+  },
+  /* the pops past their deadline (no strong beat came); a tank's turret thrown up by the last one: up and down in about a second, it
+     lands askew on the hull (in the wreck's own frame: it is scaled by ARMOR_SCALE) */
+  cookUpdate(dt) {
+    for (let i = this.cooks.length - 1; i >= 0; i--) if (T >= this.cooks[i].late) this.pop(i);
+    for (let i = this.tosses.length - 1; i >= 0; i--) {
+      const q = this.tosses[i]; q.a += dt; const h = q.vy * q.a - 10 * q.a * q.a, f = Math.min(1, q.a / (q.vy / 10));
+      q.t.position.y = q.y0 + Math.max(0, h) / ARMOR_SCALE; q.t.position.x = q.x0 + q.sx * f / ARMOR_SCALE;
+      q.t.rotation.set(q.r0.x + q.spin[0] * q.a * 0.25, q.r0.y + q.spin[1] * q.a, q.r0.z + q.spin[2] * q.a * 0.25);
+      if (h < 0) { q.t.position.y = q.y0 + 0.02; this.tosses.splice(i, 1); }
     }
   },
   /* a blast at p of a unit's weapon (side: who fired): every unit of the other side on the ground within r */
@@ -573,10 +662,12 @@ const BATTLE = {
     if (CFG.autoArms && T < this.manualUntil && T > this.manualUntil - 27 && w0 && !UNITS.some(u => u.alive && u.side === 'enemy' && w0.hitSet.has(u.kind) && Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z) < 250)) { this.manualUntil = 0; this.autoTick = 0; }
     const man = !CFG.autoArms || T < this.manualUntil; let here = null;
     for (const u of UNITS) if (u.side === 'enemy' && this.inFrame(u.pos)) { here = u; break; }   // (never away from enemies still in the frame)
-    if (this.wantGo && !here) { const d = this.wantGo; this.wantGo = null; GUNSHIP.goTo(d); return; }
-    if (T > this.nextHop && !man && !here) {   // now and then to another fight: the base, or one out in the country
-      this.nextHop = T + rand(35, 55); const c = this.spots.filter(s => this.hot(s, 160) && UNITS.some(u => u.side === 'ally' && Math.hypot(u.pos.x - s.x, u.pos.z - s.z) < 130)); if (this.base && this.hot(this.base, 120)) c.push(this.base);   // (only where both sides already are)
-      const far = c.filter(s => Math.hypot(s.x - GUNSHIP.look.x, s.z - GUNSHIP.look.z) > 250); if (far.length) { const s = pick(far); this.focus = null; GUNSHIP.goTo({ n: 'tgt', x: s.x, z: s.z }); return; }
+    // away from the zone only when the gunship may leave it (a quiet part, past its stay and its timer) and no enemy is in the frame
+    const go = !here && GUNSHIP.mayLeave(this.dry());
+    if (this.wantGo && go) { const d = this.wantGo; this.wantGo = null; this.focus = null; GUNSHIP.goTo(d); return; }
+    if (go && !man) {   // to another fight: the base, or one out in the country
+      const c = this.spots.filter(s => this.hot(s, 160) && UNITS.some(u => u.side === 'ally' && Math.hypot(u.pos.x - s.x, u.pos.z - s.z) < 130)); if (this.base && this.hot(this.base, 120)) c.push(this.base);   // (only where both sides already are)
+      const far = c.filter(s => Math.hypot(s.x - GUNSHIP.look.x, s.z - GUNSHIP.look.z) > ZONE.r); if (far.length) { const s = pick(far); this.focus = null; GUNSHIP.goTo({ n: 'tgt', x: s.x, z: s.z }); return; }
     }
     const w = ARMS.w, f = w ? this.target(w) : null;
     if (f) { this.seekT = T + 4; this.lookAt(f); this.offT = this.onAim(f) ? 0 : this.offT + 0.4; return; }
@@ -592,7 +683,7 @@ const BATTLE = {
     if (best && !this.backed(best.pos) && T > this.nextCall) { this.nextCall = T + 25; this.columnTo('ally', ROADNET.nearest(best.pos.x, best.pos.z, 250), pick(QRF_TYPES)); }   // (nobody of ours there: a column is called in)
     if (!best) { if (man) this.manualUntil = 0; return; }   // (nothing anywhere for the chosen weapon: the auto-switching takes over)
     this.seekT = T + (man ? 2.5 : 5);
-    if (bd < 200) this.lookAt(best); else GUNSHIP.goTo({ n: 'tgt', x: clamp(best.pos.x, -MAP_HALF + 120, MAP_HALF - 120), z: clamp(best.pos.z, -MAP_HALF + 120, MAP_HALF - 120) });
+    if (bd < ZONE.r) this.lookAt(best); else if (!GUNSHIP.mayLeave(this.dry())) this.rush(); else GUNSHIP.goTo({ n: 'tgt', x: clamp(best.pos.x, -MAP_HALF + 120, MAP_HALF - 120), z: clamp(best.pos.z, -MAP_HALF + 120, MAP_HALF - 120) });
   },
   /* the auto-switching: the enabled weapon that suits what is in the frame and how heavy the music is */
   autoArm() {
@@ -619,13 +710,15 @@ const BATTLE = {
     if (!war && this.was) this.standDown();
     this.was = war;
     for (let i = this.pend.length - 1; i >= 0; i--) if (T >= this.pend[i].t) { const p = this.pend[i]; this.pend.splice(i, 1); p.fn(); }
-    this.flyMissiles(dt); this.flyRockets(dt); this.laser(dt); this.subBeat();
+    this.ricoN = 0; this.flyMissiles(dt); this.flyRockets(dt); this.laser(dt); this.subBeat(); this.cookUpdate(dt);
     for (let i = UNITS.length - 1; i >= 0; i--) this.think(UNITS[i], dt, fight);
     for (let i = this.cols.length - 1; i >= 0; i--) {
       const E = this.cols[i], c = E.col;
       if (!c.u.length) { this.cols.splice(i, 1); continue; }
       if (!E.retreat) {   // under the gunship's fire a column does not stand still: it drives on, and from where it was halted, off down the road
-        const run = c.alarm > T; if (run && c.done && T > (E.runT || 0)) { E.hold = false; E.runT = T + 2; for (let k = 0; k < 6; k++) { const n = randi(0, ROADNET.n - 1); if (Math.hypot(ROADNET.X[n] - c.u[0].pos.x, ROADNET.Z[n] - c.u[0].pos.z) > 300 && c.reroute(n)) break; } }   // (no way found: tried again in 2 s, not every step)
+        const run = c.alarm > T;
+        if (run && T > (E.weave || 0)) { E.weave = T + rand(1.2, 1.8); for (const v of c.u) if (v.v > 2) v.laneK = (Math.random() < 0.5 ? -1 : 1) * rand(1.5, 2.1); }   // (under fire: they weave across the road, kerb to kerb)
+        if (run && c.done && T > (E.runT || 0)) { E.hold = false; E.runT = T + 2; for (let k = 0; k < 6; k++) { const n = randi(0, ROADNET.n - 1); if (Math.hypot(ROADNET.X[n] - c.u[0].pos.x, ROADNET.Z[n] - c.u[0].pos.z) > 300 && c.reroute(n)) break; } }   // (no way found: tried again in 2 s, not every step)
         if (c.done && !c.engaged && !E.hold && !run) { if (!E.idle) E.idle = T + rand(8, 15); else if (T > E.idle) { E.idle = 0; this.retask(E); } } else E.idle = 0;   // (arrived and nothing to do: on to the next fight)
         c.update(dt, run || (!E.hold && !c.engaged)); continue;
       }

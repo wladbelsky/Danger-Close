@@ -6,11 +6,14 @@ const SLEW_LOCK = 2.6;          // the slew's stiffness while the sensor is on a
 /* the music sets how quick the slew onto a target is: sluggish in a quiet part, snappy when the music drives hard and fast (a factor
    on SLEW_LOCK; a drop's surge quicker still), eased so the change never jerks the picture */
 const SLEW_MUSIC = { calm: 0.6, base: 0.6, drive: 0.7, tempo: 0.4, surge: 1.25, ease: 1.5 };
+/* the zone the gunship works in a fight: it stays at least min s, leaves only once its timer (every) has run out and the music has a
+   quiet part (or, with music that has none, calmWait s on with nothing left to hit in the zone); r: the zone's radius, metres */
+const ZONE = { min: 45, every: [80, 130], calmWait: 45, r: 320 };
 const GS_MARGIN = 260;          // districts keep this far from the map's edge (the frame is clamped inside the map anyway)
 const _gsa = new V3();
 const GUNSHIP = {
   state: 'orbit', list: [], home: null, look: new V3(), aim: new V3(), aimS: new V3(), vel: new V3(), ctr: new V3(),   // (ctr: what the aircraft circles)
-  zm: 1, slewK: 1, applied: 0, nextTransit: 0, nextWander: 0, tr: null, ao: 0, next: null, settled: 0,
+  zm: 1, slewK: 1, arrived: 0, nextLeave: 0, applied: 0, nextTransit: 0, nextWander: 0, tr: null, ao: 0, next: null, settled: 0,
   /* the districts worth orbiting: towns, the station, a bridge, lakes, farms, fields and roads out in the country */
   districts() {
     const out = [], sp = LAYOUT.spots(), M = MAP_HALF - GS_MARGIN;
@@ -36,8 +39,11 @@ const GUNSHIP = {
     this.look.set(d.x, groundH(d.x, d.z), d.z); this.aim.copy(this.look); this.aimS.copy(this.look); this.vel.set(0, 0, 0);
     CAM_TGT.copy(this.look); this.ctr.copy(this.look); CAM_CTR.copy(this.look);
     this.zm = this.zoomTarget(); this.state = 'orbit';
-    this.nextTransit = T + this.interval(); this.nextWander = T + rand(8, 14);
+    this.nextTransit = T + this.interval(); this.nextWander = T + rand(8, 14); this.arrive();
   },
+  arrive() { this.arrived = T; this.nextLeave = T + rand(ZONE.every[0], ZONE.every[1]); },
+  /* may it fly off to another place in a fight? (dry: nothing left round here an enabled weapon may hit) */
+  mayLeave(dry) { return this.state === 'orbit' && T - this.arrived > ZONE.min && T > this.nextLeave && (AUD.calm || !AUD.fighting || (dry && T > this.nextLeave + ZONE.calmWait)); },
   interval() { return CFG.transitMin * 60 * rand(0.8, 1.2); },
   zoomTarget() { const w = ARMS.w; return (w ? w.zoom : 1) * (this.state === 'transit' ? 1 - 0.3 * Math.sin(Math.PI * this.tr.p) : 1); },
   /* a point of interest near the district: a building, a junction, a tracked vehicle, or just somewhere close */
@@ -67,7 +73,7 @@ const GUNSHIP = {
   update(dt) {
     if (!QS.has('az')) camAz -= 0.03 * CFG.orbit / 100 * dt;               // the left orbit
     if (this.state === 'orbit') {
-      if (T >= this.nextTransit && CFG.transitMin > 0 && !AUD.combat) this.startTransit();
+      if (T >= this.nextTransit && CFG.transitMin > 0 && !AUD.combat && T - this.arrived > Math.min(ZONE.min, CFG.transitMin * 48)) this.startTransit();   // (a stay of ZONE.min, shorter only if the property asks for transits that often)
       else if (T >= this.nextWander) { this.wanderPoint(this.aim); this.nextWander = T + rand(12, 22); }
       // a critically damped slew towards an eased aim point (no overshoot; the easing takes the kick out of the start)
       const S = SLEW_MUSIC, kT = !AUD.fighting ? 1 : (AUD.calm ? S.calm : S.base + S.drive * AUD.drive + S.tempo * AUD.tempo) * (T < BATTLE.surgeUntil ? S.surge : 1);
@@ -80,7 +86,7 @@ const GUNSHIP = {
       const t = this.tr; t.p = Math.min(1, t.p + dt / t.dur); const e = t.p * t.p * t.p * (t.p * (t.p * 6 - 15) + 10);   // (smootherstep)
       const lx = this.look.x, lz = this.look.z; this.look.set(lerp(t.from.x, t.to.x, e), 0, lerp(t.from.z, t.to.z, e));
       this.ctr.x += this.look.x - lx; this.ctr.z += this.look.z - lz;   // (a transit: the aircraft flies along with its sensor's point)
-      if (t.p >= 1) { this.state = 'orbit'; this.home = t.to; this.ao = this.list.indexOf(t.to) + 1; this.aim.copy(this.look); this.aimS.copy(this.look); this.vel.set(0, 0, 0); this.settled = T + 0.8; this.nextTransit = T + this.interval(); this.nextWander = T + rand(6, 10); if (this.next) { const n = this.next; this.next = null; this.goTo(n); } }
+      if (t.p >= 1) { this.state = 'orbit'; this.home = t.to; this.ao = this.list.indexOf(t.to) + 1; this.aim.copy(this.look); this.aimS.copy(this.look); this.vel.set(0, 0, 0); this.settled = T + 0.8; this.arrive(); this.nextTransit = T + this.interval(); this.nextWander = T + rand(6, 10); if (this.next) { const n = this.next; this.next = null; this.goTo(n); } }
     }
     this.look.y = groundH(this.look.x, this.look.z);
     this.ctr.x += (this.look.x - this.ctr.x) * Math.min(1, dt * 0.1); this.ctr.z += (this.look.z - this.ctr.z) * Math.min(1, dt * 0.1);   // (the orbit drifts after what the sensor is on, slowly)
