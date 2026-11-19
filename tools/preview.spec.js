@@ -555,7 +555,7 @@ test('side guns', async ({ wp }) => {
   await sheet(wp, shots, 2, 'side-guns.png');
 });
 
-/* what the hits do: a wreck cooking off on a beat, a tank's turret thrown up, soldiers flat after a near miss, 25 mm rounds glancing
+/* what the hits do: a wreck cooking off on a beat, a tank's turret thrown up, 25 mm rounds glancing
    off an APC; TV then white-hot */
 test('reactions', async ({ wp }) => {
   await wp.page.setViewportSize({ width: 960, height: 540 });
@@ -572,7 +572,6 @@ test('reactions', async ({ wp }) => {
     await wp.run((mode) => { SENSOR.set(mode); HUD.markModes(); const v = new Vehicle('apc', 'enemy'); v.obj.position.copy(__at(-6, 4)); window.__v = v; let n = BATTLE.stat.cooks; hurt(v, 1e4); for (let i = 0; i < 200 && BATTLE.stat.cooks === n; i++) __steps(1); __steps(2); }, mode); await snap();   // a pop
     if (mode === 'tv') {
       await wp.run(() => { COOK.toss = 1; const v = new Vehicle('tank', 'enemy'); v.obj.position.copy(__at(10, -6)); const y0 = v.turret.position.y; hurt(v, 1e4); for (let i = 0; i < 300 && !(v.turret.position.y - y0 > 0.9); i++) __steps(1); COOK.toss = 0.35; }); await snap();   // the turret thrown up
-      await wp.run(() => { const p = __at(0, 12), q = new Squad('enemy', 5, p.x, p.z, [[p.x, p.z], [p.x + 25, p.z]]); q.wait = 0; BATTLE.squads.push(q); __steps(60); const L = q.m[1] || q.m[0], hx = L.position.x + 5, hz = L.position.z; BATTLE.strike(new THREE.Vector3(hx, groundH(hx, hz), hz), GUN.g30.r, GUN.g30.dmg, WEAPON.g30, false); hitFx(hx, 0, hz, 0.8); __steps(8); }); await snap();   // flat
     }
     await wp.run(() => { for (const u of UNITS.slice()) if (u.kind === 'apc' && u.alive) u.remove(); const v = new Vehicle('apc', 'enemy'); v.obj.position.copy(__at(-10, -8)); for (let k = 0; k < 3; k++) { BATTLE.ricoN = 0; for (let i = 0; i < 6; i++) BATTLE.strike(v.pos, GUN.g25.r, GUN.g25.dmg * 0.01, WEAPON.g25, false); __steps(1); } }); await snap();   // ricochets
   };

@@ -139,11 +139,13 @@ const RET_NEAR = 0.4, NEAR_ARMS = new Set(['g25', 'g30', 'b40', 'h105']);
 const MISS = { g30: [0.25, 3, 7], b40: [0.2, 3, 8], h105: [0.2, 5, 12] };
 /* a light gun's round glancing off armour: the chance of a ricochet per hit by kind; at most RICO_MAX of them a step */
 const RICO = { g25: { car: 0.3, apc: 1 }, g30: { car: 0.4, apc: 1 }, b40: { apc: 0.7 } }, RICO_MAX = 8;
+/* fewer enemies on the ground than this (× the enemies' share) within ZONE.r of the camera's point: the next arrivals are called at once */
+const ZONE_FILL = 12;
 /* a knocked-out vehicle cooks off: pops by kind, the first not before COOK.first s, each on a strong beat (or COOK.late s on), COOK.gap s apart */
 const COOK = { tank: 3, apc: 2, car: 1, first: 0.6, gap: 0.5, late: 1.6, toss: 0.35 };
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0);
 const BATTLE = {
-  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, prone: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
+  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
   pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], ricoN: 0, atP: new V3(),
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
@@ -246,8 +248,14 @@ const BATTLE = {
     // nothing of the enemy's in the frame for 6 s: the next arrivals (and a new base, if there is none) are called now (at most every 12 s; the caps still hold)
     let seen = false; for (const u of UNITS) if (u.side === 'enemy' && u.kind !== 'struct' && this.inFrame(u.pos)) { seen = true; break; }
     if (seen || !this.fedT) this.fedT = T; else if (T - this.fedT > 6) this.rush();
+    // few of them left round the camera's zone (outside a quiet part): the next arrivals now too
+    const L = GUNSHIP.look; let zn = 0; for (const u of UNITS) if (u.side === 'enemy' && u.kind !== 'struct' && u.kind !== 'heli' && Math.hypot(u.pos.x - L.x, u.pos.z - L.z) < ZONE.r) zn++;
+    if (zn < Math.round(ZONE_FILL * k) && !AUD.calm) this.rush();
     if (T > this.nextWave) { this.nextWave = T + rand(6, 12) / k; let n = 0; for (const E of this.cols) if (!E.retreat && !E.ally) n += E.col.u.length; if (n < Math.round(14 * k)) this.spawnColumn(); }
-    if (T > this.nextSquad) { this.nextSquad = T + rand(10, 20) / k; if (this.base && this.squads.filter(s => !s.flee && s.side === 'enemy').length < Math.round(6 * k)) this.squadAt('enemy', this.base.x, this.base.z, 95, 170, 60, 150); }
+    if (T > this.nextSquad) {   // squads: running into the camera's zone from just out of sight, else round the base
+      this.nextSquad = T + rand(8, 16) / k; const sq = this.squads.filter(s => !s.flee && s.side === 'enemy'), inZ = sq.filter(s => s.m[0] && Math.hypot(s.m[0].position.x - L.x, s.m[0].position.z - L.z) < ZONE.r).length;
+      if (sq.length < Math.round(9 * k) && !(inZ < Math.round(4 * k) && this.squadAt('enemy', L.x, L.z, 150, 240, 25, 70, true)) && this.base) this.squadAt('enemy', this.base.x, this.base.z, 95, 170, 60, 150);
+    }
     if (T > this.nextField) { this.nextField = T + rand(25, 45) / k; this.spots = this.spots.filter(s => this.hot(s, 200)); if (this.spots.length < 3) this.spawnField(); }
     if (T > this.nextHeli) { this.nextHeli = T + rand(40, 70) / k; if (this.helis.filter(h => h.alive && !h.retreat).length < Math.round(2 * k)) this.spawnHeli(); }   // (with a base or without, whatever the allies' share)
     // the allies' quick reaction force: a column from a road near the base and fireteams round it, so there are always some of them in the fight
@@ -257,7 +265,8 @@ const BATTLE = {
     if (T > this.nextAsq) { this.nextAsq = T + rand(15, 30) / ka; if (this.squads.filter(s => !s.flee && s.side === 'ally').length < Math.max(1, Math.round(2 * ka))) this.squadAt('ally', B.x, B.z, 95, 170, 60, 150); }
   },
   spawnColumn() {
-    const N = ROADNET; let k = -1;
+    const N = ROADNET, h = N.nearest(GUNSHIP.look.x, GUNSHIP.look.z, 250); let k = -1;
+    if (h >= 0 && Math.random() < 0.6 && this.columnTo('enemy', h, pick(WAVES))) { this.columnTo('ally', h, pick(QRF_TYPES)); return; }   // (mostly from 180–420 m down a road into the camera's zone, the allies meeting it there)
     for (let t = 0; t < 40 && k < 0; t++) { const c = randi(0, N.n - 1), x = N.X[c], z = N.Z[c]; if (!N.BR[c] && this.hidden(x, z, 0.8) && !UNITS.some(u => u.side === 'ally' && Math.hypot(u.pos.x - x, u.pos.z - z) < 160)) k = c; }
     if (k < 0) return;
     const opts = this.dests(); if (!opts.length) return;
@@ -342,7 +351,6 @@ const BATTLE = {
     if (u.tgt && !u.tgt.alive) u.tgt = null;
     if (u.troops && T > (u.dropT || 0)) this.dismount(u);
     if ((u.think -= dt) <= 0) { u.think = rand(0.7, 1.3); u.tgt = this.pickTarget(u, F); }
-    if (u.downUntil > T) { u.ready = 0; return; }   // (lying flat under the gunship's fire)
     if (u.tgt && (u.cool -= dt) <= 0) { if (!u.ready) u.ready = T; else if (T - u.ready > 3) { this.stat.uLate++; this.unitShot(u); } }   // (reloaded: it waits for a beat; with none, it fires anyway)
   },
   /* ---- an APC's infantry: halted near the enemy (or at its own base), it lets them out by the rear door one by one; they run
@@ -557,7 +565,6 @@ const BATTLE = {
       const A = ARMOR[w.id]; hurt(u, dmg * (1 - d / r) * (u.kind === 'inf' ? 3 : 1) * (A && A[u.kind] || 1));
       const ri = aimed && u.alive && RICO[w.id] && RICO[w.id][u.kind]; if (ri && Math.random() < ri) this.ricochet(u);
     }
-    if (!air) this.duck(p, Math.max(6, r * 2.5));
   },
   /* a round of a light gun glancing off armour: a spark and one to three bright streaks bouncing up and away */
   ricochet(u) {
@@ -565,14 +572,6 @@ const BATTLE = {
     const p = new V3(u.pos.x + rand(-1, 1), u.pos.y + u.ah * rand(0.4, 0.9), u.pos.z + rand(-1, 1)); _bd.subVectors(p, camera.position).normalize();
     FX.flash.spawn(p, { s0: 1.4, s1: 2.6, life: 0.05, color: 0xfff4e0 });
     for (let i = 0, n = randi(1, 3); i < n; i++) { _bt.set(_bd.x + rand(-0.7, 0.7), Math.abs(_bd.y) * 0.5 + rand(0.3, 1), _bd.z + rand(-0.7, 0.7)).normalize().multiplyScalar(rand(45, 90)); FX.tracers.spawn(p, _bt, { life: rand(0.15, 0.35), len: rand(2, 4), w: 0.12, color: 0xfff0c8, grav: 9.8 }); }
-  },
-  /* the gunship's round landing at p: the enemy's soldiers within r that are still standing hit the dirt for a moment (they neither
-     walk nor fire; js/infantry.js lays them down) */
-  duck(p, r) {
-    for (const u of UNITS) {
-      if (u.kind !== 'inf' || u.side !== 'enemy' || Math.abs(u.pos.x - p.x) > r || Math.abs(u.pos.z - p.z) > r || Math.hypot(u.pos.x - p.x, u.pos.z - p.z) > r) continue;
-      if (!(u.downUntil > T)) this.stat.prone++; u.downUntil = Math.max(u.downUntil || 0, T + rand(1.5, 3.5)); u.ready = 0;
-    }
   },
   /* ---- a knocked-out vehicle cooking off: its pops wait for strong beats ---- */
   cookOff(v) {

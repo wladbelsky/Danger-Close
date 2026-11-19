@@ -298,9 +298,8 @@ class Squad {
   update(dt) {
     const L = this.m[0]; if (!L) return;
     if (this.flee) { this.run(dt); return; }
-    let step = 0; const fight = T > this.go && this.m.some(s => s.tgt), k = T < this.go ? 2 : 1, down = L.downUntil > T;
+    let step = 0; const fight = T > this.go && this.m.some(s => s.tgt), k = T < this.go ? 2 : 1;
     if (fight) { for (const s of this.m) if (s.tgt) s.a = approachAngle(s.a, Math.atan2(s.tgt.pos.z - s.position.z, s.tgt.pos.x - s.position.x), dt * 5); }   // (halted, facing what they shoot at)
-    else if (down) { /* hit the dirt: nobody walks */ }
     else if (this.wait > 0) this.wait -= dt;
     else {
       const [wx, wz] = this.wps[this.wi], dx = wx - L.position.x, dz = wz - L.position.z, d = Math.hypot(dx, dz);
@@ -309,7 +308,7 @@ class Squad {
     }
     if (step > 0) { this.D += step; const last = this.trail[this.trail.length - 1]; if (this.D - last[2] > 0.5) { this.trail.push([L.position.x, L.position.z, this.D]); if (this.trail.length > 200) this.trail.shift(); } }
     this.m.forEach((s, i) => {
-      if (fight || s.downUntil > T) s.moved = 0;
+      if (fight) s.moved = 0;
       else if (i) {   // in file, 4 m apart (out of a vehicle's door 2 m), along the trail
         const [tx, tz] = this.trailAt(this.D - i * this.gap), dx = tx - s.position.x, dz = tz - s.position.z, d = Math.hypot(dx, dz);
         if (d > 0.05) { const mv = Math.min(d, 1.9 * k * dt); s.position.x += dx / d * mv; s.position.z += dz / d * mv; s.a = approachAngle(s.a, Math.atan2(dz, dx), dt * 4); s.moved = mv; } else s.moved = 0;

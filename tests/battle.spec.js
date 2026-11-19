@@ -45,7 +45,7 @@ test('music arms the fight after 5 s; the camera stays and the enemy comes to it
   });
   expect(b.bad).toEqual([]);
   expect(b.stat.shots).toBeGreaterThan(40);
-  expect(b.stat.near, 'shots at a target coming onto the reticle').toBeGreaterThan(0); expect(b.stat.miss, 'misses').toBeGreaterThan(0); expect(b.stat.prone, 'soldiers flat under fire').toBeGreaterThan(0);
+  expect(b.stat.near, 'shots at a target coming onto the reticle').toBeGreaterThan(0); expect(b.stat.miss, 'misses').toBeGreaterThan(0);
   expect(b.log).toBeGreaterThan(20);
   expect(b.wrecks).toBeGreaterThan(0);
   expect(b.stat.seenIn, 'arrivals in the frame').toBe(0);
@@ -252,7 +252,7 @@ test('the auto-switching fires another weapon while the one in hand reloads for 
   expect(r.hops, 'in a fight').toBeGreaterThan(0);
 });
 
-test('a knocked-out tank cooks off on the beats and may throw its turret; light rounds glance off an APC; a near miss lays soldiers flat', async ({ wp }) => {
+test('a knocked-out tank cooks off on the beats and may throw its turret; light rounds glance off an APC', async ({ wp }) => {
   await wp.boot({ query: '?hour=12&seed=11&transit=0' });
   await wp.sim(6, { audio: true });
   const r = await wp.run(() => {
@@ -269,21 +269,10 @@ test('a knocked-out tank cooks off on the beats and may throw its turret; light 
     const apc = new Vehicle('apc', 'enemy'); apc.obj.position.copy(at(-30)); const r0 = BATTLE.stat.ricochet;
     for (let i = 0; i < 20; i++) BATTLE.strike(apc.pos, GUN.g25.r, GUN.g25.dmg, WEAPON.g25, false);
     out.rico = BATTLE.stat.ricochet - r0; apc.remove();
-    // soldiers 6 m from a 30 mm round: unhurt, flat for a moment, not firing, then up again
-    const p = at(0, 40), q = new Squad('enemy', 4, p.x, p.z, [[p.x, p.z], [p.x + 20, p.z]]); BATTLE.squads.push(q);
-    const s = q.m[0], hp = s.hp; BATTLE.strike(at(6, 40), GUN.g30.r, GUN.g30.dmg, WEAPON.g30, false);
-    out.down = s.downUntil > T; out.hp = s.hp === hp;
-    let fired = 0; const uf = BATTLE.unitFire; BATTLE.unitFire = (w) => { if (w === s) fired++; };
-    const steps = (n) => { for (let i = 0; i < n; i++) { __t.sim(0.05, { audio: true }); INF.update(); } };   // (the soldiers are laid down where they are drawn: once a frame)
-    INF.update(); steps(12); out.flat = s.downK; out.still = s.ready === 0;
-    __t.sim(1, { audio: true }); out.fired = fired; BATTLE.unitFire = uf;
-    steps(80); out.up = s.alive ? s.downK : 0;
     return out;
   });
   console.log(JSON.stringify(r));
   expect(r.cooks, 'three pops').toBe(3); expect(r.left).toBe(0); expect(r.onBeat, 'mostly on strong beats').toBeGreaterThanOrEqual(1);
   expect(r.top, 'the turret thrown up, metres').toBeGreaterThan(2.5); expect(r.landed, 'and back on the hull').toBeLessThan(0.2);
   expect(r.rico).toBeGreaterThan(0); expect(r.rico).toBeLessThanOrEqual(8);
-  expect(r.down).toBe(true); expect(r.hp, 'unhurt').toBe(true); expect(r.flat, 'lying flat').toBeGreaterThan(0.95); expect(r.still).toBe(true); expect(r.fired).toBe(0);
-  expect(r.up, 'up again').toBeLessThan(0.05);
 });

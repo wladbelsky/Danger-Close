@@ -69,10 +69,13 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   its squads running in; the base is visited on the next allowed transit (`wantGo`); a target beyond `ZONE.r` calls the arrivals
   (`rush`) instead. The side guns start 32 m out (`GUN_SIDE_D`, past the lens's 30 m near plane) with a 20 m streak. A wreck cooks
   off on strong beats (`COOK`, `cookOff`, `pop`, a tank's turret thrown up: `tosses`); light rounds glance off armour (`RICO`,
-  `ricochet`, at most 8 a step: the tracer pool is a 600-slot ring); soldiers near a hit lie flat 1.5–3.5 s, neither walking nor
-  firing (`duck`, `downUntil`, drawn in `INF.update`); a column under fire weaves kerb to kerb (`laneK`). Flares as before stage 18;
+  `ricochet`, at most 8 a step: the tracer pool is a 600-slot ring); a column under fire weaves kerb to kerb (`laneK`). Flares as before stage 18;
   missiles drawn light with a dark nose at 2.5× (`MISSILE_LOOK`) and a flame of their own (`Plumes`: additive cones, HDR core,
   white-hot). Sheets: side-guns.png, reactions.png, missiles-flares.png.
+- **The enemy fills the zone; no lying flat**: most columns start 180–420 m down a road into the camera's zone (60 %, the allies
+  meeting them there), squads run into it from just out of sight (up to 4 there, 9 in all; the rest round the base), and fewer
+  than `ZONE_FILL` 12 enemies on the ground within `ZONE.r` call the next arrivals at once (`rush`, not in a quiet part): some 15
+  in the zone instead of 5. Soldiers no longer throw themselves flat (it looked comic).
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -144,7 +147,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=71`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=72`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

@@ -81,8 +81,8 @@ fullscreen apps by default.
   and the column waits for them; the soldiers run out in file and spread round. A knocked-out APC lets one to three bail out.
 - **Blasts hurt everything round them**: a 105 mm shell, a bomb or a rocket hits every enemy within its radius, not only
   the kinds the weapon is aimed at (a Hellfire on a tank takes the soldiers beside it too). Never their own side.
-- **Hits show**: a knocked-out vehicle cooks off on the next strong beats (a tank may throw its turret), soldiers near a
-  hit throw themselves flat for a moment, a column under fire weaves across the road.
+- **Hits show**: a knocked-out vehicle cooks off on the next strong beats (a tank may throw its turret), a column under
+  fire weaves across the road.
 - **The music stops**: 5 s later fire ceases, the enemy pulls back out of the frame and vanishes; the base is removed
   once it is out of view. Infantry vanish in a puff of dust, vehicles lie as wrecks and sink. No civilians, no blood.
 
