@@ -78,7 +78,7 @@ const GUNSHIP = {
       // a critically damped slew towards an eased aim point (no overshoot; the easing takes the kick out of the start)
       const S = SLEW_MUSIC, kT = !AUD.fighting ? 1 : (AUD.calm ? S.calm : S.base + S.drive * AUD.drive + S.tempo * AUD.tempo) * (T < BATTLE.surgeUntil ? S.surge : 1);
       this.slewK += (kT - this.slewK) * Math.min(1, dt * S.ease);
-      const lock = AUD.fighting && BATTLE.focus, w = lock ? SLEW_LOCK * this.slewK : 0.9;   // (on a target: a quick, firm slew that keeps the reticle on it)
+      const lock = AUD.fighting && (BATTLE.focus || BATTLE.chase), w = lock ? SLEW_LOCK * this.slewK : 0.9;   // (on a target, or on the way to the next: a quick, firm slew that keeps the reticle on it)
       this.aimS.lerp(this.aim, Math.min(1, dt * (lock ? 8 : 0.9))); _gsa.subVectors(this.aimS, this.look).multiplyScalar(w * w).addScaledVector(this.vel, -2 * w);
       this.vel.addScaledVector(_gsa, dt); this.look.addScaledVector(this.vel, dt);
     }

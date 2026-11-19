@@ -141,12 +141,17 @@ const MISS = { g30: [0.25, 3, 7], b40: [0.2, 3, 8], h105: [0.2, 5, 12] };
 const RICO = { g25: { car: 0.3, apc: 1 }, g30: { car: 0.4, apc: 1 }, b40: { apc: 0.7 } }, RICO_MAX = 8;
 /* fewer enemies on the ground than this (× the enemies' share) within ZONE.r of the camera's point: the next arrivals are called at once */
 const ZONE_FILL = 12;
+/* the feed: the next group already coming in from just off the frame as the last one dies. Enemies on the ground within r of the
+   sensor's point that an enabled weapon may hit are kept up to want (× the enemies' share), a group at most every `every` s, both
+   from the music's pace (slow → fast); music slower than `slow` bpm has a break of brk s once the ground round the point is clear.
+   cap: no feeding past that many enemies on the ground */
+const FEED = { r: 220, want: [5, 14], every: [6, 2], slow: 92, brk: [8, 14], cap: 90, sq: 0.6 };
 /* a knocked-out vehicle cooks off: pops by kind, the first not before COOK.first s, each on a strong beat (or COOK.late s on), COOK.gap s apart */
 const COOK = { tank: 3, apc: 2, car: 1, first: 0.6, gap: 0.5, late: 1.6, toss: 0.35 };
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0);
 const BATTLE = {
-  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
-  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], ricoN: 0, atP: new V3(),
+  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, chase: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, feed: 0, breaks: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
+  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], nextFeed: 0, feedT: 0, breakUntil: 0, armT: -99, ricoN: 0, atP: new V3(),
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
     this.beam = new THREE.Mesh(geo, sensorMat(new THREE.MeshBasicMaterial({ color: 0xff4a36, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), 1));   // the laser: a red core
@@ -206,7 +211,7 @@ const BATTLE = {
   /* ---- arming and standing down ---- */
   start() {
     if (!this.base) { const s = this.pickSite(); if (s) this.buildBase(s); }
-    this.nextWave = T + rand(3, 8); this.nextHeli = T + rand(3, 8); this.nextSquad = T + rand(8, 16); this.fedT = 0; this.seekT = T + 6; this.nextQrf = T + 3; this.nextAsq = T + 6; this.nextField = T + rand(6, 12); this.spots = []; this.waitT = 0;
+    this.nextWave = T + rand(3, 8); this.nextHeli = T + rand(3, 8); this.nextSquad = T + rand(8, 16); this.fedT = 0; this.seekT = T + 1; this.nextQrf = T + 3; this.nextAsq = T + 6; this.nextField = T + rand(6, 12); this.spots = []; this.waitT = 0; this.armT = T; this.nextFeed = T + 2; this.breakUntil = 0;
     this.wantGo = this.base ? { n: 'obj', x: this.base.x, z: this.base.z } : null;   // (the camera stays: the base is where it goes on its next allowed transit)
     this.firstWave();
   },
@@ -217,7 +222,7 @@ const BATTLE = {
     this.columnTo('ally', node, pick(QRF_TYPES));
   },
   standDown() {
-    this.downT = T; this.focus = null;
+    this.downT = T; this.focus = this.chase = null;
     for (const E of this.cols) if (!E.retreat) this.retreatCol(E);
     for (const s of this.squads) { s.flee = true; for (const m of s.m) m.retreat = true; }
     for (const h of this.helis) h.retreat = true;
@@ -241,16 +246,49 @@ const BATTLE = {
   },
   /* nothing left round the camera's zone that an enabled weapon may hit */
   dry() { const en = ARMS.enabled(); return !UNITS.some(u => u.alive && u.side === 'enemy' && en.some(w => w.hitSet.has(u.kind)) && Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z) < ZONE.r); },
+  /* the music's pace for the feed, 0..1: the tempo (95–150 bpm), how hard it drives, half in a quiet part */
+  pace() { return clamp(0.15 + 0.75 * AUD.tempo + 0.25 * AUD.drive, 0, 1) * (AUD.calm ? 0.5 : 1); },
+  /* very slow music (its kicks under FEED.slow bpm) */
+  slow() { return AUD.bpm > 0 && AUD.bpm < FEED.slow && AUD.tempo < 0.05 && T - this.armT > 8; },
+  /* keeps the next group coming in round the sensor's point (FEED); true while slow music has its break */
+  feed(k) {
+    if (T < this.feedT) return T < this.breakUntil; this.feedT = T + 0.5;
+    const F = FEED, C = CAM_TGT, en = ARMS.enabled(); let n = 0, all = 0;
+    for (const u of UNITS) { if (u.side !== 'enemy' || !u.alive || u.kind === 'struct' || u.kind === 'heli') continue; all++; if (en.some(w => w.hitSet.has(u.kind)) && Math.hypot(u.pos.x - C.x, u.pos.z - C.z) < F.r) n++; }
+    if (this.slow()) {   // group by group: the ground round the point cleared, a break, then the next group
+      if (n === 0 && !this.breakUntil) { this.breakUntil = T + rand(...F.brk); this.stat.breaks++; }
+      if (T < this.breakUntil) return true;
+      if (n > 0) { this.breakUntil = 0; return false; }
+    } else this.breakUntil = 0;
+    const p = this.pace(); if (n >= Math.round(lerp(F.want[0], F.want[1], p) * k) || T < this.nextFeed || all >= F.cap * k) return false;
+    if (Math.random() < F.sq ? this.edgeSquad() : this.columnTo('enemy', ROADNET.nearest(C.x, C.z, 200), pick(WAVES), true) || this.edgeSquad()) { this.nextFeed = T + lerp(F.every[0], F.every[1], p); this.stat.feed++; }
+    return false;
+  },
+  /* an enemy squad just off the frame (10–30 m past its edge), running in to a loop round the sensor's point */
+  edgeSquad() {
+    const C = CAM_TGT;
+    for (let t = 0; t < 16; t++) {
+      const a = rand(0, TAU), dx = Math.cos(a), dz = Math.sin(a); let d = 30;
+      while (d < 400 && VIEW.onScreen(_bp.set(C.x + dx * d, groundH(C.x + dx * d, C.z + dz * d), C.z + dz * d), 0.15)) d += 8;
+      d += rand(10, 30); const x = C.x + dx * d, z = C.z + dz * d;
+      if (Math.abs(x) > MAP_HALF - 40 || Math.abs(z) > MAP_HALF - 40 || VIEW.onScreen(_bp.set(x, groundH(x, z), z), 0.1) || !walkable(x, z, x, z) || UNITS.some(u => u.side === 'ally' && Math.hypot(u.pos.x - x, u.pos.z - z) < 50)) continue;
+      const loop = patrolLoop(C.x, C.z, 15, 45, [x, z]); if (loop.length < 3) continue;
+      const s = new Squad('enemy', randi(4, 6), x, z, loop); if (!s.m.length) return null;
+      s.wait = 0; s.go = T + rand(6, 10); this.squads.push(s); for (const m of s.m) this.seen('in', m.position); return s;
+    }
+    return null;
+  },
   /* the next arrivals now (at most every 12 s; the caps still hold) */
   rush() { if (T <= this.rushT) return; this.rushT = T + 12; this.stat.rush++; this.nextWave = this.nextSquad = this.nextField = 0; this.nextBase = Math.min(this.nextBase, T + 2); },
   waves() {
     const k = CFG.enemies / 100; if (k <= 0 || GUNSHIP.state === 'transit') return;
     // nothing of the enemy's in the frame for 6 s: the next arrivals (and a new base, if there is none) are called now (at most every 12 s; the caps still hold)
     let seen = false; for (const u of UNITS) if (u.side === 'enemy' && u.kind !== 'struct' && this.inFrame(u.pos)) { seen = true; break; }
+    if (this.feed(k)) return;   // (a break between the groups in slow music: no arrivals at all)
     if (seen || !this.fedT) this.fedT = T; else if (T - this.fedT > 6) this.rush();
     // few of them left round the camera's zone (outside a quiet part): the next arrivals now too
     const L = GUNSHIP.look; let zn = 0; for (const u of UNITS) if (u.side === 'enemy' && u.kind !== 'struct' && u.kind !== 'heli' && Math.hypot(u.pos.x - L.x, u.pos.z - L.z) < ZONE.r) zn++;
-    if (zn < Math.round(ZONE_FILL * k) && !AUD.calm) this.rush();
+    if (zn < Math.round(ZONE_FILL * k) && !AUD.calm && !this.slow()) this.rush();
     if (T > this.nextWave) { this.nextWave = T + rand(6, 12) / k; let n = 0; for (const E of this.cols) if (!E.retreat && !E.ally) n += E.col.u.length; if (n < Math.round(14 * k)) this.spawnColumn(); }
     if (T > this.nextSquad) {   // squads: running into the camera's zone from just out of sight, else round the base
       this.nextSquad = T + rand(8, 16) / k; const sq = this.squads.filter(s => !s.flee && s.side === 'enemy'), inZ = sq.filter(s => s.m[0] && Math.hypot(s.m[0].position.x - L.x, s.m[0].position.z - L.z) < ZONE.r).length;
@@ -656,7 +694,7 @@ const BATTLE = {
   /* the camera: onto the target; with nothing to shoot at in the frame for a while, to the nearest enemy there is */
   aimCamera(dt) {
     if ((this.fTick -= dt) > 0) { if (this.focus && this.focus.alive && GUNSHIP.state === 'orbit') this.lookAt(this.focus); return; }
-    this.fTick = 0.4; if (GUNSHIP.state === 'transit') { this.offT = 0; this.focus = null; return; }
+    this.fTick = 0.4; if (GUNSHIP.state === 'transit') { this.offT = 0; this.focus = this.chase = null; return; }
     const w0 = ARMS.w;   // a weapon picked by hand: the auto-switching takes over again after 30 s, or 3 s after the click once nothing it may hit is left round here
     if (CFG.autoArms && T < this.manualUntil && T > this.manualUntil - 27 && w0 && !UNITS.some(u => u.alive && u.side === 'enemy' && w0.hitSet.has(u.kind) && Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z) < 250)) { this.manualUntil = 0; this.autoTick = 0; }
     const man = !CFG.autoArms || T < this.manualUntil; let here = null;
@@ -669,8 +707,9 @@ const BATTLE = {
       const far = c.filter(s => Math.hypot(s.x - GUNSHIP.look.x, s.z - GUNSHIP.look.z) > ZONE.r); if (far.length) { const s = pick(far); this.focus = null; GUNSHIP.goTo({ n: 'tgt', x: s.x, z: s.z }); return; }
     }
     const w = ARMS.w, f = w ? this.target(w) : null;
-    if (f) { this.seekT = T + 4; this.lookAt(f); this.offT = this.onAim(f) ? 0 : this.offT + 0.4; return; }
-    this.focus = null; this.offT = 0; if (T < this.seekT) return;
+    if (f) { this.chase = null; this.seekT = T + 0.8; this.lookAt(f); this.offT = this.onAim(f) ? 0 : this.offT + 0.4; return; }
+    this.focus = null; this.offT = 0; if (T < this.seekT) { if (this.chase && this.chase.alive) this.lookAt(this.chase); return; }   // (on the way to the next one: it is followed)
+    this.chase = null;
     if (here && !man) {   // enemies here that no enabled weapon may hit: the sensor stays on them and the allies are called in to finish them
       this.lookAt(here);
       if (!this.waitT) { this.waitT = T + 40; if (!this.backed(here.pos)) this.columnTo('ally', ROADNET.nearest(here.pos.x, here.pos.z, 250), pick(QRF_TYPES)); }
@@ -682,7 +721,7 @@ const BATTLE = {
     if (best && !this.backed(best.pos) && T > this.nextCall) { this.nextCall = T + 25; this.columnTo('ally', ROADNET.nearest(best.pos.x, best.pos.z, 250), pick(QRF_TYPES)); }   // (nobody of ours there: a column is called in)
     if (!best) { if (man) this.manualUntil = 0; return; }   // (nothing anywhere for the chosen weapon: the auto-switching takes over)
     this.seekT = T + (man ? 2.5 : 5);
-    if (bd < ZONE.r) this.lookAt(best); else if (!GUNSHIP.mayLeave(this.dry())) this.rush(); else GUNSHIP.goTo({ n: 'tgt', x: clamp(best.pos.x, -MAP_HALF + 120, MAP_HALF - 120), z: clamp(best.pos.z, -MAP_HALF + 120, MAP_HALF - 120) });
+    if (bd < ZONE.r) { this.lookAt(best); this.chase = best; } else if (!GUNSHIP.mayLeave(this.dry())) this.rush(); else GUNSHIP.goTo({ n: 'tgt', x: clamp(best.pos.x, -MAP_HALF + 120, MAP_HALF - 120), z: clamp(best.pos.z, -MAP_HALF + 120, MAP_HALF - 120) });
   },
   /* the auto-switching: the enabled weapon that suits what is in the frame and how heavy the music is */
   autoArm() {
@@ -728,7 +767,7 @@ const BATTLE = {
     for (let i = this.squads.length - 1; i >= 0; i--) { const s = this.squads[i]; s.update(dt); if (!s.m.length) this.squads.splice(i, 1); }
     for (let i = this.helis.length - 1; i >= 0; i--) { const h = this.helis[i]; h.update(dt); if (h.out) this.helis.splice(i, 1); }
     WRECKS.update(dt);
-    if (fight) { this.waves(); this.aimCamera(dt); this.autoArm(); } else this.focus = null;
+    if (fight) { this.waves(); this.aimCamera(dt); this.autoArm(); } else this.focus = this.chase = null;
     // the base: wrecked, it is left as a ruin and another is built elsewhere; a ruin, or the base after the fight, goes once out of sight
     const B = this.base;
     if (B && war && !B.parts.some(p => p.alive)) { this.ruins.push(B); this.base = null; this.nextBase = T + rand(12, 20); B.site.restUntil = T + 300; }   // (no base on that site again for five minutes)

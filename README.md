@@ -83,6 +83,8 @@ fullscreen apps by default.
   the kinds the weapon is aimed at (a Hellfire on a tank takes the soldiers beside it too). Never their own side.
 - **Hits show**: a knocked-out vehicle cooks off on the next strong beats (a tank may throw its turret), a column under
   fire weaves across the road.
+- **No lull**: as one group dies the next is already coming in from the edge of the frame, more and sooner the faster the
+  music; very slow music goes group by group with a short break between them.
 - **The music stops**: 5 s later fire ceases, the enemy pulls back out of the frame and vanishes; the base is removed
   once it is out of view. Infantry vanish in a puff of dust, vehicles lie as wrecks and sink. No civilians, no blood.
 

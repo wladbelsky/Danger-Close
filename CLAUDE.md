@@ -76,6 +76,13 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   meeting them there), squads run into it from just out of sight (up to 4 there, 9 in all; the rest round the base), and fewer
   than `ZONE_FILL` 12 enemies on the ground within `ZONE.r` call the next arrivals at once (`rush`, not in a quiet part): some 15
   in the zone instead of 5. Soldiers no longer throw themselves flat (it looked comic).
+- **The feed: no lull in the fire**: the next group is already coming in from just off the frame as the last one dies (`FEED`,
+  `BATTLE.feed`, `edgeSquad`: a squad 10–30 m past the frame's edge running in to a loop round the sensor's point, or a column from
+  150–250 m; enemies within 220 m of the point kept up to 5–14, a group every 6–2 s, both from the music's pace `BATTLE.pace()`:
+  tempo, drive, half in a quiet part; `stat.feed`). Music under 92 bpm goes group by group with a break of 8–14 s once the ground
+  round the point is clear (`slow()`, `breakUntil`, `stat.breaks`: no arrivals at all meanwhile). The sensor slews to the next
+  target as quickly as onto one (`BATTLE.chase` holds the lock) and looks again 0.8 s after a kill (was 4). No shot for 2 s: some
+  5–10 % of a fight at 124–150 bpm instead of 30–50 %.
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -147,7 +154,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=72`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=73`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

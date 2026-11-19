@@ -276,3 +276,20 @@ test('a knocked-out tank cooks off on the beats and may throw its turret; light 
   expect(r.top, 'the turret thrown up, metres').toBeGreaterThan(2.5); expect(r.landed, 'and back on the hull').toBeLessThan(0.2);
   expect(r.rico).toBeGreaterThan(0); expect(r.rico).toBeLessThanOrEqual(8);
 });
+
+test('the feed: the next group comes in as the last one dies, at the music pace; very slow music has breaks', async ({ wp }) => {
+  const run = async (seed, bpm) => {
+    await wp.boot({ query: '?hour=12&seed=' + seed });
+    await wp.sim(6, { audio: true, bpm });
+    return wp.run((bpm) => {
+      let n = 0, idle = 0;
+      for (let i = 0; i < 3600; i++) { __t.sim(0.05, { audio: true, bpm }); if (i % 10 || GUNSHIP.state !== 'orbit') continue; n++; if (T - BATTLE.lastShot > 2) idle++; }
+      return { idle: idle / n, feed: BATTLE.stat.feed, breaks: BATTLE.stat.breaks, seenIn: BATTLE.stat.seenIn };
+    }, bpm);
+  };
+  const fast = await run(11, 140); console.log('fast ' + JSON.stringify(fast));
+  expect(fast.feed).toBeGreaterThan(10); expect(fast.breaks).toBe(0); expect(fast.seenIn, 'arrivals in the frame').toBe(0);
+  expect(fast.idle, 'the share of the fight with no shot for 2 s').toBeLessThan(0.3);
+  const slow = await run(11, 84); console.log('slow ' + JSON.stringify(slow));
+  expect(slow.breaks, 'breaks between the groups').toBeGreaterThan(0); expect(slow.seenIn).toBe(0);
+});
