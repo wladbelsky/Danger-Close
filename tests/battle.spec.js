@@ -151,7 +151,7 @@ test('APCs let their infantry out by the rear door near the enemy; a knocked-out
     }
     // an APC with its infantry aboard knocked out in the fight
     const v = UNITS.find(u => u.kind === 'apc' && u.alive && !u.retreat && BATTLE.cols.some(E => E.col === u.col)); let bailed = -1;
-    if (v) { v.troops = 5; const b0 = BATTLE.stat.bailed; hurt(v, 99); __t.sim(1.5, { audio: true }); bailed = BATTLE.stat.bailed - b0; }
+    if (v) { v.troops = 5; const q0 = new Set(BATTLE.squads); hurt(v, 99); __t.sim(1.5, { audio: true }); bailed = BATTLE.squads.filter(q => !q0.has(q) && q.from === 'bail' && q.m.some(s => Math.hypot(s.position.x - v.pos.x, s.position.z - v.pos.z) < 12)).reduce((n, q) => n + q.m.length, 0); }   // (its own crew: another may die meanwhile)
     const { dismounts, outOf, doorMax } = BATTLE.stat;
     return { dismounts, outOf, doorMax, bad, bailed, sides: [...sides] };
   });
@@ -294,24 +294,50 @@ test('the feed: the next group comes in as the last one dies, at the music pace;
   expect(slow.breaks, 'breaks between the groups').toBeGreaterThan(0); expect(slow.seenIn).toBe(0);
 });
 
-test('a column under fire weaves across the road, steered: no jump sideways', async ({ wp }) => {
+test('a column under fire weaves across the road, steered: no jump sideways, no sharp turn', async ({ wp }) => {
   await wp.boot({ query: '?hour=12&seed=11&transit=0' });
   await wp.sim(6, { audio: true });
   const r = await wp.run(() => {
-    let jump = 0, lane = 0, n = 0; const last = new Map();
-    for (let i = 0; i < 400; i++) {
+    let jump = 0, lane = 0, n = 0, acc = 0, sharp = 0, m = 0; const last = new Map();
+    for (let i = 0; i < 600; i++) {
       for (const E of BATTLE.cols) if (!E.ally && !E.retreat) E.col.alarm = T + 20;   // (every enemy column under fire)
       __t.sim(0.05, { audio: true });
       for (const E of BATTLE.cols) for (const v of E.col.u) {
         const p = v.obj.position, q = last.get(v);
-        if (q && v.alive) { const d = Math.hypot(p.x - q.x, p.z - q.z); jump = Math.max(jump, d - Math.max(v.v, 0) * 0.05); n++; }
-        last.set(v, p.clone()); lane = Math.max(lane, Math.abs(v.laneK));
+        if (q && v.alive) {
+          const d = Math.hypot(p.x - q.x, p.z - q.z), h = Math.atan2(p.z - q.z, p.x - q.x); jump = Math.max(jump, d - Math.max(v.v, 0) * 0.05); n++;
+          // the sideways acceleration of its track (the change of heading a metre × speed²), where it moves at a fair speed
+          if (d > 0.25 && q.d > 0.25) { const a = Math.abs(Math.atan2(Math.sin(h - q.h), Math.cos(h - q.h))) / d * (d / 0.05) ** 2; m++; acc = Math.max(acc, a); if (a > 6) sharp++; }
+          last.set(v, { x: p.x, z: p.z, h, d });
+        } else last.set(v, { x: p.x, z: p.z, h: 0, d: 0 });
+        lane = Math.max(lane, Math.abs(v.laneK));
       }
     }
-    return { jump, lane, n };
+    return { jump, lane, n, acc, sharp: sharp / Math.max(1, m), m };
   });
   console.log(JSON.stringify(r));
   expect(r.n).toBeGreaterThan(100);
   expect(r.lane, 'they do weave').toBeGreaterThan(1.3);
   expect(r.jump, 'metres moved in a step beyond the speed along the road').toBeLessThan(0.5);
+  expect(r.acc, 'sideways acceleration at most (was hundreds: kinks)').toBeLessThan(12);
+  expect(r.sharp, 'share of steps turning harder than 6 m/s sideways (was 7 %)').toBeLessThan(0.03);
+});
+
+test('a vehicle knocked out on the move rolls on, slowing, and stops', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&transit=0' });
+  await wp.sim(6, { audio: true });
+  const r = await wp.run(() => {
+    let v = null;
+    for (let i = 0; i < 2000 && !v; i++) { __t.sim(0.05, { audio: true }); for (const E of BATTLE.cols) for (const u of E.col.u) if (u.alive && u.v > 6) v = u; }
+    if (!v) return null;
+    const p0 = v.pos.clone(), v0 = v.v; v.die(); const d = [];
+    for (let i = 0; i < 200; i++) { __t.sim(0.05, { audio: true }); if (i % 20 === 19) d.push(Math.hypot(v.obj.position.x - p0.x, v.obj.position.z - p0.z)); }
+    return { v0, d, w: WRECKS.list.find(w => w.obj === v.obj) };
+  });
+  console.log(JSON.stringify({ v0: r.v0, d: r.d }));
+  expect(r.w, 'a wreck').toBeTruthy();
+  expect(r.d[0], 'rolled on in the first second').toBeGreaterThan(r.v0 * 0.5);
+  expect(r.d[9] - r.d[0], 'further, slowing').toBeGreaterThan(0.5);
+  expect(r.d[9], 'and stopped').toBeCloseTo(r.d[8], 2);
+  expect(r.w.roll, 'no longer rolling').toBeFalsy();
 });

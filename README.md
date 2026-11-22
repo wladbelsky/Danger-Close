@@ -82,7 +82,9 @@ fullscreen apps by default.
 - **Blasts hurt everything round them**: a 105 mm shell, a bomb or a rocket hits every enemy within its radius, not only
   the kinds the weapon is aimed at (a Hellfire on a tank takes the soldiers beside it too). Never their own side.
 - **Hits show**: a knocked-out vehicle cooks off on the next strong beats (a tank may throw its turret), a column under
-  fire weaves across the road.
+  fire weaves across the road. A vehicle hit on the move rolls on for a few seconds, slowing, before it stands burning.
+- **Smooth driving**: vehicles steer round the corners of a road instead of turning on the spot, each slows for its own bend,
+  and a swerve eases in and out.
 - **No lull**: as one group dies the next is already coming in from the edge of the frame, more and sooner the faster the
   music; very slow music goes group by group with a short break between them.
 - **The music stops**: 5 s later fire ceases, the enemy pulls back out of the frame and vanishes; the base is removed

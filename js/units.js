@@ -58,7 +58,10 @@ const ROADNET = {
   }
 };
 
-/* ---- a path to drive: points { x, z, y (deck height on a bridge, else NaN: the ground), hw (half width: the lane) } ---- */
+/* ---- a path to drive: points { x, z, y (deck height on a bridge, else NaN: the ground), hw (half width: the lane) }. A vehicle
+   drives the line averaged over PATH_SMOOTH metres either side (less near the ends, none at them): a corner of the road's
+   polyline becomes a bend it steers round, not a kink ---- */
+const PATH_SMOOTH = 6;
 class Path {
   constructor(pts) {
     this.p = pts; this.S = [0];
@@ -68,19 +71,32 @@ class Path {
     // taken between points, so the lane bends round a corner or a junction and narrows onto a single track without a jump
     this.N = pts.map((q, i) => { const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], d = Math.hypot(b.x - a.x, b.z - a.z) || 1; return [-(b.z - a.z) / d, (b.x - a.x) / d]; });
     this.W = pts.map(q => { const hw = q.hw || 0; return Math.min(1.8, hw * 0.45) * smoothstep(2.1, 2.9, hw); });
+    // per point: x, z and the lane's offset (right x width); their integrals along the way up to each point (for the average)
+    const n = pts.length; this.V = [0, 1, 2, 3].map(c => Float64Array.from(pts, (q, i) => c === 0 ? q.x : c === 1 ? q.z : this.N[i][c - 2] * this.W[i]));
+    this.F = this.V.map(V => { const F = new Float64Array(n); for (let i = 1; i < n; i++) F[i] = F[i - 1] + (this.S[i] - this.S[i - 1]) * (V[i] + V[i - 1]) / 2; return F; });
+    this._f0 = [0, 0, 0, 0]; this._f1 = [0, 0, 0, 0];
   }
+  seg(s) { const S = this.S; let lo = 0, hi = S.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S[m] <= s) lo = m; else hi = m; } return lo; }
+  /* the integrals of x, z and the lane offset from the start up to s (into o) */
+  prim(s, o) {
+    const lo = this.seg(s), hi = Math.min(lo + 1, this.S.length - 1), d = s - this.S[lo], t = d / (this.S[hi] - this.S[lo] || 1);
+    for (let c = 0; c < 4; c++) { const V = this.V[c]; o[c] = this.F[c][lo] + d * (V[lo] + lerp(V[lo], V[hi], t)) / 2; }
+    return o;
+  }
+  /* the width of the lane's offset at s (metres per unit of laneK) */
+  wAt(s) { s = clamp(s, 0, this.L); const lo = this.seg(s), hi = Math.min(lo + 1, this.S.length - 1); return lerp(this.W[lo], this.W[hi], clamp((s - this.S[lo]) / (this.S[hi] - this.S[lo] || 1), 0, 1)); }
   static fromNodes(nodes, head, tail) {
     const N = ROADNET, pts = (head || []).slice();
     for (const k of nodes) pts.push({ x: N.X[k], z: N.Z[k], y: N.BR[k] ? N.Y[k] : NaN, hw: N.HW[k] });
     return new Path(pts.concat(tail || []).filter((q, i, a) => !i || Math.hypot(q.x - a[i - 1].x, q.z - a[i - 1].z) > 0.3));
   }
   reversed() { return new Path(this.p.slice().reverse()); }
-  /* the point at distance s, laneK × the lane's offset to the right of the direction of travel */
+  /* the point at distance s, laneK × the lane's offset to the right of the direction of travel (on the averaged line) */
   at(s, laneK, out) {
-    s = clamp(s, 0, this.L); const S = this.S; let lo = 0, hi = S.length - 1;
-    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S[m] <= s) lo = m; else hi = m; }
-    const a = this.p[lo], b = this.p[hi], L = S[hi] - S[lo] || 1, t = (s - S[lo]) / L, na = this.N[lo], nb = this.N[hi];
-    const w = lerp(this.W[lo], this.W[hi], t) * laneK, x = lerp(a.x, b.x, t) + lerp(na[0], nb[0], t) * w, z = lerp(a.z, b.z, t) + lerp(na[1], nb[1], t) * w;
+    s = clamp(s, 0, this.L); const S = this.S, lo = this.seg(s), hi = Math.min(lo + 1, S.length - 1), a = this.p[lo], b = this.p[hi], t = (s - S[lo]) / (S[hi] - S[lo] || 1);
+    const w = Math.min(PATH_SMOOTH, s, this.L - s); let x, z;
+    if (w < 0.05) { const V = this.V; x = lerp(V[0][lo], V[0][hi], t) + lerp(V[2][lo], V[2][hi], t) * laneK; z = lerp(V[1][lo], V[1][hi], t) + lerp(V[3][lo], V[3][hi], t) * laneK; }
+    else { const f0 = this.prim(s - w, this._f0), f1 = this.prim(s + w, this._f1), k = 1 / (2 * w); x = (f1[0] - f0[0] + (f1[2] - f0[2]) * laneK) * k; z = (f1[1] - f0[1] + (f1[3] - f0[3]) * laneK) * k; }
     const y = (a.y === a.y && b.y === b.y) ? lerp(a.y, b.y, t) : groundH(x, z);
     return out.set(x, y, z);
   }
@@ -88,13 +104,18 @@ class Path {
 
 /* ---- a ground vehicle on a path ---- */
 const _va = new V3(), _vb = new V3(), _vc = new V3();
-/* a vehicle swerving across the road under fire (BATTLE: laneT, weaveUntil) changes its lane factor at most this fast, per second */
-const WEAVE_RATE = 2;
+/* a vehicle swerving across the road under fire (BATTLE: laneT, weaveUntil) changes its lane factor at most this fast, per second,
+   and that rate at most WEAVE_ACC per second: it eases into a swerve and out of it, an S, not a zigzag. Knocked out on the move,
+   it rolls on down the road, slowing at COAST m/s per second and drifting towards a kerb */
+const WEAVE_RATE = 2, WEAVE_ACC = 3, COAST = { tank: 4, apc: 3, car: 2.5 };
+/* every vehicle (not only a column's leader) takes a bend no faster than this sideways acceleration allows (m/s per second): it
+   slows for the bend over the next BEND_LOOK metres of its own lane */
+const BEND_ACC = 3, BEND_LOOK = 16;
 class Vehicle {
   constructor(type, side) {
     this.type = type; this.obj = unitModel(side, type); this.obj.scale.setScalar(ARMOR_SCALE); scene.add(this.obj);
     this.turret = this.obj.getObjectByName('turret'); this.mg = this.obj.getObjectByName('mg'); this.aaUntil = 0; this.mgOff = 9; this.ph = Math.random() * TAU;   // (mg: the machine gun on the roof, raised at the aircraft while it fires up: AA in js/weather.js)
-    this.path = null; this.s = 0; this.v = 0; this.yaw = 0; this.laneK = 1; this.vmax = UNIT_SPEED[type]; this.col = null; this.troops = type === 'apc' ? randi(4, 6) : 0;   // (troops: the infantry it carries)
+    this.path = null; this.s = 0; this.v = 0; this.yaw = 0; this.laneK = 1; this.lv = 0; this.vmax = UNIT_SPEED[type]; this.col = null; this.troops = type === 'apc' ? randi(4, 6) : 0;   // (troops: the infantry it carries)
     enlist(this, side, type, this.obj.position, type === 'car' ? 1.3 : 1.9);
     TRACKS.push({ obj: this.obj, side, inf: false, h: type === 'car' ? 1.5 : 2.2 });
   }
@@ -103,20 +124,34 @@ class Vehicle {
   drive(dt, vt) {
     const turn = Math.abs(angleWrap(this.dirAt(this.s + 1) - this.yaw));
     if (turn > 0.6) vt = Math.min(vt, 1.2);                                  // (turning round first: slowly, nearly on the spot)
+    else vt = Math.min(vt, Math.max(3, Math.sqrt(BEND_ACC / Math.max(this.bend(), 1e-3))));
     this.v += clamp(vt - this.v, -5 * dt, 2.5 * dt); this.s = Math.min(this.path.L, this.s + this.v * dt);
     this.pose(dt, false);
   }
-  dirAt(s) { this.path.at(s - 3, 0, _va); this.path.at(s + 3, 0, _vb); return Math.atan2(_vb.z - _va.z, _vb.x - _va.x); }
+  /* the sharpest curvature (radians a metre) of its lane over the next BEND_LOOK metres */
+  bend() {
+    let h = this.dirAt(this.s, this.laneK), m = 0;
+    for (let d = 4; d <= BEND_LOOK; d += 4) { const g = this.dirAt(this.s + d, this.laneK); m = Math.max(m, Math.abs(angleWrap(g - h)) / 4); h = g; }
+    return m;
+  }
+  dirAt(s, laneK = 0) { this.path.at(s - 3, laneK, _va); this.path.at(s + 3, laneK, _vb); return Math.atan2(_vb.z - _va.z, _vb.x - _va.x); }
+  /* the lane factor towards tgt: its rate eased up and down (never a jump, never a sharp turn) */
+  lane(dt, tgt, cap) {
+    const f = clamp(this.v / 9, 0.3, 1), want = clamp((tgt - this.laneK) * 1.5, -cap * f, cap * f), a = WEAVE_ACC * f * f * dt;   // (slower: gentler, or it would turn on the spot)
+    this.lv += clamp(want - this.lv, -a, a); this.laneK += this.lv * dt;
+  }
   pose(dt, snap) {
-    const P = this.path, k0 = this.laneK, weave = !snap && T < (this.weaveUntil || 0);
-    if (weave) this.laneK += clamp(this.laneT - this.laneK, -dt * WEAVE_RATE, dt * WEAVE_RATE);   // (swerving across the road: steered, never a jump)
-    else this.laneK += (1 - this.laneK) * (snap ? 1 : Math.min(1, dt * 0.6));
-    let yt = this.dirAt(this.s); if (weave && dt > 0) yt += Math.atan2((this.laneK - k0) / dt * 1.8, Math.max(this.v, 2));   // (the nose turned the way it swerves)
-    this.yaw = snap ? yt : approachAngle(this.yaw, yt, dt * (weave ? 2.5 : 1.4));
+    const P = this.path, weave = !snap && T < (this.weaveUntil || 0);
+    if (snap) { this.laneK = 1; this.lv = 0; }
+    else if (this.dead) this.lane(dt, this.laneT, 1);                       // (no hand on the wheel: towards a kerb)
+    else this.lane(dt, weave ? this.laneT : 1, weave ? WEAVE_RATE : 0.7);   // (swerving across the road, or back into its lane)
+    let yt = this.dirAt(this.s, this.laneK); if (!snap) yt += Math.atan2(this.lv * P.wAt(this.s), Math.max(this.v, 2));   // (the nose along its own track: into the swerve)
+    this.yaw = snap ? yt : approachAngle(this.yaw, yt, dt * (weave ? 2.5 : 1.8));
     P.at(this.s, this.laneK, _vc); this.obj.position.copy(_vc);
     const c = Math.cos(this.yaw), s = Math.sin(this.yaw), f = groundH(_vc.x + c * 2.5, _vc.z + s * 2.5), b = groundH(_vc.x - c * 2.5, _vc.z - s * 2.5);
     const pitch = _vc.y > groundH(_vc.x, _vc.z) + 0.3 ? 0 : Math.atan2(f - b, 5);   // (on a bridge deck: level)
     this.obj.rotation.set(0, -this.yaw, pitch, 'YZX');
+    if (this.dead) return;
     if (this.turret && this.tgt) this.turret.rotation.y = approachAngle(this.turret.rotation.y, this.yaw - Math.atan2(this.tgt.pos.z - _vc.z, this.tgt.pos.x - _vc.x), dt * 1.6);   // (onto its target)
     else if (this.turret) this.turret.rotation.y = this.v > 1 ? this.turret.rotation.y * (1 - Math.min(1, dt)) : lerp(this.turret.rotation.y, Math.sin(T * 0.15 + this.ph) * 0.8, Math.min(1, dt));
     if (this.mg) this.aimMG(dt);
@@ -131,7 +166,17 @@ class Vehicle {
   /* the muzzle of the roof machine gun in the world (out) */
   mgMuzzle(out) { const m = this.mg; m.updateWorldMatrix(true, false); return m.localToWorld(out.set(m.userData.muzzle, 0.008, 0)); }
   /* knocked out: a burning wreck where it stood */
-  die() { this.gone(); blast(this.pos, 1.7); if (this.troops) BATTLE.bail(this); if (this.turret) this.turret.rotation.set(rand(-0.12, 0.12), rand(0, TAU), rand(-0.1, 0.1)); WRECKS.add(this.obj, 1.5); BATTLE.cookOff(this); }
+  die() {
+    this.gone(); blast(this.pos, 1.7); if (this.troops) BATTLE.bail(this); if (this.turret) this.turret.rotation.set(rand(-0.12, 0.12), rand(0, TAU), rand(-0.1, 0.1));
+    this.dead = true; this.tgt = null; this.weaveUntil = 0; this.laneT = (Math.random() < 0.5 ? -1 : 1) * rand(1.2, 2.2);
+    WRECKS.add(this.obj, 1.5, false, null, this.path && this.v > 0.5 ? this : null); BATTLE.cookOff(this);
+  }
+  /* a wreck still rolling: slower and slower along the road; false once it stands */
+  coast(dt) {
+    this.v = Math.max(0, this.v - (COAST[this.type] || 4) * dt); this.s = Math.min(this.path.L, this.s + this.v * dt);
+    if (this.s >= this.path.L) this.v = 0;
+    this.pose(dt, false); return this.v > 0;
+  }
   /* taken away (out of sight) */
   remove() { this.gone(); scene.remove(this.obj); }
   gone() { delist(this); untrack(this.obj); if (this.col) this.col.drop(this); }
@@ -162,7 +207,7 @@ class Column {
      the order turns round and the lane swaps sides gently) */
   follow(path) {
     const o = this.path, q = path.p[0], back = Math.hypot(q.x - o.p[0].x, q.z - o.p[0].z) > Math.hypot(q.x - o.p[o.p.length - 1].x, q.z - o.p[o.p.length - 1].z);
-    for (const v of this.u) { v.setPath(path, clamp(back ? o.L - v.s : v.s, 0, path.L)); if (back) v.laneK = -v.laneK; }
+    for (const v of this.u) { v.setPath(path, clamp(back ? o.L - v.s : v.s, 0, path.L)); if (back) { v.laneK = -v.laneK; v.lv = -v.lv; } }
     this.path = path; this.sort();
   }
   get done() { return !this.u.length || (this.u[0].s >= this.path.L - 0.5 && this.u.every(v => v.v < 0.3)); }

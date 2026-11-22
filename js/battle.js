@@ -73,8 +73,8 @@ const WAVES = [['car', 'car'], ['apc', 'car'], ['tank', 'apc'], ['tank', 'tank',
 const _wk = new V3(), _wv = new V3();
 const WRECKS = {
   list: [],
-  add(obj, s, keep, pos) {
-    toWreck(obj, 0); this.list.push({ obj, pos: pos || obj.position, t: 0, stage: 0, s, puff: 0, keep: !!keep, y0: obj.position.y });
+  add(obj, s, keep, pos, roll) {
+    toWreck(obj, 0); this.list.push({ obj, pos: pos || obj.position, t: 0, stage: 0, s, puff: 0, keep: !!keep, y0: obj.position.y, roll });   // (roll: a vehicle knocked out on the move, still rolling)
     let n = 0; for (const w of this.list) if (!w.keep) n++;
     if (n > 22) { const o = this.list.find(w => !w.keep && w.t < 130); if (o) o.t = 130; }   // (too many: the oldest sinks now)
   },
@@ -82,6 +82,7 @@ const WRECKS = {
   update(dt) {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const w = this.list[i]; w.t += dt;
+      if (w.roll && (w.t > 130 || !w.roll.coast(dt))) { w.roll = null; w.y0 = w.obj.position.y; }
       const st = w.t < 25 ? 0 : w.t < 60 ? 1 : w.t < 100 ? 2 : 3; if (st !== w.stage) { w.stage = st; toWreck(w.obj, st); }
       if (w.t < 45 && (w.puff -= dt) <= 0) {
         w.puff = lerp(0.12, 0.7, w.t / 45); _wk.set(w.pos.x, w.pos.y + 1.4, w.pos.z);
@@ -419,11 +420,12 @@ const BATTLE = {
   },
   /* knocked out with its infantry aboard: one to three of them bail out round the wreck and fight on */
   bail(u) {
-    const n = Math.min(u.troops, randi(1, 3)), p = u.pos.clone(), side = u.side; u.troops = 0;
+    const n = Math.min(u.troops, randi(1, 3)), side = u.side; u.troops = 0;
     if (!AUD.fighting) return;
     this.after(rand(0.5, 1), () => {
-      for (let t = 0; t < 8; t++) {
-        const a = rand(0, TAU), x = p.x + Math.cos(a) * 4.5, z = p.z + Math.sin(a) * 4.5; if (!walkable(x, z, x, z)) continue;
+      const p = u.pos.clone();   // (where the wreck is now: it may have rolled on)
+      for (let t = 0, a0 = rand(0, TAU); t < 16; t++) {   // (all round it, then closer in: it may have rolled up to a wall)
+        const a = a0 + t * TAU * 5 / 16, r = t < 8 ? 4.5 : 3.2, x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r; if (!walkable(x, z, x, z)) continue;
         const loop = patrolLoop(p.x, p.z, 15, 35, [x, z]); if (loop.length < 3) continue;
         const q = new Squad(side, n, x, z, loop); if (!q.m.length) return;
         q.from = 'bail'; q.wi = 1; q.wait = 0; q.go = T + 4; for (const s of q.m) { const jx = x + rand(-1.2, 1.2), jz = z + rand(-1.2, 1.2); if (walkable(jx, jz, jx, jz)) s.position.set(jx, groundH(jx, jz), jz); s.a = a; }
@@ -618,7 +620,7 @@ const BATTLE = {
   /* ---- a knocked-out vehicle cooking off: its pops wait for strong beats ---- */
   cookOff(v) {
     const n = v.kind === 'car' ? (Math.random() < 0.5 ? COOK.car : 0) : COOK[v.kind] || 0; if (!n || !AUD.fighting) return;
-    this.cooks.push({ v, pos: v.pos.clone(), n, next: T + COOK.first, late: T + COOK.first + COOK.late });
+    this.cooks.push({ v, pos: v.pos, n, next: T + COOK.first, late: T + COOK.first + COOK.late });
   },
   cookBeat(band, st) { if (AUD.calm || !(st > 1.45 || band === 'low')) return; for (let i = this.cooks.length - 1; i >= 0; i--) if (T >= this.cooks[i].next) { this.stat.cookBeat = (this.stat.cookBeat || 0) + 1; this.pop(i); } },
   pop(i) {
