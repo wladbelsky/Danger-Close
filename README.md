@@ -1,5 +1,7 @@
 # Danger Close — web wallpaper for Wallpaper Engine
 
+[![tests](https://github.com/wladbelsky/Danger-Close/actions/workflows/tests.yml/badge.svg)](https://github.com/wladbelsky/Danger-Close/actions/workflows/tests.yml)
+
 The view through an AC-130 gunship's sensor. The aircraft flies a slow left-hand orbit over a generated countryside —
 hills, lakes, a river, towns, roads and a railway, fields and forests — and the picture is what its camera sees: TV,
 white-hot or black-hot thermal, or night vision, under a sensor HUD with your own callsign. In silence the allies patrol
