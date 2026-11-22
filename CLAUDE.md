@@ -99,6 +99,22 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   (`WRECKS` entry `roll`, `Vehicle.coast`: slowing at `COAST` 4 / 3 / 2.5 m/s per second for tank / APC / car, drifting to a
   kerb); its fire, smoke, cook-off pops (`cooks[].pos` is the live position) and bailing crew go where it is now. The bail
   tries 16 spots round the wreck (closer in for the second 8): a wreck may have rolled up to a wall.
+- **The allies in the frame; infantry runs from fire**: allies used to be beside an enemy in the frame 12 % of the time (0.4 in
+  the frame on average): they halted to shoot at 90–230 m, out of the frame, and were cut down (outnumbered two to one). Now:
+  `feed()` sends a fireteam of theirs in from the frame's edge when none has been in the frame for `ALLY_FEED.gap` s (every
+  `every` s, while fewer than `near` + `k` × the enemies are within `FEED.r`; the allies' `edgeSquad` runs 14–18 s), a column
+  from just out of sight when no vehicle of theirs is round the point, and gives their fireteams a new loop round the point
+  when it has moved on `move` m (one far out of the fight and out of sight is taken away). The QRF and their fireteams come
+  to the camera's zone, not the base. An allied squad (`Squad.update`) closes in on its target to `SQUAD_CLOSE` 35 m, firing,
+  and halts for a fight only within `SQUAD_ZONE` 100 m of `CAM_TGT` (further off it shoots on the move round its loop); then a
+  new loop round where it got to. The enemy's fire does `ALLY_TOUGH` 0.4 to them; their infantry is capped at `inf` × the
+  share (their APCs keep the rest aboard). `aimCamera` prefers an enemy with allies within 80 m (`mixed`, × 0.25). Average
+  over 4 seeds × 2 tempos: allies beside enemies in the frame ~37 % of the time, 1.6–2 of them. Edge fireteams start at their
+  loop's first waypoint (`wi` 1: no 3–10 s halt where they appear). Infantry within max(10, 3 × r) of a hit (the gunship's
+  `strike`, a unit's `splashAt`) runs 8–16 m away from it for 2.5–4 s (`BATTLE.scare` / `scatter`, `SCATTER`, walkable, not
+  firing), then stands `rest` 4 s; the squad keeps twice its spacing for 10 s (`spreadUntil`); after the run, back the way it
+  ran into the file (the leader on, if the way to his waypoint is clear). The leak test counts geometries apart from the
+  unit prototypes' shared ones.
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -170,7 +186,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=75`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=76`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

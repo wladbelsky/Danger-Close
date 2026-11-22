@@ -85,6 +85,9 @@ fullscreen apps by default.
   the kinds the weapon is aimed at (a Hellfire on a tank takes the soldiers beside it too). Never their own side.
 - **Hits show**: a knocked-out vehicle cooks off on the next strong beats (a tank may throw its turret), a column under
   fire weaves across the road. A vehicle hit on the move rolls on for a few seconds, slowing, before it stands burning.
+- **Allies in the fight**: their fireteams and columns come where the sensor looks, close in and fight beside the enemy in
+  the frame; the camera rather picks a fight with both sides in it.
+- **Infantry under fire scatters**: soldiers near a hit run off from it, the squad spreads out, then they fight on.
 - **Smooth driving**: vehicles steer round the corners of a road instead of turning on the spot, each slows for its own bend,
   and a swerve eases in and out.
 - **No lull**: as one group dies the next is already coming in from the edge of the frame, more and sooner the faster the

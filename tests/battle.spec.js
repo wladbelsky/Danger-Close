@@ -82,7 +82,8 @@ test('a fight leaks nothing: geometries and programs stay put over two fights', 
   await wp.boot({ query: '?hour=12&seed=3' });
   const cycle = async () => { await wp.sim(120, { audio: true }); await wp.sim(12); await wp.until(() => !UNITS.some(u => u.side === 'enemy') && !BATTLE.base && !BATTLE.ruins.length && !WRECKS.list.length, 500); };
   await cycle(); await wp.run(() => __t.render());
-  const count = () => { const set = new Set(); scene.traverse(o => { if (o.geometry) set.add(o.geometry.uuid); }); let protos = 0; for (const k in PROTO) PROTO[k].traverse(o => { if (o.geometry) protos++; }); return { g: renderer.info.memory.geometries, live: set.size, protos, p: renderer.info.programs.length, kids: scene.children.length }; };
+  // (geometries of the unit prototypes, shared by every clone, do not count: which models stand about after a fight varies)
+  const count = () => { const shared = new Set(); let protos = 0; for (const k in PROTO) PROTO[k].traverse(o => { if (o.geometry) { protos++; shared.add(o.geometry.uuid); } }); const set = new Set(); scene.traverse(o => { if (o.geometry && !shared.has(o.geometry.uuid)) set.add(o.geometry.uuid); }); return { g: renderer.info.memory.geometries, live: set.size, protos, p: renderer.info.programs.length, kids: scene.children.length }; };
   const a = await wp.run(count);
   await cycle(); await wp.run(() => __t.render());
   const b = await wp.run(count);
@@ -321,6 +322,55 @@ test('a column under fire weaves across the road, steered: no jump sideways, no 
   expect(r.jump, 'metres moved in a step beyond the speed along the road').toBeLessThan(0.5);
   expect(r.acc, 'sideways acceleration at most (was hundreds: kinks)').toBeLessThan(12);
   expect(r.sharp, 'share of steps turning harder than 6 m/s sideways (was 7 %)').toBeLessThan(0.03);
+});
+
+test('the allies are in the fight the sensor watches, not only round it', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11' });
+  await wp.sim(6, { audio: true, bpm: 140 });
+  const r = await wp.run(() => {
+    let enF = 0, both = 0, ai = 0, n = 0;
+    for (let i = 0; i < 360; i++) {
+      __t.sim(0.5, { audio: true, bpm: 140 }); let ef = 0, af = 0;
+      for (const u of UNITS) { if (!u.alive || u.kind === 'struct' || u.kind === 'heli') continue; if (BATTLE.inFrame(u.pos)) { if (u.side === 'enemy') ef++; else af++; } }
+      n++; if (ef) { enF++; if (af) both++; } ai += af;
+    }
+    return { share: both / Math.max(1, enF), ai: ai / n, allies: UNITS.filter(u => u.side === 'ally').length, feed: BATTLE.stat.allyFeed, seenIn: BATTLE.stat.seenIn };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.seenIn, 'nobody appears in sight').toBe(0);
+  expect(r.feed, 'fireteams and columns of theirs called in').toBeGreaterThan(2);
+  expect(r.share, 'share of the time with enemies in the frame that allies are in it too (was 0.12 on average)').toBeGreaterThan(0.18);
+  expect(r.ai, 'allies in the frame on average (was 0.4)').toBeGreaterThan(0.5);
+  expect(r.allies, 'not a crowd').toBeLessThan(90);
+});
+
+test('infantry under fire runs from the hit, its squad spreads out, nobody fires on the run', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11' });
+  await wp.sim(6, { audio: true });
+  const r = await wp.run(() => {
+    let q = null;
+    for (let i = 0; i < 1200 && !q; i++) { __t.sim(0.05, { audio: true }); q = BATTLE.squads.find(s => s.side === 'enemy' && !s.flee && s.m.length >= 3 && T > s.go); }
+    if (!q) return null;
+    const m = q.m.slice(), c = m.reduce((a, s) => a.add(s.position), new V3()).multiplyScalar(1 / m.length), p = new V3(c.x + 2, c.y, c.z + 1);
+    const d0 = m.map(s => Math.hypot(s.position.x - p.x, s.position.z - p.z)), shots0 = BATTLE.stat.uShots, sc0 = BATTLE.stat.scatter;
+    const fired = new Set(), u0 = BATTLE.unitShot.bind(BATTLE); BATTLE.unitShot = u => { if (m.includes(u) && u.scatter && T < u.scatter.until) fired.add(u); u0(u); };
+    BATTLE.scare(p, 3, 'enemy'); const ran = m.filter(s => s.scatter).length, spread = q.spreadUntil > T;
+    let bad = 0; for (let i = 0; i < 50; i++) { __t.sim(0.05, { audio: true }); for (const s of m) { if (!s.alive) continue; const w = waterAt(s.position.x, s.position.z); if (w === 1 || w === 2 || (occAt(s.position.x, s.position.z) & (OCC_WATER | OCC_BUILD))) bad++; } }
+    const alive = m.filter(s => s.alive), d1 = alive.map(s => Math.hypot(s.position.x - p.x, s.position.z - p.z));
+    BATTLE.unitShot = u0;
+    // and in a whole fight the gunship's hits send them running
+    __t.sim(60, { audio: true });
+    return { n: m.length, ran, spread, gain: d1.reduce((a, b) => a + b, 0) / Math.max(1, d1.length) - d0.reduce((a, b) => a + b, 0) / d0.length, bad, firedOnRun: fired.size, scatter: BATTLE.stat.scatter - sc0 };
+  });
+  console.log(JSON.stringify(r));
+  expect(r, 'an enemy squad').toBeTruthy();
+  expect(r.ran, 'who was close runs').toBeGreaterThanOrEqual(Math.min(3, r.n));
+  expect(r.spread, 'the squad spreads out').toBe(true);
+  expect(r.gain, 'metres further from the hit, on average, after 2.5 s').toBeGreaterThan(5);
+  expect(r.bad, 'nobody in water or a wall').toBe(0);
+  expect(r.firedOnRun, 'nobody fires on the run').toBe(0);
+  expect(r.scatter, 'the fight sends them running too').toBeGreaterThan(r.ran);
+  expect(r.scatter, 'but not every round: they stand and fire between runs').toBeLessThan(600);
 });
 
 test('a vehicle knocked out on the move rolls on, slowing, and stops', async ({ wp }) => {

@@ -322,6 +322,8 @@ class Heli {
 }
 
 /* ---- an infantry squad: the leader walks a loop of waypoints, the others follow in file along the leader's trail ---- */
+/* an allied squad closes in on what it shoots at to SQUAD_CLOSE m before it halts to fight */
+const SQUAD_CLOSE = 35, SQUAD_ZONE = 100;   // (they halt for a fight within SQUAD_ZONE m of where the sensor looks; one further off they shoot at on the move)
 class Squad {
   constructor(side, n, x, z, wps) {
     this.side = side; this.wps = wps; this.wi = 0; this.wait = rand(2, 8); this.gap = 4; this.go = 0;   // (go: running out until then, not halting to fight)
@@ -351,8 +353,28 @@ class Squad {
   update(dt) {
     const L = this.m[0]; if (!L) return;
     if (this.flee) { this.run(dt); return; }
-    let step = 0; const fight = T > this.go && this.m.some(s => s.tgt), k = T < this.go ? 2 : 1;
-    if (fight) { for (const s of this.m) if (s.tgt) s.a = approachAngle(s.a, Math.atan2(s.tgt.pos.z - s.position.z, s.tgt.pos.x - s.position.x), dt * 5); }   // (halted, facing what they shoot at)
+    let step = 0, fight = T > this.go && this.m.some(s => s.tgt); const k = T < this.go ? 2 : 1, gap = this.gap * (T < (this.spreadUntil || 0) ? 2 : 1);   // (under fire: twice as far apart)
+    const run = s => s.scatter && T < s.scatter.until;   // (running from a hit: BATTLE.scatter)
+    // the allies close in on what they shoot at (to SQUAD_CLOSE m, while the way is clear), firing as they go: into the fight the
+    // sensor watches, not from out of its frame. Their next loop then goes round where they got to
+    let adv = null;
+    if (fight && this.side === 'ally' && !run(L) && !this.m.some(s => s.tgt && Math.hypot(s.tgt.pos.x - s.position.x, s.tgt.pos.z - s.position.z) < SQUAD_CLOSE)) {
+      const t = (L.tgt || this.m.find(s => s.tgt).tgt).pos, dx = t.x - L.position.x, dz = t.z - L.position.z, d = Math.hypot(dx, dz);
+      if (Math.hypot(t.x - CAM_TGT.x, t.z - CAM_TGT.z) > SQUAD_ZONE) fight = false;   // (a fight out of the sensor's frame: on round their loop, which goes round where it looks)
+      else if (walkable(L.position.x, L.position.z, L.position.x + dx / d * 3, L.position.z + dz / d * 3)) { adv = [dx / d, dz / d]; fight = false; }
+    }
+    if (adv) { step = 1.5 * 1.6 * dt; L.position.x += adv[0] * step; L.position.z += adv[1] * step; L.a = approachAngle(L.a, Math.atan2(adv[1], adv[0]), dt * 6); this.moved = true; }
+    else if (this.moved && !fight && !run(L)) { this.moved = false; this.wps = patrolLoop(L.position.x, L.position.z, 15, 40, [L.position.x, L.position.z]); this.wi = 1 % this.wps.length; this.wait = rand(2, 5); }
+    else if (run(L)) {   // the leader runs too: the file's trail goes with him
+      const S = L.scatter, dx = S.x - L.position.x, dz = S.z - L.position.z, d = Math.hypot(dx, dz);
+      if (d > 0.3) { step = Math.min(d, SCATTER.v * dt); L.position.x += dx / d * step; L.position.z += dz / d * step; L.a = approachAngle(L.a, Math.atan2(dz, dx), dt * 8); }
+    }
+    else if (fight) { for (const s of this.m) if (s.tgt) s.a = approachAngle(s.a, Math.atan2(s.tgt.pos.z - s.position.z, s.tgt.pos.x - s.position.x), dt * 5); }   // (halted, facing what they shoot at)
+    else if (L.scatter) {   // on from where he ran to, if the way to the next waypoint is clear; else back the way he ran first
+      const S = L.scatter, [wx, wz] = this.wps[this.wi];
+      if (walkable(L.position.x, L.position.z, wx, wz)) L.scatter = null;
+      else { const dx = S.ox - L.position.x, dz = S.oz - L.position.z, d = Math.hypot(dx, dz); if (d > 0.3) { step = Math.min(d, 1.5 * k * dt); L.position.x += dx / d * step; L.position.z += dz / d * step; L.a = Math.atan2(dz, dx); } else L.scatter = null; }
+    }
     else if (this.wait > 0) this.wait -= dt;
     else {
       const [wx, wz] = this.wps[this.wi], dx = wx - L.position.x, dz = wz - L.position.z, d = Math.hypot(dx, dz);
@@ -361,9 +383,17 @@ class Squad {
     }
     if (step > 0) { this.D += step; const last = this.trail[this.trail.length - 1]; if (this.D - last[2] > 0.5) { this.trail.push([L.position.x, L.position.z, this.D]); if (this.trail.length > 200) this.trail.shift(); } }
     this.m.forEach((s, i) => {
-      if (fight) s.moved = 0;
-      else if (i) {   // in file, 4 m apart (out of a vehicle's door 2 m), along the trail
-        const [tx, tz] = this.trailAt(this.D - i * this.gap), dx = tx - s.position.x, dz = tz - s.position.z, d = Math.hypot(dx, dz);
+      if (i && run(s)) {   // off to his spot, running
+        const S = s.scatter, dx = S.x - s.position.x, dz = S.z - s.position.z, d = Math.hypot(dx, dz), mv = Math.min(d, SCATTER.v * dt);
+        if (d > 0.3) { s.position.x += dx / d * mv; s.position.z += dz / d * mv; s.a = approachAngle(s.a, Math.atan2(dz, dx), dt * 8); s.moved = mv; } else s.moved = 0;
+      }
+      else if (fight) s.moved = 0;
+      else if (i && s.scatter) {   // back the way he ran (a walkable line), then into the file
+        const S = s.scatter, dx = S.ox - s.position.x, dz = S.oz - s.position.z, d = Math.hypot(dx, dz), mv = Math.min(d, 1.9 * k * dt);
+        if (d > 0.3) { s.position.x += dx / d * mv; s.position.z += dz / d * mv; s.a = approachAngle(s.a, Math.atan2(dz, dx), dt * 4); s.moved = mv; } else { s.scatter = null; s.moved = 0; }
+      }
+      else if (i) {   // in file, 4 m apart (out of a vehicle's door 2 m; twice that under fire), along the trail
+        const [tx, tz] = this.trailAt(this.D - i * gap), dx = tx - s.position.x, dz = tz - s.position.z, d = Math.hypot(dx, dz);
         if (d > 0.05) { const mv = Math.min(d, 1.9 * k * dt); s.position.x += dx / d * mv; s.position.z += dz / d * mv; s.a = approachAngle(s.a, Math.atan2(dz, dx), dt * 4); s.moved = mv; } else s.moved = 0;
       } else s.moved = step;
       s.position.y = groundH(s.position.x, s.position.z);
