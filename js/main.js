@@ -94,6 +94,7 @@ function init() {
   FX.fire = new SpriteFX(scene, TEX.flash, THREE.AdditiveBlending, 260, false, 0.95);
   FX.smoke = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, 640, true, 0.14);   // (the missiles' trails take a share)
   FX.dust = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, 240, true, 0.46);
+  FX.puff = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, 160, true, 0.46);   // (soldiers hit: a pool of their own, so the guns' dust never cuts a puff short)
   FX.scorch = new Scorch(scene, 60); FX.bodies = new Bodies(scene, 32); FX.plumes = new Plumes(scene, 32);
   FX.flare = new SpriteFX(scene, TEX.flash, THREE.AdditiveBlending, 120, false, 1); FX.flare.mesh.renderOrder = 10; LAMPS.init(); GUNS.init();   // flares and missiles near the lens: over the clouds
   WEATHER.init();
@@ -270,6 +271,7 @@ function step(dt) {
   FX.fire.update(dt);
   FX.smoke.update(dt, null, camera);
   FX.dust.update(dt, null, camera);
+  FX.puff.update(dt, null, camera);
   FX.scorch.update(dt);
   FX.flare.update(dt);
   WEATHER.update(dt); AA.update(dt); FX.bodies.flush(); FX.plumes.flush(); LAMPS.update(dt); GUNS.update(dt);

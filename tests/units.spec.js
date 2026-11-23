@@ -56,7 +56,8 @@ test('every unit model has a sensible size and goes through the sensor', async (
     for (const side of ['ally', 'enemy']) for (const [k, f] of Object.entries(UNIT_TYPES[side])) for (const build of [].concat(f)) {
       const g = build(); if (k !== 'heli') g.scale.setScalar(ARMOR_SCALE); g.updateMatrixWorld(true); b.setFromObject(g).getSize(sz);
       let raw = 0; g.traverse(o => { if (o.isMesh && o.material.onBeforeCompile !== sensorHook) raw++; });
-      out[side + ':' + k + ':' + build.name] = { len: +sz.x.toFixed(1), h: +sz.y.toFixed(1), raw };
+      let tris = 0; g.traverse(m => { if (m.isMesh) tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; });
+      out[side + ':' + k + ':' + build.name] = { len: +sz.x.toFixed(1), h: +sz.y.toFixed(1), raw, floor: +b.min.y.toFixed(2), tris, nav: !!g.userData.nav };
     }
     INF.add('ally', 0, 0); b.setFromObject(INF.body); out.soldier = { h: +(INF_BODY_GEO.boundingBox || (INF_BODY_GEO.computeBoundingBox(), INF_BODY_GEO.boundingBox)).max.y.toFixed(2) };
     return out;
@@ -66,6 +67,10 @@ test('every unit model has a sensible size and goes through the sensor', async (
     if (k === 'soldier') continue;
     const [lo, hi] = range[k.split(':')[1]];
     expect(v.len, k).toBeGreaterThan(lo); expect(v.len, k).toBeLessThan(hi); expect(v.raw, k).toBe(0);
+    if (k.includes(':heli:')) {   // a helicopter stands on its wheels (none floats over its pad), as detailed as the vehicles, with its lights where its wingtips and tail are
+      expect(v.floor, k + ' on its wheels').toBeGreaterThan(-0.05); expect(v.floor, k + ' on its wheels').toBeLessThan(0.05);
+      expect(v.tris, k + ' triangles (a tank has 1600–1900; they had 400–700)').toBeGreaterThan(1400); expect(v.nav, k + ' navigation lights').toBe(true);
+    }
   }
   expect(r.soldier.h).toBeGreaterThan(1.7); expect(r.soldier.h).toBeLessThan(1.9);
 });

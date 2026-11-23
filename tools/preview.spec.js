@@ -518,6 +518,42 @@ test('vehicles close', async ({ wp }) => {
   await fire(250, 'tv'); await fire(700, 'tv'); await fire(250, 'wh'); await fire(700, 'bh');
   await sheet(wp, shots, 4, 'vehicles-close.png');
 });
+/* the helicopters close up: on the ground side by side, one by one, on the thermal sensor; one in the air */
+test('helis close', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1200, height: 675 });
+  await wp.boot({ query: '?hour=10&seed=11&transit=0&season=summer&hud=0&weather=clear&clouds=0' });
+  await wp.run(() => {
+    ALLIES.update = () => {}; const S = LAYOUT.sites[0], list = [['enemy', 0], ['enemy', 1], ['ally', 0], ['ally', 1]];
+    window.__V = list.map(([side, k], i) => {
+      const g = UNIT_TYPES[side].heli[k](), x = S.x + (i % 2 ? 12 : -12), z = S.z + (i < 2 ? -11 : 11); g.position.set(x, groundH(x, z), z); g.rotation.y = 0.6 + i * 0.5; scene.add(g);
+      g.traverse(o => { if (o.name === 'rotor' || o.name === 'rotor2') o.rotation.y = 0.3 + i; });
+      return g;
+    });
+  });
+  const shots = [];
+  const look = async (i, zoom, mode) => { await wp.run(([i, zoom, mode]) => { const S = LAYOUT.sites[0], p = i < 0 ? { x: S.x, z: S.z } : window.__V[i].position; SENSOR.manual = true; SENSOR.set(mode); HUD.markModes(); updateEnvironment(); GUNSHIP.look.set(p.x, groundH(p.x, p.z), p.z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.ctr.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.nextWander = 1e9; CFG.zoom = zoom; __t.sim(2.5); __t.render(); }, [i, zoom, mode]); shots.push((await wp.page.screenshot()).toString('base64')); };
+  await look(-1, 250, 'tv'); await look(-1, 250, 'wh');
+  for (let i = 0; i < 4; i++) await look(i, 520, 'tv');
+  await look(0, 520, 'wh'); await look(2, 520, 'bh');
+  await sheet(wp, shots, 4, 'helis-close.png');
+});
+/* the AIM-9X's lock: the arrows closing in on a helicopter, the box closed with SHOOT over it, the launch */
+test('aim lock', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1200, height: 675 });
+  await wp.boot({ query: '?hour=11&seed=11&weapons=aim&auto=0&weather=clear&clouds=0' });
+  await wp.sim(8, { audio: true });
+  await wp.run(() => {
+    BATTLE.nextHeli = 1e9; const p = new V3(CAM_TGT.x + 30, 0, CAM_TGT.z); p.y = groundH(p.x, p.z) + 60;
+    const h = new Heli(1, 'enemy', null, p); BATTLE.helis.push(h); const c = CAM_TGT.clone(); h.round = () => [0, 1, 2, 3, 4, 5].map(i => [c.x + Math.cos(i) * 50, c.z + Math.sin(i) * 50]); h.wps = h.round(); window.__h = h;
+  });
+  const shots = [];
+  for (const want of ['k0.3', 'k0.7', 'shoot', 'fired']) {
+    const ok = await wp.run(want => { for (let i = 0; i < 1200; i++) { __t.sim(0.05, { audio: true }); HUD.draw(); const L = BATTLE.lock, d = HUD.lockDraw;
+      if (want === 'fired' ? BATTLE.stat.lockShots > 0 && BATTLE.missiles.length : want === 'shoot' ? d && d.shoot && Math.floor((T - L.shootT) * 8) % 2 === 0 : d && !d.shoot && Math.abs(d.k - +want.slice(1)) < 0.04) { __t.render(); HUD.draw(); return true; } } return false; }, want);
+    if (ok) shots.push((await wp.page.screenshot()).toString('base64'));
+  }
+  await sheet(wp, shots, 2, 'aim-lock.png');
+});
 /* a Hellfire on its way down beside a string of flares; a SAM coming up; a BTR firing up from its roof machine gun */
 test('missiles and flares', async ({ wp }) => {
   await wp.page.setViewportSize({ width: 1200, height: 675 });

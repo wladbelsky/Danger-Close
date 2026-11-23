@@ -57,7 +57,7 @@ const HUD = {
     if (!this.on) return;
     const g = this.g, W = this.W, H = this.H, u = this.u;
     g.clearRect(0, 0, W, H); g.lineCap = 'butt'; g.textBaseline = 'middle';
-    this.brackets(); this.designate(); this.compass(W / 2, 52 * u); this.ladder(W - 64 * u, (H - this.sb) / 2); this.reticle(W / 2, H / 2);
+    this.brackets(); this.designate(); this.lockOn(); this.compass(W / 2, 52 * u); this.ladder(W - 64 * u, (H - this.sb) / 2); this.reticle(W / 2, H / 2);
     // the clock and the sensor point at the top right
     const now = getNow(), p2 = n => String(n).padStart(2, '0'), x = W - 40 * u;
     this.text(`${p2(now.getHours())}:${p2(now.getMinutes())}:${p2(now.getSeconds())}`, x, 44 * u, 26, 'right');
@@ -127,6 +127,22 @@ const HUD = {
     _hp.copy(f.pos); _hp.y += f.ah; _hp.project(camera); if (_hp.z > 1 || Math.abs(_hp.x) > 1 || Math.abs(_hp.y) > 1) return;
     const g = this.g, u = this.u, x = (_hp.x + 1) / 2 * this.W, y = (1 - _hp.y) / 2 * this.H, s = 44 * u;
     g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s, y); g.lineTo(x, y + s); g.lineTo(x - s, y); g.closePath(); this.stroke(1.4 * u);
+  },
+  /* the AIM-9X's lock (BATTLE.lock): four arrows closing in on the target's box as the seeker locks on, the box closed when it has
+     it, then SHOOT blinking over it until the launch */
+  lockOn() {
+    const L = BATTLE.lock; this.lockDraw = null; if (!L || !L.t.alive || GUNSHIP.state !== 'orbit') return;
+    _hp.copy(L.t.pos); _hp.y += 2.5; _hp.project(camera); if (_hp.z > 1 || Math.abs(_hp.x) > 1.05 || Math.abs(_hp.y) > 1.05) return;
+    const g = this.g, u = this.u, x = (_hp.x + 1) / 2 * this.W, y = (1 - _hp.y) / 2 * this.H, s = 30 * u, e = smoothstep(0, 1, L.k), d = lerp(150 * u, s + 8 * u, e), a = 11 * u;
+    g.beginPath();
+    for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {   // (each arrow points at the box: its tip d from the centre)
+      const tx = x + dx * d, ty = y + dy * d, bx = tx + dx * a, by = ty + dy * a, px = -dy * a * 0.7, py = dx * a * 0.7;
+      g.moveTo(bx + px, by + py); g.lineTo(tx, ty); g.lineTo(bx - px, by - py); g.moveTo(tx + dx * a * 0.3, ty + dy * a * 0.3); g.lineTo(tx + dx * a * 2.4, ty + dy * a * 2.4);
+    }
+    if (L.k >= 1) g.rect(x - s - 4 * u, y - s - 4 * u, 2 * s + 8 * u, 2 * s + 8 * u);
+    this.stroke(2 * u);
+    const shoot = !!L.shootT; if (shoot && Math.floor((T - L.shootT) * 8) % 2 === 0) this.text('SHOOT', x, y - s - 28 * u, 18, 'center');
+    this.lockDraw = { k: L.k, shoot, x: x / this.W, y: y / this.H };
   },
   /* corner brackets of a fixed screen size: allies blue, enemies white */
   brackets() {

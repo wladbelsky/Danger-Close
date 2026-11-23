@@ -89,11 +89,16 @@ fullscreen apps by default.
   the frame; the camera rather picks a fight with both sides in it.
 - **Infantry under fire scatters**: soldiers near a hit run off from it, the squad spreads out, then they fight on.
 - **Smooth driving**: vehicles steer round the corners of a road instead of turning on the spot, each slows for its own bend,
-  and a swerve eases in and out.
+  and a swerve eases in and out. They keep out of each other: they brake for what is ahead, pull aside for one coming the other
+  way and drive round a wreck or a halted column.
+- **Detailed helicopters**: framed glass, tapering blades on a full rotor head, sensors, guns, rockets and missiles on their
+  pylons, wheels, hot exhausts on the thermal sensor.
+- **The AIM-9X locks on**: arrows close in on the helicopter's box under the reticle, SHOOT, and the launch half a second on.
 - **No lull**: as one group dies the next is already coming in from the edge of the frame, more and sooner the faster the
   music; very slow music goes group by group with a short break between them.
 - **The music stops**: 5 s later fire ceases, the enemy pulls back out of the frame and vanishes; the base is removed
-  once it is out of view. Infantry vanish in a puff of dust, vehicles lie as wrecks and sink. No civilians, no blood.
+  once it is out of view. Infantry vanish in a puff of dust (every hit on a soldier kicks some up), vehicles lie as wrecks and
+  sink. No civilians, no blood.
 
 ## The world
 

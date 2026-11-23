@@ -76,7 +76,7 @@ const _wk = new V3(), _wv = new V3();
 const WRECKS = {
   list: [],
   add(obj, s, keep, pos, roll) {
-    toWreck(obj, 0); this.list.push({ obj, pos: pos || obj.position, t: 0, stage: 0, s, puff: 0, keep: !!keep, y0: obj.position.y, roll });   // (roll: a vehicle knocked out on the move, still rolling)
+    toWreck(obj, 0); this.list.push({ obj, pos: pos || obj.position, t: 0, stage: 0, s, puff: 0, keep: !!keep, y0: obj.position.y, roll, veh: obj.userData.veh });   // (roll: a vehicle knocked out on the move, still rolling; veh: a vehicle's wreck, in the way of the traffic)
     let n = 0; for (const w of this.list) if (!w.keep) n++;
     if (n > 22) { const o = this.list.find(w => !w.keep && w.t < 130); if (o) o.t = 130; }   // (too many: the oldest sinks now)
   },
@@ -95,8 +95,19 @@ const WRECKS = {
     }
   }
 };
-/* a soldier gone: dust */
-function puffDust(p) { _wk.set(p.x, p.y + 0.8, p.z); for (let i = 0; i < 4; i++) FX.dust.spawn(_wk, { s0: 1.5, s1: rand(4, 6), life: rand(1, 1.8), a0: 0.55, color: ENV.dustTint.getHex(), v: _wv.set(rand(-2, 2), rand(0.5, 2), rand(-2, 2)), drag: 2 }); }
+/* a soldier gone: a burst of dust that hides him as he goes (lighter than the ground, so it shows from above), a wisp of smoke in it */
+const _pc = new THREE.Color(), PUFF_MAX = 12;   // (hit puffs a step at most; a death always puffs)
+function puffDust(p) {
+  _pc.copy(ENV.dustTint).lerp(ENV.smokeTint, 0.35); const c = _pc.getHex();
+  for (let i = 0; i < 8; i++) { _wk.set(p.x + rand(-0.6, 0.6), p.y + rand(0.3, 1.4), p.z + rand(-0.6, 0.6)); FX.puff.spawn(_wk, { s0: rand(1.6, 2.4), s1: rand(5, 7), life: rand(1.2, 2), a0: 0.8, color: c, v: _wv.set(rand(-2.5, 2.5), rand(0.8, 2.6), rand(-2.5, 2.5)), drag: 2.2 }); }
+  _wk.set(p.x, p.y + 1, p.z); FX.smoke.spawn(_wk, { s0: 2, s1: 6, life: rand(1.6, 2.4), a0: 0.35, color: 0x3a3632, v: _wv.set(WIND.x, rand(1, 2), WIND.z), drag: 0.6 });
+}
+/* a soldier hit and still up: a small kick of dust where the round struck */
+function hitPuff(p) {
+  if (BATTLE.puffN >= PUFF_MAX) return; BATTLE.puffN++;
+  _pc.copy(ENV.dustTint).lerp(ENV.smokeTint, 0.35); const c = _pc.getHex();
+  for (let i = 0; i < 3; i++) { _wk.set(p.x + rand(-0.4, 0.4), p.y + rand(0.2, 1.1), p.z + rand(-0.4, 0.4)); FX.puff.spawn(_wk, { s0: rand(0.8, 1.2), s1: rand(2.5, 3.5), life: rand(0.6, 1), a0: 0.7, color: c, v: _wv.set(rand(-1.5, 1.5), rand(1, 2.5), rand(-1.5, 1.5)), drag: 2.5 }); }
+}
 /* a hit of size s: a full blast from 1 up, else a light one (many a second); air: no ground, no crater */
 function hitFx(x, y, z, s, air) {
   if (s >= 1 && !air) { blast(_wk.set(x, 0, z), s); return; }
@@ -134,7 +145,10 @@ function baseModel(type) {
   return PROTO[k].clone();
 }
 
-const RET_ON = 0.07, OFF_SWITCH = 3;   // the reticle is "on" a target within this of the frame's centre (in half frame heights): no shot before that
+const RET_ON = 0.07, OFF_SWITCH = 3;
+/* the AIM-9X's lock: the seeker takes LOCK.t s of a helicopter held under the reticle (off it, the lock slips back; off it for
+   `lose` s, it is gone); then SHOOT, and the launch `fire` s on (on a strong beat if one falls between win[0] and win[1] s) */
+const LOCK = { t: 1.4, fire: 0.5, lose: 0.5, win: [0.35, 0.7] };   // the reticle is "on" a target within this of the frame's centre (in half frame heights): no shot before that
 /* a gun already fires at a target this near the reticle (half frame heights): its rounds land under the reticle and walk onto the
    target as the sensor comes round; the missiles, the laser and the railgun wait for it to be on */
 const RET_NEAR = 0.4, NEAR_ARMS = new Set(['g25', 'g30', 'b40', 'h105']);
@@ -163,8 +177,8 @@ const SCATTER = { r0: 10, k: 3, d: [8, 16], t: [2.5, 4], v: 3.6, spread: 10, res
 const COOK = { tank: 3, apc: 2, car: 1, first: 0.6, gap: 0.5, late: 1.6, toss: 0.35 };
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0);
 const BATTLE = {
-  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, chase: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, feed: 0, breaks: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0, allyFeed: 0, scatter: 0, refocus: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
-  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], nextFeed: 0, nextAllyFeed: 0, nextAllyCol: 0, allyFrameT: 0, feedT: 0, breakUntil: 0, armT: -99, ricoN: 0, atP: new V3(),
+  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, chase: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, feed: 0, breaks: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0, allyFeed: 0, scatter: 0, refocus: 0, yield: 0, bypass: 0, ghost: 0, bump: 0, locks: 0, lockShots: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
+  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], nextFeed: 0, nextAllyFeed: 0, nextAllyCol: 0, allyFrameT: 0, feedT: 0, breakUntil: 0, armT: -99, ricoN: 0, puffN: 0, lock: null, lockLog: [], atP: new V3(),
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
     this.beam = new THREE.Mesh(geo, sensorMat(new THREE.MeshBasicMaterial({ color: 0xff4a36, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), 1));   // the laser: a red core
@@ -340,7 +354,7 @@ const BATTLE = {
     if (k < 0) return;
     const opts = this.dests(); if (!opts.length) return;
     const dest = pick(opts), nodes = N.route(k, dest); if (!nodes || nodes.length < 30) return;
-    const path = Path.fromNodes(nodes); if (!this.hidden(path.p[Math.min(path.p.length - 1, 14)].x, path.p[Math.min(path.p.length - 1, 14)].z, 0.8)) return;
+    const path = Path.fromNodes(nodes); if (!this.hidden(path.p[Math.min(path.p.length - 1, 14)].x, path.p[Math.min(path.p.length - 1, 14)].z, 0.8) || !this.roadFree(path, 3)) return;
     const col = new Column(pick(WAVES).map(t => new Vehicle(t, 'enemy'))); col.place(path);
     for (const v of col.u) this.seen('in', v.pos);
     this.cols.push({ col, hold: false, retreat: false });
@@ -359,9 +373,14 @@ const BATTLE = {
     }
     return false;
   },
+  /* is the start of a path clear for a column of n (no vehicle or wreck on it: a new one would stand inside it) */
+  roadFree(path, n) {
+    for (let s = 0; s <= (n - 1) * GAP + 8; s += 4) { path.at(s, 1, _bp); for (const u of UNITS) if (u instanceof Vehicle && Math.hypot(u.pos.x - _bp.x, u.pos.z - _bp.z) < 9) return false; for (const w of WRECKS.list) if (w.veh && w.obj.parent === scene && Math.hypot(w.obj.position.x - _bp.x, w.obj.position.z - _bp.z) < 9) return false; }
+    return true;
+  },
   /* a column of a side placed at the start of a run of road nodes, if that is out of sight */
   columnOn(side, nodes, types, near) {
-    const path = Path.fromNodes(nodes), q = path.p[Math.min(path.p.length - 1, 14)], H = near ? (x, z) => this.hiddenNear(x, z) : (x, z) => this.hidden(x, z, 0.8); if (!H(path.p[0].x, path.p[0].z) || !H(q.x, q.z)) return false;
+    const path = Path.fromNodes(nodes), q = path.p[Math.min(path.p.length - 1, 14)], H = near ? (x, z) => this.hiddenNear(x, z) : (x, z) => this.hidden(x, z, 0.8); if (!H(path.p[0].x, path.p[0].z) || !H(q.x, q.z) || !this.roadFree(path, types.length)) return false;
     const col = new Column(types.map(k => new Vehicle(k, side))); col.place(path);
     for (const v of col.u) this.seen('in', v.pos);
     this.cols.push({ col, hold: false, retreat: false, ally: side === 'ally' }); return true;
@@ -537,6 +556,7 @@ const BATTLE = {
     const w = ARMS.w, f = CFG.fire / 100; if (!w || f <= 0) return;
     force = force || T < this.forceUntil;   // (a drop's shot waits up to 1.5 s for the reticle to come onto a target)
     if (w.band === 'hold') { const t = this.target(w); if (t && this.onReticle(t)) { this.laserUntil = T + (force ? 1.5 : 0.5); if (force) this.forceUntil = 0; } return; }
+    if (w.id === 'aim') { const L = this.lock; if (L && L.shootT && T - L.shootT >= LOCK.win[0] && st > 1.2) this.launch(w, L); return; }   // (the AIM-9X only through its lock: SHOOT, then on a strong beat or LOCK.fire s on)
     const idle = T - this.lastShot, strong = st > 1.45 || (band === 'low' && AUD.heavy > 0.45);
     let ok = w.band === 'strong' ? (strong || (band === 'low' && idle > w.reload + 2.5)) : (w.band === band || idle > 1.4 / Math.min(2, f) || (LIGHT_ARMS.has(w.id) && AUD.drive > 0.6));   // (music with no such beats: any beat will do after a while; dense music: any beat for the light guns)
     if (AUD.calm && st <= 1.45) ok = false;                                            // (a quiet part: only the strong beats)
@@ -546,6 +566,24 @@ const BATTLE = {
     if (force) this.forceUntil = 0;
     if (ARMS.st[w.id].reload > 0) this.autoTick = Math.min(this.autoTick, T + 0.3);   // (it has to reload: another weapon may take over meanwhile)
     this.lastShot = T; this.shotRT = RT(); this.stat.shots++; this.fire(w, t, st, 1, k > 1 ? this.atP : null);
+  },
+  /* the AIM-9X's lock on the helicopter it has (each step, in a fight) */
+  lockStep(dt) {
+    const w = ARMS.w; let L = this.lock;
+    if (!w || w.id !== 'aim' || GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled || CFG.fire <= 0) { this.lock = null; return; }
+    if (L && L.shootT) { if (!L.t.alive || !this.canHit(w, L.t)) this.lock = null; else if (T >= L.fireT) this.launch(w, L); return; }   // (SHOOT: the launch is coming)
+    const t = this.target(w);
+    if (!t || t.kind !== 'heli' || !ARMS.ready(w)) { if (L && (L.k -= dt / LOCK.t * 2) <= 0) this.lock = null; return; }
+    if (!L || L.t !== t) { L = this.lock = { t, t0: T, k: 0, off: 0, shootT: 0, fireT: 0 }; this.stat.locks++; }
+    if (this.onAim(t)) { L.off = 0; L.k = Math.min(1, L.k + dt / LOCK.t); }
+    else { L.off += dt; L.k = Math.max(0, L.k - dt / LOCK.t); if (L.off > LOCK.lose) { this.lock = null; return; } }
+    if (L.k >= 1) { L.shootT = T; L.fireT = T + LOCK.fire; }
+  },
+  launch(w, L) {
+    this.lock = null; if (!ARMS.shoot()) return;
+    this.lockLog.push({ t0: L.t0, shoot: L.shootT, fire: T }); if (this.lockLog.length > 40) this.lockLog.shift();
+    if (ARMS.st[w.id].reload > 0) this.autoTick = Math.min(this.autoTick, T + 0.3);
+    this.lastShot = T; this.shotRT = RT(); this.stat.shots++; this.stat.lockShots++; this.fire(w, L.t, 1.6, 1, null);
   },
   /* between the beats: on each point of the grid (the kick's beat split in 2 or 4 by the tempo) the light gun fires a short burst
      unless a shot went within most of a step before (no ammunition taken: the rate is the music's, the store cosmetic) */
@@ -802,7 +840,7 @@ const BATTLE = {
   },
   /* the auto-switching: the enabled weapon that suits what is in the frame and how heavy the music is */
   autoArm() {
-    if (!CFG.autoArms || T < this.manualUntil || T < this.autoTick) return;
+    if (!CFG.autoArms || T < this.manualUntil || T < this.autoTick || this.lock) return;   // (never in the middle of a lock)
     this.autoTick = T + 1;
     const w0 = ARMS.w, s0 = w0 && ARMS.st[w0.id], hop = w0 && w0.mag && s0.reload > Math.max(RELOAD_HOP, 2 * (AUD.beatP || 0.5));   // (the weapon in hand reloads for a while: one that is ready fires meanwhile)
     const cnt = {}; let any = false; for (const u of UNITS) if (u.side === 'enemy' && this.inFrame(u.pos)) { cnt[u.kind] = (cnt[u.kind] || 0) + 1; any = true; }
@@ -825,7 +863,7 @@ const BATTLE = {
     if (!war && this.was) this.standDown();
     this.was = war;
     for (let i = this.pend.length - 1; i >= 0; i--) if (T >= this.pend[i].t) { const p = this.pend[i]; this.pend.splice(i, 1); p.fn(); }
-    this.ricoN = 0; this.flyMissiles(dt); this.flyRockets(dt); this.laser(dt); this.subBeat(); this.cookUpdate(dt);
+    this.ricoN = 0; this.puffN = 0; this.flyMissiles(dt); this.flyRockets(dt); this.laser(dt); this.subBeat(); this.cookUpdate(dt);
     for (let i = UNITS.length - 1; i >= 0; i--) this.think(UNITS[i], dt, fight);
     for (let i = this.cols.length - 1; i >= 0; i--) {
       const E = this.cols[i], c = E.col;
@@ -844,7 +882,7 @@ const BATTLE = {
     for (let i = this.squads.length - 1; i >= 0; i--) { const s = this.squads[i]; s.update(dt); if (!s.m.length) this.squads.splice(i, 1); }
     for (let i = this.helis.length - 1; i >= 0; i--) { const h = this.helis[i]; h.update(dt); if (h.out) this.helis.splice(i, 1); }
     WRECKS.update(dt);
-    if (fight) { this.waves(); this.aimCamera(dt); this.autoArm(); } else this.focus = this.chase = null;
+    if (fight) { this.waves(); this.aimCamera(dt); this.autoArm(); this.lockStep(dt); } else { this.focus = this.chase = null; this.lock = null; }
     // the base: wrecked, it is left as a ruin and another is built elsewhere; a ruin, or the base after the fight, goes once out of sight
     const B = this.base;
     if (B && war && !B.parts.some(p => p.alive)) { this.ruins.push(B); this.base = null; this.nextBase = T + rand(12, 20); B.site.restUntil = T + 300; }   // (no base on that site again for five minutes)

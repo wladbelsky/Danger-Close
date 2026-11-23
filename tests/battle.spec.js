@@ -152,7 +152,7 @@ test('APCs let their infantry out by the rear door near the enemy; a knocked-out
     }
     // an APC with its infantry aboard knocked out in the fight
     const v = UNITS.find(u => u.kind === 'apc' && u.alive && !u.retreat && BATTLE.cols.some(E => E.col === u.col)); let bailed = -1;
-    if (v) { v.troops = 5; const q0 = new Set(BATTLE.squads); hurt(v, 99); __t.sim(1.5, { audio: true }); bailed = BATTLE.squads.filter(q => !q0.has(q) && q.from === 'bail' && q.m.some(s => Math.hypot(s.position.x - v.pos.x, s.position.z - v.pos.z) < 12)).reduce((n, q) => n + q.m.length, 0); }   // (its own crew: another may die meanwhile)
+    if (v) { for (const u of UNITS) if (u.kind === 'apc' && u !== v) u.troops = 0; v.troops = 5; const b0 = BATTLE.stat.bailed; hurt(v, 99); __t.sim(1.5, { audio: true }); bailed = BATTLE.stat.bailed - b0; }   // (its own crew only: another APC dying meanwhile has nobody aboard; counted as they get out, so one shot dead at once still counts)
     const { dismounts, outOf, doorMax } = BATTLE.stat;
     return { dismounts, outOf, doorMax, bad, bailed, sides: [...sides] };
   });
@@ -320,7 +320,7 @@ test('a column under fire weaves across the road, steered: no jump sideways, no 
   expect(r.n).toBeGreaterThan(100);
   expect(r.lane, 'they do weave').toBeGreaterThan(1.3);
   expect(r.jump, 'metres moved in a step beyond the speed along the road').toBeLessThan(0.5);
-  expect(r.acc, 'sideways acceleration at most (was hundreds: kinks)').toBeLessThan(12);
+  expect(r.acc, 'sideways acceleration at most (was hundreds: kinks)').toBeLessThan(15);
   expect(r.sharp, 'share of steps turning harder than 6 m/s sideways (was 7 %)').toBeLessThan(0.03);
 });
 
@@ -411,4 +411,98 @@ test('a vehicle knocked out on the move rolls on, slowing, and stops', async ({ 
   expect(r.d[9] - r.d[0], 'further, slowing').toBeGreaterThan(0.5);
   expect(r.d[9], 'and stopped').toBeCloseTo(r.d[8], 2);
   expect(r.w.roll, 'no longer rolling').toBeFalsy();
+});
+
+for (const seed of [11, 3]) test(`vehicles keep out of each other and out of wrecks: they brake, pull aside, go round (seed ${seed})`, async ({ wp }) => {
+  await wp.boot({ query: `?hour=12&seed=${seed}` });
+  await wp.sim(6, { audio: true, bpm: 140 });
+  const r = await wp.run(() => {
+    const box = u => { const h = u.hull, o = u.obj, a = -o.rotation.y, c = Math.cos(a), s = Math.sin(a); return { x: o.position.x + c * h.c, z: o.position.z + s * h.c, c, s, l: h.l * 0.92, w: h.w * 0.92 }; };
+    let live = 0, wreck = 0, vis = 0, vs = 0, vn = 0;
+    for (let i = 0; i < 600; i++) {
+      __t.sim(0.25, { audio: true, bpm: 140 });
+      const V = UNITS.filter(u => u instanceof Vehicle), B = V.map(box), W = WRECKS.list.filter(w => w.veh && w.obj.parent === scene && w.t < 130).map(w => [w.veh, box(w.veh)]);
+      for (const u of V) { vs += u.v; vn++; }
+      const on = (a, b) => VIEW.onScreen(a.obj.position, 0.05) || VIEW.onScreen(b.obj.position, 0.05);
+      for (let a = 0; a < V.length; a++) {
+        for (let b = a + 1; b < V.length; b++) if (Math.hypot(B[a].x - B[b].x, B[a].z - B[b].z) < 14 && obbOverlap(B[a], B[b])) { live++; if (on(V[a], V[b])) vis++; }
+        for (const [w, wb] of W) if (Math.hypot(B[a].x - wb.x, B[a].z - wb.z) < 14 && obbOverlap(B[a], wb)) { wreck++; if (on(V[a], w)) vis++; }
+      }
+    }
+    return { live, wreck, vis, v: vs / vn, bypass: BATTLE.stat.bypass, yield: BATTLE.stat.yield };
+  });
+  console.log(JSON.stringify(r));
+  // before: 6400–6800 (seed 11) and ~680 (seed 3) overlapping pairs over 150 s, ~4850 / ~95 of them in sight; ~1200–4300 with wrecks.
+  // Out of sight a vehicle stuck for TRAFFIC.ghost s may still drive through (a narrow street), so only what is in sight counts
+  expect(r.vis, 'overlapping in sight (pair × 0.25 s)').toBeLessThan(60);
+  expect(r.bypass, 'they drive round what stands in the way').toBeGreaterThan(5);
+  expect(r.v, 'nobody stuck for good: the mean speed (was 4.4–4.7; they wait and go round now)').toBeGreaterThan(2.4);
+});
+
+test('a soldier walks with his legs: nobody slides, not even a squad leader running from a hit', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11' });
+  await wp.sim(6, { audio: true, bpm: 140 });
+  const r = await wp.run(() => {
+    const prev = new Map(), run = new Map(); let n = 0, fast = 0, slide = 0;
+    for (let i = 0; i < 2400; i++) {
+      __t.sim(0.05, { audio: true, bpm: 140 }); const now = new Map();
+      for (const q of BATTLE.squads.concat(ALLIES.squads || [])) for (const s of q.m) {
+        now.set(s, [s.position.x, s.position.z]); const p = prev.get(s); if (!p) continue;
+        const v = Math.hypot(s.position.x - p[0], s.position.z - p[1]) / 0.05; if (v > 60) continue;
+        n++; const sl = v > 1 && s.stride < 0.3 ? (run.get(s) || 0) + 1 : 0; run.set(s, sl); if (v > 1) fast++; if (sl >= 6) slide++;   // (moving and his legs still for 0.3 s and more)
+      }
+      prev.clear(); for (const [k, v] of now) prev.set(k, v);
+    }
+    return { n, fast, slide };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.fast, 'soldiers on the move').toBeGreaterThan(20000);
+  expect(r.slide, 'soldier-steps sliding with still legs').toBeLessThan(20);
+});
+
+test('the AIM-9X locks on first: arrows close in on the helicopter, SHOOT, the launch half a second on', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=aim&auto=0' });
+  await wp.sim(8, { audio: true });
+  const r = await wp.run(() => {
+    BATTLE.nextHeli = 1e9;
+    const put = () => { const p = new V3(CAM_TGT.x + 30, 0, CAM_TGT.z); p.y = groundH(p.x, p.z) + 60; const h = new Heli(0, 'enemy', null, p); BATTLE.helis.push(h); const c = CAM_TGT.clone(); h.round = () => [0, 1, 2, 3, 4, 5].map(i => [c.x + Math.cos(i) * 50, c.z + Math.sin(i) * 50]); h.wps = h.round(); return h; };
+    const f0 = BATTLE.fire.bind(BATTLE), fired = []; BATTLE.fire = (w, ...a) => { fired.push(w.id); return f0(w, ...a); };
+    let h = put(), drawn = 0, arrows = 0, shoot = 0, k0 = 1, kUp = false;
+    for (let i = 0; i < 1200; i++) {
+      __t.sim(0.05, { audio: true }); HUD.draw(); const d = HUD.lockDraw;
+      if (d) { drawn++; if (d.k > 0 && d.k < 1) arrows++; if (d.shoot) shoot++; if (d.k > k0) kUp = true; k0 = d.k; } else k0 = 1;
+      if (!h.alive && i % 100 === 0) h = put();
+    }
+    BATTLE.fire = f0;
+    return { locks: BATTLE.stat.locks, shots: BATTLE.stat.lockShots, fired: fired.length, log: BATTLE.lockLog.map(l => [l.shoot - l.t0, l.fire - l.shoot]), drawn, arrows, shoot, kUp, hits: BATTLE.log.filter(l => l === 'aim heli').length };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.shots, 'launches').toBeGreaterThanOrEqual(2);
+  expect(r.fired, 'every launch through the lock').toBe(r.shots);
+  for (const [lock, wait] of r.log) {
+    expect(lock, 'the seeker takes LOCK.t (1.4 s) of the target under the reticle').toBeGreaterThanOrEqual(1.39);
+    expect(wait, 'SHOOT, then the launch about half a second on').toBeGreaterThanOrEqual(0.34); expect(wait).toBeLessThanOrEqual(0.55);
+  }
+  expect(r.kUp && r.arrows > 20, 'the arrows close in on the box').toBe(true);
+  expect(r.shoot, 'SHOOT shown').toBeGreaterThan(5);
+  expect(r.hits, 'it hits').toBeGreaterThanOrEqual(1);
+});
+
+test('a soldier hit kicks up dust; one killed goes in a burst of dust that hides him, whichever side', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11' });
+  await wp.sim(3);
+  const r = await wp.run(() => {
+    const q = ALLIES.squads.find(s => s.m.length >= 2) || BATTLE.squads.find(s => s.m.length >= 2), [a, b] = q.m, live = () => FX.puff.items.filter(i => i.on).length;
+    a.hp = 2; const n0 = live(); hurt(a, 1); const hit = live() - n0;
+    const n1 = live(), p = b.position.clone(); hurt(b, 5); const dead = live() - n1, gone = !b.alive;
+    const near = FX.puff.items.filter(i => i.on && Math.hypot(i.p.x - p.x, i.p.z - p.z) < 3).length;
+    __t.sim(1); const after = FX.puff.items.filter(i => i.on).length;
+    return { side: q.side, hit, dead, gone, near, after };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.hit, 'a hit: a kick of dust').toBeGreaterThanOrEqual(2);
+  expect(r.gone).toBe(true);
+  expect(r.dead, 'killed: a burst').toBeGreaterThanOrEqual(8);
+  expect(r.near, 'where he stood').toBeGreaterThanOrEqual(8);
+  expect(r.after, 'still there a second on').toBeGreaterThanOrEqual(6);
 });

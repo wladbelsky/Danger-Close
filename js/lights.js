@@ -13,6 +13,7 @@
    the vehicle ahead instead), nor is the enemy's base.
    Cold on the thermal sensor: it sees heat, not light. The lit windows are in js/structures.js (WIN_MAT / WIN_DARK).   */
 const LAMP_AT = { tank: [3.4, 1.15, 1.5], apc: [3.3, 0.95, 1.4], car: [2.3, 0.7, 1.0] };   // the lamps: ahead of the centre, to each side, up
+const HELI_NAV = { w: [0, 1.6, 2.6], t: [-7.5, 2.6] };   // a helicopter's navigation lights if its model has none (userData.nav, js/helis.js)
 const LAMP_HALF = 256, LAMP_N = 1024, HMAP_N = 2048;                                                      // the map: metres each way, texels
 const LC_LASER = [1, 0.1, 0.05], LC_HEAD = [1, 0.9, 0.7], LC_STREET = [1, 0.7, 0.36], LC_SEARCH = [0.88, 0.94, 1], LC_YARD = [1, 0.86, 0.62];   // a lamp and its light: one colour
 const BEAM_VS = `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; attribute vec4 iD; uniform vec3 uLampRect; varying vec2 vUv; varying vec4 vCol; varying vec2 vP; varying vec2 vW; varying vec3 vL;
@@ -111,11 +112,11 @@ const LAMPS = {
           this.light(0, fx, fz, u.yaw, len, 15, LC_HEAD, a * 3.2, cut, fx, fz, y + L[2]);
         } else if (u.kind === 'heli') {
           if (u.state === 'pad' || u.state === 'crash') continue;
-          const c = Math.cos(u.yaw), s = Math.sin(u.yaw), y = u.pos.y + 1.6;
-          this.put(u.pos.x + s * 2.6, y, u.pos.z - c * 2.6, 1.4, [1, 0.05, 0.03], 3, k);     // port: red
-          this.put(u.pos.x - s * 2.6, y, u.pos.z + c * 2.6, 1.4, [0.03, 1, 0.12], 3, k);     // starboard: green
+          const c = Math.cos(u.yaw), s = Math.sin(u.yaw), N = u.obj.userData.nav || HELI_NAV, [wx, wy, wz] = N.w;   // (where the model has them: its wingtips and tail)
+          this.put(u.pos.x + c * wx + s * wz, u.pos.y + wy, u.pos.z + s * wx - c * wz, 1.4, [1, 0.05, 0.03], 3, k);     // port: red
+          this.put(u.pos.x + c * wx - s * wz, u.pos.y + wy, u.pos.z + s * wx + c * wz, 1.4, [0.03, 1, 0.12], 3, k);     // starboard: green
           u.strobe = u.strobe == null ? Math.random() * 1.1 : (u.strobe + dt) % 1.1;
-          if (u.strobe < 0.09) this.put(u.pos.x - c * 7.5, y + 1, u.pos.z - s * 7.5, 2.2, [1, 1, 1], 2.5, k);   // the tail strobe
+          if (u.strobe < 0.09) this.put(u.pos.x + c * N.t[0], u.pos.y + N.t[1], u.pos.z + s * N.t[0], 2.2, [1, 1, 1], 2.5, k);   // the tail strobe
         } else if (u.kind === 'struct' && BATTLE.base) {                             // the enemy's base
           if (u.type === 'bunker' || u.type === 'mast') this.search(u.pos.x, u.pos.z, Math.atan2(u.pos.z - BATTLE.base.z, u.pos.x - BATTLE.base.x), u.pos.x * 0.37, k, u.type === 'mast' ? 14 : 3.2);   // (outwards from its bunkers and its mast)
           else if (u.type === 'hq' || u.type === 'tent' || u.type === 'fuel' || u.type === 'ammo') { const q = BASE_LAMP[u.type], ry = u.obj.rotation.y + (u.obj.parent ? u.obj.parent.rotation.y : 0), cy = Math.cos(ry), sy = Math.sin(ry); this.pole(u.pos.x + q[0] * cy + q[1] * sy, u.pos.y + 4.85, u.pos.z - q[0] * sy + q[1] * cy, LC_YARD, 13, k * 2.2); }     // (a lamp over each tent and dump: out when it is destroyed; turned as the structure is in the world, the base's own turn included)

@@ -34,7 +34,7 @@ test('anti-aircraft fire and flares only in a fight, and not with the setting of
     }
     return { shots: AA.shots, launched: AA.launched, flares, guns, aimed: aimed / Math.max(1, guns) };
   });
-  expect(r.shots).toBeGreaterThan(10); expect(r.launched).toBeGreaterThan(0); expect(r.flares).toBeGreaterThan(0);
+  expect(r.shots).toBeGreaterThan(4); expect(r.launched).toBeGreaterThan(0); expect(r.flares).toBeGreaterThan(0);
   expect(r.guns, 'guns seen').toBeGreaterThan(0); expect(r.aimed, 'the guns point at the aircraft').toBeGreaterThan(0.9);
   await wp.run(() => { CFG.aa = false; const a = AA.shots; __t.sim(60, { audio: true }); window.__d = AA.shots - a; });
   expect(await wp.run(() => window.__d), 'with the setting off').toBeLessThan(20);

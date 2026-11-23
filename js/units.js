@@ -16,7 +16,7 @@ const UNIT_HP = { inf: 1, car: 3, apc: 7, tank: 14, heli: 6, struct: 8 };
 function enlist(u, side, kind, pos, ah) { u.side = side; u.kind = kind; u.pos = pos; u.hp = UNIT_HP[kind]; u.alive = true; u.tgt = null; u.cool = rand(1, 4); u.think = rand(0, 1); u.ah = ah; u.retreat = false; UNITS.push(u); return u; }
 function delist(u) { u.alive = false; u.tgt = null; const i = UNITS.indexOf(u); if (i >= 0) UNITS.splice(i, 1); }
 function untrack(obj) { const k = TRACKS.findIndex(t => t.obj === obj); if (k >= 0) TRACKS.splice(k, 1); }
-function hurt(u, d) { if (!u.alive || d <= 0) return; u.hp -= d; if (u.hp <= 0) u.die(); else if (u.onHit) u.onHit(); }
+function hurt(u, d) { if (!u.alive || d <= 0) return; u.hp -= d; if (u.hp <= 0) u.die(); else if (u.onHit) u.onHit(); else if (u.kind === 'inf') hitPuff(u.position); }   // (a soldier hit: dust where it struck; killed: puffDust)
 /* a model of a type: built once, cloned after that (clones share the geometry and the materials: nothing to dispose) */
 const PROTO = {};
 function unitModel(side, type, variant) { const b = UNIT_TYPES[side][type], fn = Array.isArray(b) ? b[variant || 0] : b; return (PROTO[fn.name] || (PROTO[fn.name] = fn())).clone(); }
@@ -111,22 +111,120 @@ const WEAVE_RATE = 2, WEAVE_ACC = 3, COAST = { tank: 4, apc: 3, car: 2.5 };
 /* every vehicle (not only a column's leader) takes a bend no faster than this sideways acceleration allows (m/s per second): it
    slows for the bend over the next BEND_LOOK metres of its own lane */
 const BEND_ACC = 3, BEND_LOOK = 16;
+/* traffic: every vehicle looks TRAFFIC.look m ahead for another vehicle (any column, either side) or a wreck in its way: it brakes
+   to stop `gap` m short of it (its hull's half length and the other's apart), an oncoming one makes both pull aside (`po`, metres
+   to the right of their track, even on a single track: onto the verge), and one standing in the way (a wreck, a halted column)
+   for `wait` s is driven round, up to `side` m aside, where no building or water is. Stuck nose to nose for `ghost` s: it gives up
+   looking at that one (a narrow street between houses) */
+const TRAFFIC = { look: 35, every: 0.15, gap: 2, brake: 4, side: 5, rate: 1.6, wait: 1.5, head: 4, ghost: 8 };
+/* do two boxes { x, z (centre), c, s (cos, sin of the heading), l, w (half length, half width) } overlap? (separating axes) */
+function obbOverlap(A, B) {
+  for (const [ax, az] of [[A.c, A.s], [-A.s, A.c], [B.c, B.s], [-B.s, B.c]]) {
+    const pa = Math.abs(A.c * ax + A.s * az) * A.l + Math.abs(-A.s * ax + A.c * az) * A.w, pb = Math.abs(B.c * ax + B.s * az) * B.l + Math.abs(-B.s * ax + B.c * az) * B.w;
+    if (Math.abs((B.x - A.x) * ax + (B.z - A.z) * az) > pa + pb) return false;
+  }
+  return true;
+}
+const HULL = {};   // half length, half width and the centre's offset along x of each model's hull (turret, gun and roof MG left out), metres
+function hullOf(side, type) {
+  const k = side + type; if (HULL[k]) return HULL[k];
+  const o = unitModel(side, type), b = new THREE.Box3(); o.updateMatrixWorld(true);
+  o.traverse(m => { if (!m.isMesh) return; for (let p = m; p; p = p.parent) if (p.name === 'turret' || p.name === 'mg') return; b.expandByObject(m); });
+  return (HULL[k] = { l: (b.max.x - b.min.x) / 2 * ARMOR_SCALE, w: (b.max.z - b.min.z) / 2 * ARMOR_SCALE, c: (b.max.x + b.min.x) / 2 * ARMOR_SCALE });
+}
 class Vehicle {
   constructor(type, side) {
     this.type = type; this.obj = unitModel(side, type); this.obj.scale.setScalar(ARMOR_SCALE); scene.add(this.obj);
     this.turret = this.obj.getObjectByName('turret'); this.mg = this.obj.getObjectByName('mg'); this.aaUntil = 0; this.mgOff = 9; this.ph = Math.random() * TAU;   // (mg: the machine gun on the roof, raised at the aircraft while it fires up: AA in js/weather.js)
     this.path = null; this.s = 0; this.v = 0; this.yaw = 0; this.laneK = 1; this.lv = 0; this.vmax = UNIT_SPEED[type]; this.col = null; this.troops = type === 'apc' ? randi(4, 6) : 0;   // (troops: the infantry it carries)
+    this.hull = hullOf(side, type); this.obj.userData.veh = this; this.po = 0; this.pov = 0; this.tk = Math.random() * TRAFFIC.every; this.blk = null; this.blkT = 0; this.byp = null; this.ghosts = null;   // (po: aside of its track, m; blk: what is in its way)
     enlist(this, side, type, this.obj.position, type === 'car' ? 1.3 : 1.9);
     TRACKS.push({ obj: this.obj, side, inf: false, h: type === 'car' ? 1.5 : 2.2 });
   }
   setPath(path, s, snap) { this.path = path; this.s = s; if (snap) { this.pose(0, true); } }
   /* towards the target speed (a gentle start, firmer brakes), then along the path */
-  drive(dt, vt) {
+  drive(dt, vt, smax, va) {   // (smax: no further than this along the path, va: then no faster than this; it never goes back)
     const turn = Math.abs(angleWrap(this.dirAt(this.s + 1) - this.yaw));
     if (turn > 0.6) vt = Math.min(vt, 1.2);                                  // (turning round first: slowly, nearly on the spot)
     else vt = Math.min(vt, Math.max(3, Math.sqrt(BEND_ACC / Math.max(this.bend(), 1e-3))));
-    this.v += clamp(vt - this.v, -5 * dt, 2.5 * dt); this.s = Math.min(this.path.L, this.s + this.v * dt);
-    this.pose(dt, false);
+    vt = this.traffic(dt, vt);
+    this.v += clamp(vt - this.v, -5 * dt, 2.5 * dt); let s = Math.min(this.path.L, this.s + this.v * dt);
+    if (smax !== undefined && s > smax) { s = Math.max(this.s, smax); this.v = Math.min(this.v, va); }
+    this.step(dt, s);
+  }
+  /* on to s; a move that would take its hull further into another's (a vehicle or a wreck) is not made: it stands */
+  step(dt, s) {
+    const s0 = this.s, po = this.po, k = this.laneK, lv = this.lv, yaw = this.yaw, x0 = this.pos.x, z0 = this.pos.z;
+    this.s = s; this.pose(dt, false);
+    if ((s !== s0 || this.po !== po) && this.bumps(x0, z0)) { this.s = s0; this.po = po; this.pov = 0; this.laneK = k; this.lv = lv; this.yaw = yaw; this.v = 0; this.pose(0, false); this.bumpT = T; this.bumpO = this._bo; BATTLE.stat.bump++; }
+  }
+  bumps(x0, z0) {
+    const H = this.hull, c = Math.cos(this.yaw), sn = Math.sin(this.yaw), A = { x: this.pos.x + c * H.c, z: this.pos.z + sn * H.c, c, s: sn, l: H.l, w: H.w };
+    const test = (u, p) => {
+      const h = u.hull, dx = p.x - this.pos.x, dz = p.z - this.pos.z; if (dx * dx + dz * dz > (H.l + h.l + 1) ** 2) return false;
+      const oc = Math.cos(u.yaw), os = Math.sin(u.yaw), B = { x: p.x + oc * h.c, z: p.z + os * h.c, c: oc, s: os, l: h.l, w: h.w };
+      return obbOverlap(A, B) && Math.hypot(B.x - A.x, B.z - A.z) < Math.hypot(B.x - x0 - c * H.c, B.z - z0 - sn * H.c) - 1e-4;   // (only a move that brings them closer)
+    };
+    for (const u of UNITS) if (u !== this && u instanceof Vehicle && !(this.ghosts && this.ghosts.has(u)) && test(u, u.pos)) { this._bo = u; return true; }
+    for (const w of WRECKS.list) { const u = w.veh; if (u && u !== this && !(this.ghosts && this.ghosts.has(u)) && w.obj.parent === scene && w.obj.position.y > w.y0 - 2 && test(u, u.obj.position)) { this._bo = u; return true; } }
+    return false;
+  }
+  /* what is in its way ahead (TRAFFIC): { o, al: metres ahead, lat: metres to its right, need: the sideways clearance, hl: its half
+     length, still, head: oncoming } or null */
+  blocker() {
+    const c = Math.cos(this.yaw), s = Math.sin(this.yaw), H = this.hull, x0 = this.pos.x + c * H.c, z0 = this.pos.z + s * H.c; let best = null;
+    const look = (o, ox, oz, oyaw, h, still) => {
+      const dx = ox - x0, dz = oz - z0, al = dx * c + dz * s; if (al <= 0 || al > TRAFFIC.look) return;
+      const lat = -dx * s + dz * c, rel = Math.abs(angleWrap(oyaw - this.yaw)), need = H.w + (rel > 0.5 && rel < 2.6 ? h.l : h.w) + 0.5;   // (crossing: its length is across our way)
+      if (Math.abs(lat) > need + 2.5 || (best && best.al < al)) return;
+      best = { o, al, lat, need, hl: rel > 0.5 && rel < 2.6 ? h.w : h.l, still, head: !still && rel > 2.1 };
+    };
+    for (const u of UNITS) { if (u === this || !(u instanceof Vehicle) || (u.col && u.col === this.col) || (this.ghosts && this.ghosts.has(u))) continue; const h = u.hull, a = u.yaw; look(u, u.pos.x + Math.cos(a) * h.c, u.pos.z + Math.sin(a) * h.c, a, h, u.v < 0.5); }
+    for (const w of WRECKS.list) { const u = w.veh; if (!u || u === this || (this.ghosts && this.ghosts.has(u)) || w.obj.parent !== scene || w.obj.position.y < w.y0 - 2) continue; look(u, u.obj.position.x, u.obj.position.z, u.yaw, u.hull, !w.roll); }
+    return best;
+  }
+  /* the target speed with what is ahead in mind; steers it aside (po) round what stands in its way or past one coming the other way */
+  traffic(dt, vt) {
+    if ((this.tk -= dt) <= 0) { this.tk = TRAFFIC.every; this.blk = this.blocker(); }
+    const b = this.blk, H = this.hull, c = Math.cos(this.yaw), sn = Math.sin(this.yaw); let want = 0;
+    if (this.byp) {   // driving round something: until it is behind
+      const o = this.byp.o, op = o.obj.position;
+      if ((op.x - this.pos.x) * c + (op.z - this.pos.z) * sn < -(H.l + o.hull.l + 1)) this.byp = null; else { want = this.byp.po; vt = Math.min(vt, 4); }
+    }
+    if (b) {
+      const inWay = Math.abs(b.lat) < b.need, side = b.lat >= 0 ? -1 : 1, round = this.byp && this.byp.o === b.o;   // (side: aside away from it)
+      if (round) { this.byp.po = want = clamp(this.po + b.lat + this.byp.d * (b.need + 0.4), -TRAFFIC.side, TRAFFIC.side); }   // (round it: as far aside as it takes, measured again as it goes; a bend turns it)
+      if (b.head) { want = this.po + side * Math.max(0, b.need - Math.abs(b.lat) + 0.4) * 0.6; vt = Math.min(vt, TRAFFIC.head); }   // (both pull aside, each a share of it)
+      else if (inWay && b.still && !round && this.path.L - this.s > b.al + 12) {   // (a new one in its way: round that one now)
+        const mates = this.col && this.col.u.some(v => v.byp && v.byp.o === b.o);   // (a wreck, or the one ahead of it in the column already going round: at once)
+        this.blkT = b.o.dead || mates ? TRAFFIC.wait : this.blkT + dt;
+        if (this.blkT >= TRAFFIC.wait) for (const d of [side, -side]) {
+          const po = this.po + d * ((d === side ? b.need - Math.abs(b.lat) : b.need + Math.abs(b.lat)) + 0.4);
+          if (Math.abs(po) <= TRAFFIC.side && this.clear(po, b.al + b.hl + 6)) { this.byp = { o: b.o, po, d }; want = po; BATTLE.stat.bypass++; break; }
+        }
+      }
+      if (inWay) {
+        const gap = H.l + b.hl + (round ? 0.8 : b.still ? TRAFFIC.gap + 8 : TRAFFIC.gap);   // (short of one standing: room to go round it)
+        vt = Math.min(vt, b.al > gap + 1 && round ? Math.max(1.5, Math.sqrt(2 * TRAFFIC.brake * (b.al - gap))) : Math.sqrt(2 * TRAFFIC.brake * Math.max(0, b.al - gap)));   // (going round it: on at a crawl, steering out)
+        if (vt < 0.5) { this.stuckT = (this.stuckT || 0) + dt; BATTLE.stat.yield += dt; } else this.stuckT = 0;
+        if (this.stuckT > TRAFFIC.ghost && !VIEW.onScreen(this.pos, 0.5)) { (this.ghosts || (this.ghosts = new Set())).add(b.o); this.stuckT = 0; this.blk = null; BATTLE.stat.ghost++; }   // (no way past: it stops looking at that one)
+      } else this.stuckT = 0;
+    } else { this.blkT = 0; this.stuckT = 0; }
+    if (!this.byp && !(b && b.head)) want = 0;
+    want = clamp(want, -TRAFFIC.side, TRAFFIC.side);
+    const r = Math.min(TRAFFIC.rate, this.v * 0.6) + (this.v > 0.3 ? 0.1 : 0), pv = clamp(want - this.po, -r, r);   // (aside only as it rolls on: no crabbing)
+    this.pov += clamp(pv - this.pov, -2 * dt, 2 * dt); this.po += this.pov * dt;   // (its rate aside eased at 2 m/s per second: no jerk)
+    if (this.ghosts && Math.random() < dt * 0.05) this.ghosts = null;
+    return vt;
+  }
+  /* is the way `po` m aside clear of buildings and water for d m ahead (and on a bridge, does it stay on the deck)? */
+  clear(po, d) {
+    const P = this.path; if (this.pos.y > groundH(this.pos.x, this.pos.z) + 0.3) return Math.abs(po) < 0.8;
+    for (let k = 0; k <= d; k += 3) {
+      if (this.s + k > P.L) break; P.at(this.s + k, this.laneK, _va); const h = this.dirAt(this.s + k, this.laneK), x = _va.x - Math.sin(h) * po, z = _va.z + Math.cos(h) * po;
+      for (const e of [-1, 1]) { const ex = x - Math.sin(h) * e * this.hull.w, ez = z + Math.cos(h) * e * this.hull.w; if ((occAt(ex, ez) & (OCC_BUILD | OCC_WATER)) || waterAt(ex, ez) || Math.abs(ex) > MAP_HALF - 8 || Math.abs(ez) > MAP_HALF - 8) return false; }
+    }
+    return true;
   }
   /* the sharpest curvature (radians a metre) of its lane over the next BEND_LOOK metres */
   bend() {
@@ -145,9 +243,12 @@ class Vehicle {
     if (snap) { this.laneK = 1; this.lv = 0; }
     else if (this.dead) this.lane(dt, this.laneT, 1);                       // (no hand on the wheel: towards a kerb)
     else this.lane(dt, weave ? this.laneT : 1, weave ? WEAVE_RATE : 0.7);   // (swerving across the road, or back into its lane)
-    let yt = this.dirAt(this.s, this.laneK); if (!snap) yt += Math.atan2(this.lv * P.wAt(this.s), Math.max(this.v, 2));   // (the nose along its own track: into the swerve)
+    if (snap) { this.po = this.pov = 0; }
+    const hd = this.dirAt(this.s, this.laneK); let yt = hd; if (!snap) yt += Math.atan2(this.lv * P.wAt(this.s) + this.pov, Math.max(this.v, 2));   // (the nose along its own track: into the swerve, or aside)
     this.yaw = snap ? yt : approachAngle(this.yaw, yt, dt * (weave ? 2.5 : 1.8));
-    P.at(this.s, this.laneK, _vc); this.obj.position.copy(_vc);
+    P.at(this.s, this.laneK, _vc);
+    if (this.po) { const deck = _vc.y > groundH(_vc.x, _vc.z) + 0.3; _vc.x -= Math.sin(hd) * this.po; _vc.z += Math.cos(hd) * this.po; if (!deck) _vc.y = groundH(_vc.x, _vc.z); }
+    this.obj.position.copy(_vc);
     const c = Math.cos(this.yaw), s = Math.sin(this.yaw), f = groundH(_vc.x + c * 2.5, _vc.z + s * 2.5), b = groundH(_vc.x - c * 2.5, _vc.z - s * 2.5);
     const pitch = _vc.y > groundH(_vc.x, _vc.z) + 0.3 ? 0 : Math.atan2(f - b, 5);   // (on a bridge deck: level)
     this.obj.rotation.set(0, -this.yaw, pitch, 'YZX');
@@ -173,9 +274,9 @@ class Vehicle {
   }
   /* a wreck still rolling: slower and slower along the road; false once it stands */
   coast(dt) {
-    this.v = Math.max(0, this.v - (COAST[this.type] || 4) * dt); this.s = Math.min(this.path.L, this.s + this.v * dt);
+    this.v = Math.max(0, this.v - (COAST[this.type] || 4) * dt); this.step(dt, Math.min(this.path.L, this.s + this.v * dt));
     if (this.s >= this.path.L) this.v = 0;
-    this.pose(dt, false); return this.v > 0;
+    return this.v > 0;
   }
   /* taken away (out of sight) */
   remove() { this.gone(); scene.remove(this.obj); }
@@ -221,8 +322,7 @@ class Column {
     lead.drive(dt, vt);
     for (let i = 1; i < this.u.length; i++) {
       const v = this.u[i], ahead = this.u[i - 1], err = (ahead.s - GAP) - v.s;
-      v.drive(dt, go || err > 0.5 ? clamp(ahead.v + err * 0.6, 0, vmax * 1.25) : 0);
-      if (v.s > ahead.s - GAP * 0.6) v.s = ahead.s - GAP * 0.6;          // (never into the one ahead)
+      v.drive(dt, go || err > 0.5 ? clamp(ahead.v + err * 0.6, 0, vmax * 1.25) : 0, ahead.s - GAP * 0.6, ahead.v);   // (never into the one ahead)
     }
   }
 }
@@ -342,17 +442,25 @@ class Squad {
   /* running from the camera's point, each for himself, round what is in the way; taken away once out of sight */
   run(dt) {
     for (const s of this.m.slice()) {
-      const p = s.position, away = Math.atan2(p.z - CAM_TGT.z, p.x - CAM_TGT.x);
+      const p = s.position, away = Math.atan2(p.z - CAM_TGT.z, p.x - CAM_TGT.x); this.mark(s);
       for (const da of [0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9]) { const a = away + da, x = p.x + Math.cos(a) * 3, z = p.z + Math.sin(a) * 3; if ((occAt(x, z) & (OCC_BUILD | OCC_WATER)) || waterAt(x, z)) continue; p.x += Math.cos(a) * 3.4 * dt; p.z += Math.sin(a) * 3.4 * dt; s.a = approachAngle(s.a, a, dt * 6); break; }
-      p.y = groundH(p.x, p.z); s.phase += 3.4 * dt * 3.4; s.stride += (1 - s.stride) * Math.min(1, dt * 5);
+      p.y = groundH(p.x, p.z); this.legs(s, dt);
       if (!VIEW.onScreen(p, 0.2) || Math.abs(p.x) > MAP_HALF - 6 || Math.abs(p.z) > MAP_HALF - 6) { BATTLE.seen('out', p); this.lose(s); }
     }
+  }
+  /* the legs follow what he really walked this step (from mark() to now), not what a branch says: nobody slides. A jump (out of a
+     door, a bail) is no step; quicker into a run */
+  mark(s) { s.px = s.position.x; s.pz = s.position.z; }
+  legs(s, dt) {
+    const d = s.px === undefined ? 0 : Math.hypot(s.position.x - s.px, s.position.z - s.pz), mv = d < 3 ? d : 0; s.moved = mv;
+    s.phase += mv * 3.4; s.stride += ((mv > 0.001 ? 1 : 0) - s.stride) * Math.min(1, dt * (mv > 2 * dt ? 12 : 5));
   }
   /* where the trail was at distance d (members walk it: never through a wall the leader went round) */
   trailAt(d) { const T_ = this.trail; let i = T_.length - 1; while (i > 0 && T_[i - 1][2] > d) i--; if (i === 0) return T_[0]; const a = T_[i - 1], b = T_[i], t = clamp((d - a[2]) / (b[2] - a[2] || 1), 0, 1); return [lerp(a[0], b[0], t), lerp(a[1], b[1], t)]; }
   update(dt) {
     const L = this.m[0]; if (!L) return;
     if (this.flee) { this.run(dt); return; }
+    for (const s of this.m) this.mark(s);
     let step = 0, fight = T > this.go && this.m.some(s => s.tgt); const k = T < this.go ? 2 : 1, gap = this.gap * (T < (this.spreadUntil || 0) ? 2 : 1);   // (under fire: twice as far apart)
     const run = s => s.scatter && T < s.scatter.until;   // (running from a hit: BATTLE.scatter)
     // the allies close in on what they shoot at (to SQUAD_CLOSE m, while the way is clear), firing as they go: into the fight the
@@ -396,8 +504,7 @@ class Squad {
         const [tx, tz] = this.trailAt(this.D - i * gap), dx = tx - s.position.x, dz = tz - s.position.z, d = Math.hypot(dx, dz);
         if (d > 0.05) { const mv = Math.min(d, 1.9 * k * dt); s.position.x += dx / d * mv; s.position.z += dz / d * mv; s.a = approachAngle(s.a, Math.atan2(dz, dx), dt * 4); s.moved = mv; } else s.moved = 0;
       } else s.moved = step;
-      s.position.y = groundH(s.position.x, s.position.z);
-      s.phase += (s.moved || 0) * 3.4; s.stride += ((s.moved > 0.001 ? 1 : 0) - s.stride) * Math.min(1, dt * 5);
+      s.position.y = groundH(s.position.x, s.position.z); this.legs(s, dt);
     });
   }
 }

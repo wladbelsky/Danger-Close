@@ -122,6 +122,31 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   reticle any more (`onReticle` was also true after 5 s off it): a
   target the sensor cannot bring under it in `OFF_SWITCH` 3 s is given up for the one nearest the reticle (`nearestTo`,
   `stat.refocus`). Measured (seed 11, four guns, 120 s): 99 % of rounds land within 0.18 half heights of the centre (was 0.23).
+- **Traffic; legs; helicopters; the AIM-9X's lock; dust on a soldier hit**: only a column kept its own vehicles apart; columns
+  drove through each other, through wrecks and onto one another at a shared end node (some 4850 pair-samples in sight in
+  150 s, seed 11). Now each vehicle (`Vehicle.traffic`, `TRAFFIC`) looks `look` m ahead every 0.15 s (`blocker()`: live
+  vehicles of any column and side, vehicle wrecks: `WRECKS` entry `veh`; hulls from the models' boxes, `hullOf`, `HULL`) and
+  brakes to stop short of what is in its way; one coming the other way: both pull aside (`po`, metres to the right of their
+  track, eased at 2 m/s per second, only as it rolls on), even on a single track; a wreck, or one standing in the way for
+  `wait` s with road beyond it: it drives round it (`byp`, the side measured again as it goes, `clear()`: no building or water,
+  on a bridge at most 0.8 m). A move that would take a hull further into another's is not made (`step`, `bumps`, `obbOverlap`,
+  `stat.bump`); stuck `ghost` s out of sight, it stops looking at that one. A follower's ceiling in its column is applied before
+  it is posed and never sends it back (`drive(dt, vt, smax, va)`: none stacked at a path's start). A column is not spawned onto a
+  road with a vehicle or wreck on it (`roadFree`). In sight: 0–11 pair-samples in 150 s (seeds 11, 3); the mean speed 3–3.8 m/s
+  (was 4.4–4.7: they wait and go round). A soldier's legs follow what he really walked in the step (`Squad.mark` / `legs`;
+  a squad leader running from a hit during a fight slid with still legs), quicker into a run, none on the spot when blocked.
+  The helicopters rebuilt to the vehicles' detail (1500–2600 triangles, were 400–700): framed glass (plain, merged: one draw
+  call fewer), tapering blades with grips, pitch links, swashplate, real tail rotor blades (the Apache's scissor), intakes,
+  hot exhaust mouths, warm gearbox and hub, sensors (TADS / PNVS, Longbow, the Ka-52's ball and radome), guns, pylons with
+  rocket pods, Hellfires, missile rails, wheels under the Mi-24 and the Ka-52 (they floated 0.7 m up), antennas, flare
+  dispensers; `userData.nav` puts the navigation lights at each model's wingtips and tail (`HELI_NAV` the fallback). The AIM-9X
+  fires only through its lock (`LOCK`, `BATTLE.lock`, `lockStep`, `launch`): a helicopter held under the reticle `LOCK.t` 1.4 s
+  (off it the lock slips back, gone after `lose` s), then SHOOT and the launch `fire` 0.5 s on, or on a strong beat in
+  `win`; ammunition only at the launch; no auto-switch mid-lock (`stat.locks`, `lockShots`, `lockLog`). The HUD draws four
+  arrows closing in on the target's box, the box closed, SHOOT blinking over it (`HUD.lockOn`, `lockDraw`). Every hit on a
+  soldier, either side, any source, kicks up dust (`hurt` → `hitPuff`, at most `PUFF_MAX` a step); a death a burst of 8
+  lighter sprites and a wisp of smoke that hides him as he goes (`puffDust`), in a pool of its own (`FX.puff`). Sheets:
+  helis-close.png, aim-lock.png.
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -171,14 +196,14 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `js/sensor.js` | `SENSOR` (modes, render target, post shader), `SU` shared uniforms, `sensorHook` / `sensorMat` (the heat term) |
 | `js/models.js` | mesh helpers (`M`, `HOT`, `box`, `cyl`, `taper`, `prism`, `strut`…), `mergeStatic` (bakes `aHeat`), `disposeTree`, seasonal materials |
 | `js/armor.js` | vehicle models facing +x (×`ARMOR_SCALE`): T-90, BTR (enemy), Abrams, Bradley, Humvee (ally), technical (enemy car), each with a roof machine gun `mg` (not the Bradley); `WRECK_MATS`, `toWreck` |
-| `js/helis.js` | helicopter models (FAB airframes, ×`HELI_SCALE` = 10): AH-64, UH-60 (ally), Mi-24, Ka-52 (enemy); rotors named `rotor` / `rotor2` / `trotor` |
+| `js/helis.js` | helicopter models (FAB airframes, ×`HELI_SCALE` = 10): AH-64, UH-60 (ally), Mi-24, Ka-52 (enemy), all on wheels; rotors named `rotor` / `rotor2` / `trotor`; `userData.nav`: their navigation lights |
 | `js/mapgen.js` | `MAP` (seeded heights and masks on a 4 m grid, built as a generator run in slices), `vnoise`, `groundH` (exactly the mesh's triangles), `groundN` |
 | `js/layout.js` | `LAYOUT`: outposts (`OP_W`×`OP_D` walled compounds beside a country road: parts, gate, inner drive, pad), lakes, the river, towns, the railway, roads (A* on a 16 m grid, profiles, carving into `MAP.h`), streets, building lots, the station, farms, tracks, fields; the occupancy grid `OCC` (2 m cells, `OCC_*` flags: `occAt`), `MAP.water` / `MAP.wl` (`waterAt`, `waterLevelAt`), the land-use canvas (fields as premultiplied rgb(coverage, row angle, crop)) |
 | `js/terrain.js` | `TERRAIN`: ground chunks (16×16 of 128 m), the ground material (mask + tiled detail in world space, `GROUND_PAL` per season), vegetation (one InstancedMesh per kind and chunk; roles fixed per seed, shapes per season) |
 | `js/structures.js` | `STRUCT`: water (lakes, river), road / rail ribbons draped on the carved ground (decal materials: no depth write, polygon offset, renderOrder), bridges, the station, buildings (`BUILDERS`) merged per town / farm |
 | `js/effects.js` | `Tracers`, `SpriteFX`, `Scorch`, `blast`, missiles in flight (`StepPool`, `Bodies`, `Plumes`, `missileFx`, `MISSILE_LOOK`) |
 | `js/infantry.js` | `INF`: every soldier in two InstancedMeshes (bodies; legs swinging), instance colour = side; a soldier is its own HUD track |
-| `js/units.js` | `UNIT_TYPES`, `ROADNET` (a node per road sample, ends joined to other roads, A*), `Path` (lane to the right; the line averaged over `PATH_SMOOTH`), `Vehicle` (`bend()` slows it for its own bend; `coast` rolls a wreck on), `Column` (leader + gap; `follow` turns round on a reversed path), `Heli` (pad → up → fly a round → home → down), `Squad` (file along the leader's trail; `flee`), `walkable` / `patrolLoop`, `ALLIES` (a garrison per outpost; sorties to the enemy base in a fight, losses replaced out of sight); combatants: `UNITS`, `enlist` / `delist` / `hurt`, `unitModel` (a prototype per model, cloned: no geometry per spawn), `Column.reroute` (from where it stands; the rear leads if the way goes back) |
+| `js/units.js` | `UNIT_TYPES`, `ROADNET` (a node per road sample, ends joined to other roads, A*), `Path` (lane to the right; the line averaged over `PATH_SMOOTH`), `Vehicle` (`bend()` slows it for its own bend; `coast` rolls a wreck on; `traffic` / `blocker` / `bumps`: keeps out of other vehicles and wrecks), `Column` (leader + gap; `follow` turns round on a reversed path), `Heli` (pad → up → fly a round → home → down), `Squad` (file along the leader's trail; `flee`), `walkable` / `patrolLoop`, `ALLIES` (a garrison per outpost; sorties to the enemy base in a fight, losses replaced out of sight); combatants: `UNITS`, `enlist` / `delist` / `hurt`, `unitModel` (a prototype per model, cloned: no geometry per spawn), `Column.reroute` (from where it stands; the rear leads if the way goes back) |
 | `js/weapons.js` | `WEAPONS` (name, zoom factor, reticle, `hits` = the kinds it may hit, `band` = the beat that fires it, `use`, cosmetic rounds / magazine / reload), `ARMS` (the selected weapon, ammunition state) |
 | `js/lights.js` | `LAMPS`: the lamps are additive sprites (one pool refilled every frame); their light is a **map** drawn from above into one 2048² texture round `CAM_TGT` (`LAMP_HALF` m each way, `LAMPS.draw()` from `SENSOR.render`), which every Phong material adds as albedo × map at its world position (`sensorHook`: `uLampMap`, `uLampRect`, `uCamW`). Headlights (a cone, cut at the vehicle ahead), helicopter navigation lights, searchlights on the outposts' towers and the enemy base's bunkers / mast, yard lamps (`OP_LAMPS`, a lamp over each enemy tent / dump), street lamps along paved roads (`LAYOUT.lamps`, poles built in `structures.js`). On from dusk (the laser's red glow at `BATTLE.lasHit`: day and night); nothing on the thermal sensor |
 | `js/guns.js` | `GUNS`: the barrels of the 105 mm and the railgun (each while enabled; two sit side by side along the fuselage, `GUN_MOUNTS`) at the bottom right. A scene of its own with a 40° lens, drawn into `SENSOR.rt` after the world over a cleared depth (`GUNS.render` from `SENSOR.render`), so the post pass treats it like the rest. Its world is fixed to the aircraft (the view at the orbit's centre `CAM_CTR`); its lens turns as the sensor slews off the centre, so looking down lifts the barrels, far off they leave the frame. Lit by the sun / moon and sky turned into that frame; its materials skip the lamps' map (`userData.noLamp`, `customProgramCacheKey 'gun'`). On every shot (`BATTLE.fire` → `GUNS.shot`) recoil, a flash with a point light, gases from the brake; the railgun's slot flashes and glows as it recharges; barrels heat up per shot (thermal). `GUNS.muzzleAt` puts a shot's start on the line of sight through the muzzle on the screen (`BATTLE.muzzle`), so tracers leave the barrel; the guns with no barrel drawn start theirs through a mount just outside the frame's right edge (`GUN_SIDE`, `GUNS.sideAt`, 32 m out: `GUN_SIDE_D`). Programs compiled at start (`GUNS.warm`) |
@@ -193,7 +218,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=78`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=79`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
