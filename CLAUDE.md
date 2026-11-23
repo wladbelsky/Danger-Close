@@ -117,8 +117,9 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   unit prototypes' shared ones.
 - **The reticle stays on the fire**: a gun's burst goes where the sensor points: the point at the trigger (the target, led,
   or `at`) is kept as an offset from `GUNSHIP.look`, so later rounds follow the reticle instead of homing on a soldier running
-  off under it (missiles still fly to their target). `velOf` leads a soldier running from a hit (`SCATTER.v` towards his
-  spot), so the sensor keeps up with him. No shot off the reticle any more (`onReticle` was also true after 5 s off it): a
+  off under it (missiles still fly to their target; once a transit starts, the rest stay on the trigger's point). `velOf`
+  leads a soldier running from a hit (`SCATTER.v` towards his spot), so the sensor keeps up with him. No shot off the
+  reticle any more (`onReticle` was also true after 5 s off it): a
   target the sensor cannot bring under it in `OFF_SWITCH` 3 s is given up for the one nearest the reticle (`nearestTo`,
   `stat.refocus`). Measured (seed 11, four guns, 120 s): 99 % of rounds land within 0.18 half heights of the centre (was 0.23).
 
@@ -192,7 +193,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=77`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=78`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

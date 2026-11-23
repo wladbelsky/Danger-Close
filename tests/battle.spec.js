@@ -349,8 +349,10 @@ test('the guns fire only at what is under the reticle, and a burst follows the r
   await wp.sim(6, { audio: true, bpm: 140 });
   const r = await wp.run(() => {
     const off = [], hit = [], f0 = BATTLE.fire.bind(BATTLE), s0 = BATTLE.strike.bind(BATTLE); let led = 0;
-    BATTLE.fire = (w, t, st, dk, at) => { if (!at && t) { const n = VIEW.ndc(t.pos); off.push(Math.hypot(n.x * camera.aspect, n.y)); } return f0(w, t, st, dk, at); };
-    BATTLE.strike = (p, r, d, w, air) => { if (!air) { const n = VIEW.ndc(p); hit.push(Math.hypot(n.x * camera.aspect, n.y)); } return s0(p, r, d, w, air); };
+    // from the reticle, as BATTLE.onAim measures it: at the map's edge the frame stops short of the sensor's point, which counts then
+    const aimD = p => { const n = VIEW.ndc(p), ax = n.x * camera.aspect, ay = n.y, d = Math.hypot(ax, ay); if (Math.hypot(GUNSHIP.look.x - CAM_TGT.x, GUNSHIP.look.z - CAM_TGT.z) < 0.5) return d; const m = VIEW.ndc(GUNSHIP.look); return Math.min(d, Math.hypot(ax - m.x * camera.aspect, ay - m.y)); };
+    BATTLE.fire = (w, t, st, dk, at) => { if (!at && t) off.push(aimD(t.pos)); return f0(w, t, st, dk, at); };
+    BATTLE.strike = (p, r, d, w, air) => { if (!air) hit.push(aimD(p)); return s0(p, r, d, w, air); };
     for (let i = 0; i < 240; i++) { __t.sim(0.5, { audio: true, bpm: 140 }); for (const u of UNITS) if (u.kind === 'inf' && u.scatter && T < u.scatter.until && BATTLE.velOf(u, new V3()).length() > 3) { led++; break; } }
     const q = (a, f) => { const s = a.slice().sort((x, y) => x - y); return s[Math.floor(f * (s.length - 1))]; };
     return { n: off.length, offMax: Math.max(...off), hits: hit.length, hitP99: q(hit, 0.99), far: hit.filter(x => x > 0.3).length / hit.length, led, scatter: BATTLE.stat.scatter };
@@ -358,7 +360,7 @@ test('the guns fire only at what is under the reticle, and a burst follows the r
   console.log(JSON.stringify(r));
   expect(r.n).toBeGreaterThan(40);
   expect(r.offMax, 'at the trigger the target is under the reticle (RET_ON), never fired at off it').toBeLessThanOrEqual(0.0701);
-  expect(r.hitP99, 'where the rounds land, from the frame centre (half heights; was 0.23)').toBeLessThan(0.21);
+  expect(r.hitP99, 'where the rounds land, from the reticle (half heights; was 0.23)').toBeLessThan(0.21);
   expect(r.far, 'rounds landing far off the reticle').toBeLessThan(0.01);
   expect(r.led, 'a soldier running from a hit is led by the sensor').toBeGreaterThan(0);
 });

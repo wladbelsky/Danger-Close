@@ -514,13 +514,15 @@ const BATTLE = {
   target(w) {
     const f = this.focus; if (f && f.alive && w.hitSet.has(f.kind) && this.inFrame(f.pos)) return f;
     let best = null, bs = 1e9;
-    for (const u of UNITS) { if (u.side !== 'enemy' || !w.hitSet.has(u.kind) || !this.inFrame(u.pos)) continue; const d = Math.hypot(u.pos.x - CAM_TGT.x, u.pos.z - CAM_TGT.z) * (u.kind === 'struct' ? 1.6 : 1); if (d < bs) { bs = d; best = u; } }
+    for (const u of UNITS) { if (!this.canHit(w, u)) continue; const d = Math.hypot(u.pos.x - CAM_TGT.x, u.pos.z - CAM_TGT.z) * (u.kind === 'struct' ? 1.6 : 1); if (d < bs) { bs = d; best = u; } }
     if (best) { this.offT = 0; this.focus = best; } return best;
   },
+  /* an enemy in the frame that weapon w may hit */
+  canHit(w, u) { return u.side === 'enemy' && w.hitSet.has(u.kind) && this.inFrame(u.pos); },
   /* the target in the frame nearest the reticle other than x (null: none) */
   nearestTo(w, x) {
     let best = null, bs = 1e9;
-    for (const u of UNITS) { if (u === x || u.side !== 'enemy' || !w.hitSet.has(u.kind) || !this.inFrame(u.pos)) continue; const n = VIEW.ndc(u.pos), d = Math.hypot(n.x * camera.aspect, n.y); if (d < bs) { bs = d; best = u; } }
+    for (const u of UNITS) { if (u === x || !this.canHit(w, u)) continue; const n = VIEW.ndc(u.pos), d = Math.hypot(n.x * camera.aspect, n.y); if (d < bs) { bs = d; best = u; } }
     return best;
   },
   onBeat(band, st) {
@@ -568,7 +570,7 @@ const BATTLE = {
       let best = null, bs = 0;
       for (const w of ARMS.enabled()) {
         if (!HEAVY_ARMS.has(w.id) || !ARMS.ready(w)) continue;
-        let s = 0; for (const u of UNITS) if (u.side === 'enemy' && w.hitSet.has(u.kind) && this.inFrame(u.pos)) s += (PREF[w.id] && PREF[w.id][u.kind]) || 1;
+        let s = 0; for (const u of UNITS) if (this.canHit(w, u)) s += (PREF[w.id] && PREF[w.id][u.kind]) || 1;
         if (s > bs) { bs = s; best = w; }
       }
       if (best && best.id !== ARMS.cur) { ARMS.select(best.id); this.focus = null; HUD.markArms(); this.nextSwitch = T + rand(7, 12); }
@@ -618,12 +620,14 @@ const BATTLE = {
     const k = clamp(((st || 1.5) - 1) / 1.5, 0, 1), B = BURST[w.id], n = B ? Math.round(lerp(B[0], B[1], k)) : G.n, fx = G.fx * (0.85 + 0.35 * k), dmg = G.dmg * G.n / n * dk;   // (a trigger does the same damage, in more or fewer rounds)
     this.lastBurst = n;
     // a gun's burst goes where the sensor points: the point at the trigger (the target, led, or `at`) kept as an offset from the
-    // sensor's point, so later rounds follow the reticle, not a target running off under it (a missile flies to its target)
-    const L0 = GUNSHIP.look, fl0 = G.missile || 0.28; this.velOf(t, _bd); const P0 = A || t.pos, lead0 = A || G.missile ? 0 : fl0, ox = P0.x + _bd.x * lead0 - L0.x, oz = P0.z + _bd.z * lead0 - L0.z;
+    // sensor's point, so later rounds follow the reticle, not a target running off under it (a missile flies to its target);
+    // once the aircraft is off to another place (a transit) the rest stay on the trigger's point
+    const P0 = A || t.pos, fl = G.missile || 0.28; let px = P0.x, pz = P0.z;
+    if (!A && !G.missile) { this.velOf(t, _bd); px += _bd.x * fl; pz += _bd.z * fl; }
+    const ox = px - GUNSHIP.look.x, oz = pz - GUNSHIP.look.z;
     for (let i = 0; i < n; i++) this.after(i * G.step, () => {
-      const a = rand(0, TAU), r = Math.sqrt(Math.random()) * G.spread, fl = fl0; let to;
-      if (G.missile || G.air) { this.velOf(t, _bd); const lead = A || G.missile ? 0 : fl; to = new V3((A || t.pos).x + _bd.x * lead + Math.cos(a) * r, 0, (A || t.pos).z + _bd.z * lead + Math.sin(a) * r); }
-      else to = new V3(GUNSHIP.look.x + ox + Math.cos(a) * r, 0, GUNSHIP.look.z + oz + Math.sin(a) * r);
+      const a = rand(0, TAU), r = Math.sqrt(Math.random()) * G.spread, c = Math.cos(a) * r, s = Math.sin(a) * r, L = GUNSHIP.state === 'orbit' ? GUNSHIP.look : null;
+      const to = G.missile ? new V3(P0.x + c, 0, P0.z + s) : L ? new V3(L.x + ox + c, 0, L.z + oz + s) : new V3(px + c, 0, pz + s);
       to.y = G.air ? t.pos.y + t.ah : groundH(to.x, to.z);
       if (G.missile) { this.missiles.push({ w, G, tgt: G.spread < 2 && !A ? t : null, from: this.muzzle(new V3(), rand(-1, 1) > 0 ? rand(8, 14) : rand(-14, -8)).addScaledVector(_bt.set(camera.matrixWorld.elements[4], camera.matrixWorld.elements[5], camera.matrixWorld.elements[6]), -3), to, p: 0, t: 0, dur: G.missile, rush: false, puff: 0, fx, dmg }); return; }
       this.muzzle(_bm); _bt.subVectors(to, _bm); const d = _bt.length();
