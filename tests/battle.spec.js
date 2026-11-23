@@ -344,6 +344,25 @@ test('the allies are in the fight the sensor watches, not only round it', async 
   expect(r.allies, 'not a crowd').toBeLessThan(90);
 });
 
+test('the guns fire only at what is under the reticle, and a burst follows the reticle, not a target running off', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=g25,g30,b40,h105' });
+  await wp.sim(6, { audio: true, bpm: 140 });
+  const r = await wp.run(() => {
+    const off = [], hit = [], f0 = BATTLE.fire.bind(BATTLE), s0 = BATTLE.strike.bind(BATTLE); let led = 0;
+    BATTLE.fire = (w, t, st, dk, at) => { if (!at && t) { const n = VIEW.ndc(t.pos); off.push(Math.hypot(n.x * camera.aspect, n.y)); } return f0(w, t, st, dk, at); };
+    BATTLE.strike = (p, r, d, w, air) => { if (!air) { const n = VIEW.ndc(p); hit.push(Math.hypot(n.x * camera.aspect, n.y)); } return s0(p, r, d, w, air); };
+    for (let i = 0; i < 240; i++) { __t.sim(0.5, { audio: true, bpm: 140 }); for (const u of UNITS) if (u.kind === 'inf' && u.scatter && T < u.scatter.until && BATTLE.velOf(u, new V3()).length() > 3) { led++; break; } }
+    const q = (a, f) => { const s = a.slice().sort((x, y) => x - y); return s[Math.floor(f * (s.length - 1))]; };
+    return { n: off.length, offMax: Math.max(...off), hits: hit.length, hitP99: q(hit, 0.99), far: hit.filter(x => x > 0.3).length / hit.length, led, scatter: BATTLE.stat.scatter };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.n).toBeGreaterThan(40);
+  expect(r.offMax, 'at the trigger the target is under the reticle (RET_ON), never fired at off it').toBeLessThanOrEqual(0.0701);
+  expect(r.hitP99, 'where the rounds land, from the frame centre (half heights; was 0.23)').toBeLessThan(0.21);
+  expect(r.far, 'rounds landing far off the reticle').toBeLessThan(0.01);
+  expect(r.led, 'a soldier running from a hit is led by the sensor').toBeGreaterThan(0);
+});
+
 test('infantry under fire runs from the hit, its squad spreads out, nobody fires on the run', async ({ wp }) => {
   await wp.boot({ query: '?hour=12&seed=11' });
   await wp.sim(6, { audio: true });
