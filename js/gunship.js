@@ -9,7 +9,7 @@ const SLEW_MUSIC = { calm: 0.6, base: 0.6, drive: 0.7, tempo: 0.4, surge: 1.25, 
 /* the zone the gunship works in a fight: it stays at least min s, leaves only once its timer (every) has run out and the music has a
    quiet part (or, with music that has none, calmWait s on with nothing left to hit in the zone); r: the zone's radius, metres */
 const ZONE = { min: 45, every: [80, 130], calmWait: 45, r: 320 };
-const GS_MARGIN = 260;          // districts keep this far from the map's edge (the frame is clamped inside the map anyway)
+const GS_MARGIN = 320;          // districts keep this far from the map's edge: the widest frame centred on one, and a helicopter's line of sight past it, stay on the map (VIEW.fits)
 const _gsa = new V3();
 const GUNSHIP = {
   state: 'orbit', list: [], home: null, look: new V3(), aim: new V3(), aimS: new V3(), vel: new V3(), ctr: new V3(),   // (ctr: what the aircraft circles)
@@ -68,8 +68,9 @@ const GUNSHIP = {
     this.tr = { from: this.look.clone(), to: d, p: 0, dur: Math.max(d.n === 'tgt' ? 5 : 9, dist / 80) };   // (smootherstep peaks at 1.9× the mean: ~150 m/s)
     this.state = 'transit';
   },
-  /* slew onto a point (combat, stage 6) */
-  track(p) { this.aim.set(p.x, groundH(p.x, p.z), p.z); this.nextWander = T + 12; },
+  /* slew onto a point (combat, stage 6); never past where the frame can be centred on it (VIEW.fits: by the map's edge the frame
+     would stop short of it, and the reticle would leave the centre) */
+  track(p) { VIEW.clampIn(this.aim.set(p.x, 0, p.z)); this.aim.y = groundH(this.aim.x, this.aim.z); this.nextWander = T + 12; },
   update(dt) {
     if (!QS.has('az')) camAz -= 0.03 * CFG.orbit / 100 * dt;               // the left orbit
     if (this.state === 'orbit') {
@@ -94,6 +95,8 @@ const GUNSHIP = {
     const zt = this.zoomTarget(); this.zm += (zt - this.zm) * Math.min(1, dt * 1.6);
     CAM_TGT.x = this.look.x; CAM_TGT.z = this.look.z; CAM_TGT.y += (this.look.y - CAM_TGT.y) * Math.min(1, dt * 2.5);   // (the height eased: bumps don't shake the picture)
     this.applied = this.zm * CFG.zoom; updateCamera();   // (every step: the lens follows the range to the point as well as the weapon's, the transit's and the setting's zoom)
+    const sx = CAM_TGT.x - this.look.x, sz = CAM_TGT.z - this.look.z;   // (the frame held off the map's edge: the sensor's point with it, the reticle in the centre; its slew stopped that way)
+    if (sx || sz) { this.look.x = CAM_TGT.x; this.look.z = CAM_TGT.z; if (sx) this.vel.x = 0; if (sz) this.vel.z = 0; VIEW.clampIn(this.aim); VIEW.clampIn(this.aimS); }
   }
 };
 

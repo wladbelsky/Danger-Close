@@ -238,6 +238,20 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   target until the hit (`aimCamera`), the auto-switching waits, no new lock meanwhile; its target killed first, the spot stays
   where it was. HUD: the lock's arrows with a pulsing diamond (the spot, `HUD.spot`), then LASE and the time of flight boxed where
   SHOOT was and the diamond on the spot (`HUD.laseOn`, `laseDraw`, `cue`). Sheet: hellfire-lase.png.
+- The reticle never leaves the frame's centre at the map's edge. Before, near the edge the frame was held on the map
+  (`clampFrame`) while the sensor's point went on past it, so the reticle was drawn off the centre (on 6 of 12 maps, up to 31 % of
+  the time). Now `clampFrame` keeps the frame corners' reach from its centre (`VIEW.ext`); `VIEW.fits(p, m)` says whether a frame
+  centred on p stays on the map, and `VIEW.clampIn(p)` gives the nearest point where it does. `GUNSHIP.track` aims no further, and
+  the sensor's point goes back with the frame where it was held. `BATTLE.reach(u)` (for a unit in the air, the ground point behind
+  it on the line of sight, `BATTLE.behind`) leaves what cannot be centred to the allies: `target`, `canHit`, the enemies "here",
+  the auto-switching's count, the search for the next one, and a `goTo` to it. Districts keep `GS_MARGIN` 320 m off the edge
+  (was 260), and the enemy's helicopters fly their rounds over the fight only where they can be reached. The fight is unchanged:
+  shots and time on a target on the 4 edge maps were the same within the spread.
+- The lock looks like Arma 3's: a box on the target and a diamond round it. While the seeker locks on, only their corners are
+  drawn and the diamond shrinks from 5.5x the box down onto it; once locked, both are drawn whole with a dot in the middle
+  (`HUD.lockOn`, `HUD.corners`; `lockDraw.d`: the diamond's size over the box's). This replaces the arrows. Sheet: aim-lock.png.
+- A vehicle no longer bumps into one of its own column that is behind it (`bumps`). An assault's way that turned back past the
+  tank following the APC held both for good.
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -309,7 +323,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=84`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=85`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

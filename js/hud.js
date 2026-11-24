@@ -129,23 +129,29 @@ const HUD = {
     const g = this.g, u = this.u, x = (_hp.x + 1) / 2 * this.W, y = (1 - _hp.y) / 2 * this.H, s = 44 * u;
     g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s, y); g.lineTo(x, y + s); g.lineTo(x - s, y); g.closePath(); this.stroke(1.4 * u);
   },
-  /* a lock (BATTLE.lock: the AIM-9X's, the Hellfire's): four arrows closing in on the target's box as the seeker locks on, the box
-     closed when it has it, then SHOOT boxed and blinking low in the middle (under the reticle, over the weapon selector) until the
-     launch; the Hellfire's with the laser's spot on the target (a diamond) */
+  /* a lock (BATTLE.lock: the AIM-9X's, the Hellfire's): a box on the target and a diamond round it, only their corners while the
+     seeker locks on, the diamond shrinking from far out down onto the box; once it has it both drawn whole with a dot in the middle,
+     then SHOOT boxed and blinking low in the middle (under the reticle, over the weapon selector) until the launch */
   lockOn() {
     const L = BATTLE.lock; this.lockDraw = null; if (!L || !L.t.alive || GUNSHIP.state !== 'orbit') return;
     const shoot = !!L.shootT; if (shoot && Math.floor((T - L.shootT) * 8) % 2 === 0) this.shootCue(this.W / 2, this.H - this.sb - 112 * this.u);
     _hp.copy(L.t.pos); _hp.y += 2.5; _hp.project(camera); if (_hp.z > 1 || Math.abs(_hp.x) > 1.05 || Math.abs(_hp.y) > 1.05) return;
-    const g = this.g, u = this.u, x = (_hp.x + 1) / 2 * this.W, y = (1 - _hp.y) / 2 * this.H, s = 30 * u, e = smoothstep(0, 1, L.k), d = lerp(150 * u, s + 8 * u, e), a = 11 * u;
+    const g = this.g, u = this.u, x = (_hp.x + 1) / 2 * this.W, y = (1 - _hp.y) / 2 * this.H, s = 26 * u, got = L.k >= 1, d = lerp(5.5 * s, 1.45 * s, smoothstep(0, 1, L.k));
     g.beginPath();
-    for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {   // (each arrow points at the box: its tip d from the centre)
-      const tx = x + dx * d, ty = y + dy * d, bx = tx + dx * a, by = ty + dy * a, px = -dy * a * 0.7, py = dx * a * 0.7;
-      g.moveTo(bx + px, by + py); g.lineTo(tx, ty); g.lineTo(bx - px, by - py); g.moveTo(tx + dx * a * 0.3, ty + dy * a * 0.3); g.lineTo(tx + dx * a * 2.4, ty + dy * a * 2.4);
-    }
-    if (L.k >= 1) g.rect(x - s - 4 * u, y - s - 4 * u, 2 * s + 8 * u, 2 * s + 8 * u);
+    this.corners([[x - s, y - s], [x + s, y - s], [x + s, y + s], [x - s, y + s]], got ? 0.5 : 0.22);   // (the box)
+    this.corners([[x, y - d], [x + d, y], [x, y + d], [x - d, y]], got ? 0.5 : 0.22 * 1.45 * s / d);   // (the diamond: corners the same length all the way in)
     this.stroke(2 * u);
-    if (L.w === 'hf') this.spot(x, y);
-    this.lockDraw = { k: L.k, shoot, x: x / this.W, y: y / this.H };
+    if (got) { g.beginPath(); g.arc(x, y, 2.4 * u, 0, TAU); this.stroke(1.2 * u); g.fillStyle = HUD_COL; g.fill(); }   // (the dot: locked)
+    this.lockDraw = { k: L.k, shoot, d: d / s, x: x / this.W, y: y / this.H };
+  },
+  /* a closed shape (its corners in order) into the path: whole (f 0.5), or only its corners, f of each side from each corner */
+  corners(P, f) {
+    const g = this.g, n = P.length;
+    if (f >= 0.5) { g.moveTo(P[0][0], P[0][1]); for (let i = 1; i < n; i++) g.lineTo(P[i][0], P[i][1]); g.closePath(); return; }
+    for (let i = 0; i < n; i++) {
+      const p = P[i], a = P[(i + n - 1) % n], b = P[(i + 1) % n];
+      g.moveTo(p[0] + (a[0] - p[0]) * f, p[1] + (a[1] - p[1]) * f); g.lineTo(p[0], p[1]); g.lineTo(p[0] + (b[0] - p[0]) * f, p[1] + (b[1] - p[1]) * f);
+    }
   },
   /* the laser's spot: a diamond, pulsing */
   spot(x, y) {

@@ -103,8 +103,8 @@ fullscreen apps by default.
   moves off the centre onto it.
 - **The Hellfire rides the laser**: the sensor lases the vehicle under the reticle, the seeker locks on the spot, SHOOT, and in
   flight the missile goes for the spot while the sensor holds it there, LASE and the time of flight on the HUD.
-- **The AIM-9X locks on**: arrows close in on the helicopter's box under the reticle, a boxed SHOOT over the weapon selector,
-  and the launch half a second on.
+- **The AIM-9X locks on**: the corners of a diamond close in on the helicopter's box under the reticle, a dot once locked,
+  a boxed SHOOT over the weapon selector, and the launch half a second on.
 - **No lull**: as one group dies the next is already coming in from the edge of the frame, more and sooner the faster the
   music; very slow music goes group by group with a short break between them.
 - **The music stops**: 5 s later fire ceases, the enemy pulls back out of the frame and vanishes; the base is removed

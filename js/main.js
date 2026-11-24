@@ -180,11 +180,13 @@ function updateCameraPose() {
   camera.lookAt(CAM_TGT);
   camera.updateMatrixWorld();
 }
-/* keep the whole frame on the map: shift the look-at point back by however far a corner of the frame overshoots the edge */
+/* keep the whole frame on the map: shift the look-at point back by however far a corner of the frame overshoots the edge (the
+   corners' reach from it kept in VIEW.ext: VIEW.fits) */
 function clampFrame() {
   const E = MAP_HALF - 2; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
   if (MAP.lo === undefined) { MAP.lo = Infinity; for (const v of MAP.h) MAP.lo = Math.min(MAP.lo, v); }   // (the corner rays measured down to the map's lowest ground: no hollow lets them reach past the edge)
   for (const c of SCREEN_CORNERS) { const p = VIEW.groundAt(c[0], c[1], MAP.lo - 1, _shc); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+  const X = VIEW.ext; X.x0 = x0 - CAM_TGT.x; X.x1 = x1 - CAM_TGT.x; X.z0 = z0 - CAM_TGT.z; X.z1 = z1 - CAM_TGT.z;
   const dx = Math.max(0, x1 - E) - Math.max(0, -E - x0), dz = Math.max(0, z1 - E) - Math.max(0, -E - z0);
   if (Math.abs(dx) < 0.01 && Math.abs(dz) < 0.01) return false;
   CAM_TGT.x -= dx; CAM_TGT.z -= dz; return true;
@@ -201,6 +203,11 @@ const VIEW = {
      stretched by the slant down the view), measured from the frame's centre, so it grows with the zoom out */
   frameR: 150,
   near(p, m) { return Math.hypot(p.x - CAM_TGT.x, p.z - CAM_TGT.z) < this.frameR + m; },
+  /* the frame's corners on the ground, from its centre (clampFrame); can the frame be centred on p and stay on the map (m: metres
+     of slack, a point that far past still counts)? clampIn: the nearest point it can be centred on */
+  ext: { x0: -150, x1: 150, z0: -150, z1: 150 },
+  fits(p, m = 0) { const X = this.ext, E = MAP_HALF - 2 + m; return p.x + X.x1 <= E && p.x + X.x0 >= -E && p.z + X.z1 <= E && p.z + X.z0 >= -E; },
+  clampIn(p) { const X = this.ext, E = MAP_HALF - 2; p.x = clamp(p.x, -E - X.x0, E - X.x1); p.z = clamp(p.z, -E - X.z0, E - X.z1); return p; },
   groundAt(nx, ny, alt, out) {          // the point at height alt seen at screen position (nx, ny)
     _rd.set(nx, ny, 0.5).unproject(camera).sub(camera.position).normalize();
     return (out || new V3()).copy(camera.position).addScaledVector(_rd, (alt - camera.position.y) / _rd.y);

@@ -205,7 +205,7 @@ class Vehicle {
       const oc = Math.cos(u.yaw), os = Math.sin(u.yaw), B = { x: p.x + oc * h.c, z: p.z + os * h.c, c: oc, s: os, l: h.l, w: h.w };
       return obbOverlap(A, B) && Math.hypot(B.x - A.x, B.z - A.z) < Math.hypot(B.x - x0 - c * H.c, B.z - z0 - sn * H.c) - 1e-4;   // (only a move that brings them closer)
     };
-    for (const u of UNITS) if (u !== this && u instanceof Vehicle && !(this.ghosts && this.ghosts.has(u)) && test(u, u.pos)) { this._bo = u; return true; }
+    for (const u of UNITS) if (u !== this && u instanceof Vehicle && !(this.ghosts && this.ghosts.has(u)) && !(u.col && u.col === this.col && u.s < this.s) && test(u, u.pos)) { this._bo = u; return true; }   // (never its own column's one behind it: a way that turns back past it, an assault across a field, would hold both for good)
     for (const w of WRECKS.list) { const u = w.veh; if (u && u !== this && !(this.ghosts && this.ghosts.has(u)) && w.obj.parent === scene && w.obj.position.y > w.y0 - 2 && test(u, u.obj.position)) { this._bo = u; return true; } }
     return false;
   }
@@ -489,7 +489,12 @@ class Heli {
      helicopters), else over the enemy's base; out of one, over the districts and the outposts */
   round() {
     const L = GUNSHIP.look, B = BATTLE.base;
-    if (AUD.combat && this.side === 'enemy' && !BATTLE.slow() && ((this.rounds = (this.rounds || 0) + 1) % 3 || !B)) {   /* (very slow music fights group by group, with breaks once the frame is clear: not then) */ const out = []; for (let i = randi(3, 4); i > 0; i--) { const a = rand(0, TAU), r = rand(...HELI_FIGHT.r); out.push([clamp(L.x + Math.cos(a) * r, -900, 900), clamp(L.z + Math.sin(a) * r, -900, 900)]); } return out; }
+    if (AUD.combat && this.side === 'enemy' && !BATTLE.slow() && ((this.rounds = (this.rounds || 0) + 1) % 3 || !B)) {   /* (very slow music fights group by group, with breaks once the frame is clear: not then) */ const out = [], u = { pos: new V3() };
+      for (let i = randi(3, 4); i > 0; i--) for (let t = 0; t < 8; t++) {   /* (only where the sensor can bring it under the reticle: by the map's edge its line of sight runs past what the frame can be centred on, BATTLE.reach) */
+        const a = rand(0, TAU), r = rand(...HELI_FIGHT.r) * (1 - t / 10), x = clamp(L.x + Math.cos(a) * r, -900, 900), z = clamp(L.z + Math.sin(a) * r, -900, 900);
+        u.pos.set(x, groundH(x, z) + 60, z); if (BATTLE.reach(u) || t === 7) { out.push([x, z]); break; }
+      }
+      return out; }
     if (B && AUD.combat) { const out = []; for (let i = 0; i < 3; i++) { const a = rand(0, TAU), r = rand(20, 90); out.push([clamp(B.x + Math.cos(a) * r, -900, 900), clamp(B.z + Math.sin(a) * r, -900, 900)]); } return out; }
     const c = GUNSHIP.list.map(d => [d.x, d.z]).concat(LAYOUT.outposts.map(o => [o.x, o.z])), out = [];
     for (let i = 0; i < randi(3, 4); i++) { const q = pick(c); out.push([clamp(q[0] + rand(-120, 120), -850, 850), clamp(q[1] + rand(-120, 120), -850, 850)]); }
