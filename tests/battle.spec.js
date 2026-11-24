@@ -90,16 +90,24 @@ test('a fight leaks nothing: geometries and programs stay put over two fights', 
   expect(b.live, 'geometries in the scene').toBeLessThanOrEqual(a.live + 2); expect(b.p, 'shader programs (a shadow-pass variant may still turn up once)').toBeLessThanOrEqual(a.p + 1); expect(b.kids).toBeLessThanOrEqual(a.kids + 6);
 });
 
-test('at the map edge, where the frame cannot centre the target, the gun still fires at it', async ({ wp }) => {
+test('at the map edge, where the frame cannot centre the target, the gun still fires at it, and the reticle is drawn there', async ({ wp }) => {
   await wp.boot({ query: '?hour=11&seed=3&transit=0&weapons=h105&auto=0' });
   const r = await wp.run(() => {
-    const p = new THREE.Vector3(MAP_HALF - 25, 0, 0); p.y = groundH(p.x, p.z);
-    GUNSHIP.nextWander = 1e9; GUNSHIP.track(p); GUNSHIP.aimS.copy(GUNSHIP.aim); GUNSHIP.look.copy(GUNSHIP.aim); GUNSHIP.vel.set(0, 0, 0); __t.sim(0.1);
-    const u = { pos: GUNSHIP.look.clone() }, n = VIEW.ndc(u.pos);
-    return { shifted: Math.hypot(GUNSHIP.look.x - CAM_TGT.x, GUNSHIP.look.z - CAM_TGT.z), centred: Math.hypot(n.x * camera.aspect, n.y) < RET_ON, aim: BATTLE.onAim(u), far: BATTLE.onAim({ pos: new THREE.Vector3(GUNSHIP.look.x - 40, GUNSHIP.look.y, GUNSHIP.look.z) }) };
+    const over = d => { const p = new THREE.Vector3(MAP_HALF - d, 0, 0); p.y = groundH(p.x, p.z); GUNSHIP.nextWander = 1e9; GUNSHIP.track(p); GUNSHIP.aimS.copy(GUNSHIP.aim); GUNSHIP.look.copy(GUNSHIP.aim); GUNSHIP.ctr.copy(GUNSHIP.aim); GUNSHIP.vel.set(0, 0, 0); __t.sim(2); };   // (circling over it: the frame caught up)
+    over(25); const hidden = { off: Math.abs(VIEW.ndc(GUNSHIP.look).x) > 1, aim: BATTLE.onAim({ pos: GUNSHIP.look.clone() }) };   // (so near the edge the point is out of the frame)
+    over(150);
+    const u = { pos: GUNSHIP.look.clone() }, n = VIEW.ndc(u.pos).clone(), sx = (n.x + 1) / 2, sy = (1 - n.y) / 2; HUD.draw();
+    return { hidden, shifted: Math.hypot(GUNSHIP.look.x - CAM_TGT.x, GUNSHIP.look.z - CAM_TGT.z), centred: Math.hypot(n.x * camera.aspect, n.y) < RET_ON, aim: BATTLE.onAim(u), far: BATTLE.onAim({ pos: new THREE.Vector3(GUNSHIP.look.x - 40, GUNSHIP.look.y, GUNSHIP.look.z) }),
+      middle: BATTLE.onAim({ pos: CAM_TGT.clone() }), ret: Math.hypot((HUD.retAt.x - sx) * camera.aspect, HUD.retAt.y - sy), under: (() => { const q = BATTLE.aimPoint(new THREE.Vector3()); return Math.hypot(q.x - GUNSHIP.look.x, q.z - GUNSHIP.look.z); })() };
   });
+  console.log(JSON.stringify(r));
   expect(r.shifted, 'the frame stops at the edge').toBeGreaterThan(3);
   expect(r.centred).toBe(false); expect(r.aim, 'on the point the sensor is turned to').toBe(true); expect(r.far).toBe(false);
+  // (the reticle was drawn in the centre of the frame while the guns fired at the point, a target in the centre was fired on
+  // too, and so was one at a point out of the frame altogether)
+  expect(r.ret, 'the reticle drawn on the point the sensor is turned to').toBeLessThan(0.01); expect(r.middle, 'a target in the centre of the frame is not under it').toBe(false);
+  expect(r.under, 'a shot under the reticle goes to that point').toBeLessThan(0.5);
+  expect(r.hidden, 'a point out of the frame is not fired at').toEqual({ off: true, aim: false });
 });
 
 test('a weapon picked by hand gives way to the auto-switching once nothing it may hit is left in the sector', async ({ wp }) => {
@@ -349,8 +357,8 @@ test('the guns fire only at what is under the reticle, and a burst follows the r
   await wp.sim(6, { audio: true, bpm: 140 });
   const r = await wp.run(() => {
     const off = [], hit = [], f0 = BATTLE.fire.bind(BATTLE), s0 = BATTLE.strike.bind(BATTLE); let led = 0;
-    // from the reticle, as BATTLE.onAim measures it: at the map's edge the frame stops short of the sensor's point, which counts then
-    const aimD = p => { const n = VIEW.ndc(p), ax = n.x * camera.aspect, ay = n.y, d = Math.hypot(ax, ay); if (Math.hypot(GUNSHIP.look.x - CAM_TGT.x, GUNSHIP.look.z - CAM_TGT.z) < 0.5) return d; const m = VIEW.ndc(GUNSHIP.look); return Math.min(d, Math.hypot(ax - m.x * camera.aspect, ay - m.y)); };
+    // from the reticle as drawn and as BATTLE.onAim measures it (VIEW.ret: at the map's edge, the sensor's point)
+    const aimD = p => { const R = VIEW.ret(), rx = R.x, ry = R.y, n = VIEW.ndc(p); return Math.hypot((n.x - rx) * camera.aspect, n.y - ry); };
     BATTLE.fire = (w, t, st, dk, at) => { if (!at && t) off.push(aimD(t.pos)); return f0(w, t, st, dk, at); };
     BATTLE.strike = (p, r, d, w, air) => { if (!air) hit.push(aimD(p)); return s0(p, r, d, w, air); };
     for (let i = 0; i < 240; i++) { __t.sim(0.5, { audio: true, bpm: 140 }); for (const u of UNITS) if (u.kind === 'inf' && u.scatter && T < u.scatter.until && BATTLE.velOf(u, new V3()).length() > 3) { led++; break; } }
@@ -477,7 +485,8 @@ test('the AIM-9X locks on first: arrows close in on the helicopter, SHOOT, the l
     return { locks: BATTLE.stat.locks, shots: BATTLE.stat.lockShots, fired: fired.length, log: BATTLE.lockLog.map(l => [l.shoot - l.t0, l.fire - l.shoot]), drawn, arrows, shoot, kUp, hits: BATTLE.log.filter(l => l === 'aim heli').length };
   });
   console.log(JSON.stringify(r));
-  expect(r.shots, 'launches').toBeGreaterThanOrEqual(2);
+  expect(r.shots, 'launches').toBeGreaterThanOrEqual(3);
+  expect(r.locks, 'locks begun for each launch (the sensor holds a helicopter under the reticle: it aimed 10 m and more off one in the air where the frame is held off the edge of the map, 40–80 locks for 1–2 launches)').toBeLessThan(r.shots * 6);
   expect(r.fired, 'every launch through the lock').toBe(r.shots);
   for (const [lock, wait] of r.log) {
     expect(lock, 'the seeker takes LOCK.t (1.4 s) of the target under the reticle').toBeGreaterThanOrEqual(1.39);

@@ -156,7 +156,11 @@ class Vehicle {
   step(dt, s) {
     const s0 = this.s, po = this.po, k = this.laneK, lv = this.lv, yaw = this.yaw, x0 = this.pos.x, z0 = this.pos.z;
     this.s = s; this.pose(dt, false);
-    if ((s !== s0 || this.po !== po) && this.bumps(x0, z0)) { this.s = s0; this.po = po; this.pov = 0; this.laneK = k; this.lv = lv; this.yaw = yaw; this.v = 0; this.pose(0, false); this.bumpT = T; this.bumpO = this._bo; BATTLE.stat.bump++; }
+    if ((s !== s0 || this.po !== po) && this.bumps(x0, z0)) {
+      const pn = this.po; this.s = s0; this.po = po; this.laneK = k; this.lv = lv; this.yaw = yaw; this.v = 0; this.pose(0, false); this.bumpT = T; this.bumpO = this._bo; BATTLE.stat.bump++;
+      if (pn !== po) { this.po = pn; this.pose(0, false); if (this.bumps(x0, z0)) { this.po = po; this.pov = 0; this.yaw = yaw; this.pose(0, false); } }   // (only aside, then: away from what it touches; nose to nose they would stand for good)
+      else this.pov = 0;
+    }
   }
   bumps(x0, z0) {
     const H = this.hull, c = Math.cos(this.yaw), sn = Math.sin(this.yaw), A = { x: this.pos.x + c * H.c, z: this.pos.z + sn * H.c, c, s: sn, l: H.l, w: H.w };
@@ -177,7 +181,7 @@ class Vehicle {
       const dx = ox - x0, dz = oz - z0, al = dx * c + dz * s; if (al <= 0 || al > TRAFFIC.look) return;
       const lat = -dx * s + dz * c, rel = Math.abs(angleWrap(oyaw - this.yaw)), need = H.w + (rel > 0.5 && rel < 2.6 ? h.l : h.w) + 0.5;   // (crossing: its length is across our way)
       if (Math.abs(lat) > need + 2.5 || (best && best.al < al)) return;
-      best = { o, al, lat, need, hl: rel > 0.5 && rel < 2.6 ? h.w : h.l, still, head: !still && rel > 2.1 };
+      best = { o, al, lat, need, hl: rel > 0.5 && rel < 2.6 ? h.w : h.l, still, opp: rel > 2.1, head: !still && rel > 2.1 };
     };
     for (const u of UNITS) { if (u === this || !(u instanceof Vehicle) || (u.col && u.col === this.col) || (this.ghosts && this.ghosts.has(u))) continue; const h = u.hull, a = u.yaw; look(u, u.pos.x + Math.cos(a) * h.c, u.pos.z + Math.sin(a) * h.c, a, h, u.v < 0.5); }
     for (const w of WRECKS.list) { const u = w.veh; if (!u || u === this || (this.ghosts && this.ghosts.has(u)) || w.obj.parent !== scene || w.obj.position.y < w.y0 - 2) continue; look(u, u.obj.position.x, u.obj.position.z, u.yaw, u.hull, !w.roll); }
@@ -192,27 +196,27 @@ class Vehicle {
       if ((op.x - this.pos.x) * c + (op.z - this.pos.z) * sn < -(H.l + o.hull.l + 1)) this.byp = null; else { want = this.byp.po; vt = Math.min(vt, 4); }
     }
     if (b) {
-      const inWay = Math.abs(b.lat) < b.need, side = b.lat >= 0 ? -1 : 1, round = this.byp && this.byp.o === b.o;   // (side: aside away from it)
+      const inWay = Math.abs(b.lat) < b.need, side = b.opp && Math.abs(b.lat) < 1.5 ? 1 : b.lat >= 0 ? -1 : 1, round = this.byp && this.byp.o === b.o;   // (side: aside away from it; nose to nose, both to their right: away from a lat of nearly nothing both went the same way)
       if (round) { this.byp.po = want = clamp(this.po + b.lat + this.byp.d * (b.need + 0.4), -TRAFFIC.side, TRAFFIC.side); }   // (round it: as far aside as it takes, measured again as it goes; a bend turns it)
-      if (b.head) { want = this.po + side * Math.max(0, b.need - Math.abs(b.lat) + 0.4) * 0.6; vt = Math.min(vt, TRAFFIC.head); }   // (both pull aside, each a share of it)
+      if (b.head) { want = this.po + side * Math.max(0, b.need + side * b.lat + 0.4) * 0.6; vt = Math.min(vt, TRAFFIC.head); }   // (both pull aside, each a share of it)
       else if (inWay && b.still && !round && this.path.L - this.s > b.al + 12) {   // (a new one in its way: round that one now)
         const mates = this.col && this.col.u.some(v => v.byp && v.byp.o === b.o);   // (a wreck, or the one ahead of it in the column already going round: at once)
         this.blkT = b.o.dead || mates ? TRAFFIC.wait : this.blkT + dt;
         if (this.blkT >= TRAFFIC.wait) for (const d of [side, -side]) {
-          const po = this.po + d * ((d === side ? b.need - Math.abs(b.lat) : b.need + Math.abs(b.lat)) + 0.4);
-          if (Math.abs(po) <= TRAFFIC.side && this.clear(po, b.al + b.hl + 6)) { this.byp = { o: b.o, po, d }; want = po; BATTLE.stat.bypass++; break; }
+          const raw = this.po + b.lat + d * (b.need + 0.4), po = clamp(raw, -TRAFFIC.side, TRAFFIC.side);   // (its lat then: need + 0.4 to that side; one facing it pulls out as well, not a wreck: half of it will do)
+          if (Math.abs(raw) <= TRAFFIC.side + (b.opp && !b.o.dead ? b.need / 2 : 0.5) && this.clear(po, b.al + b.hl + 6)) { this.byp = { o: b.o, po, d }; want = po; BATTLE.stat.bypass++; break; }
         }
       }
       if (inWay) {
         const gap = H.l + b.hl + (round ? 0.8 : b.still ? TRAFFIC.gap + 8 : TRAFFIC.gap);   // (short of one standing: room to go round it)
         vt = Math.min(vt, b.al > gap + 1 && round ? Math.max(1.5, Math.sqrt(2 * TRAFFIC.brake * (b.al - gap))) : Math.sqrt(2 * TRAFFIC.brake * Math.max(0, b.al - gap)));   // (going round it: on at a crawl, steering out)
-        if (vt < 0.5) { this.stuckT = (this.stuckT || 0) + dt; BATTLE.stat.yield += dt; } else this.stuckT = 0;
+        if (vt < 0.5 || this.v < 0.3) { this.stuckT = (this.stuckT || 0) + dt; BATTLE.stat.yield += dt; } else this.stuckT = 0;
         if (this.stuckT > TRAFFIC.ghost && !VIEW.onScreen(this.pos, 0.5)) { (this.ghosts || (this.ghosts = new Set())).add(b.o); this.stuckT = 0; this.blk = null; BATTLE.stat.ghost++; }   // (no way past: it stops looking at that one)
       } else this.stuckT = 0;
     } else { this.blkT = 0; this.stuckT = 0; }
     if (!this.byp && !(b && b.head)) want = 0;
     want = clamp(want, -TRAFFIC.side, TRAFFIC.side);
-    const r = Math.min(TRAFFIC.rate, this.v * 0.6) + (this.v > 0.3 ? 0.1 : 0), pv = clamp(want - this.po, -r, r);   // (aside only as it rolls on: no crabbing)
+    const r = Math.max(this.byp && this.v < 0.5 ? 0.5 : 0, Math.min(TRAFFIC.rate, this.v * 0.6) + (this.v > 0.3 ? 0.1 : 0)), pv = clamp(want - this.po, -r, r);   // (aside only as it rolls on: no crabbing; but going round one it stands nose to: slowly out, steering)
     this.pov += clamp(pv - this.pov, -2 * dt, 2 * dt); this.po += this.pov * dt;   // (its rate aside eased at 2 m/s per second: no jerk)
     if (this.ghosts && Math.random() < dt * 0.05) this.ghosts = null;
     return vt;

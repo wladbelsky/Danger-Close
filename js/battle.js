@@ -39,7 +39,7 @@ const VS = {
 /* ---- the gunship's weapons' ballistics: n rounds a trigger (step apart, spread in metres), damage and its radius, the blast's
    size, the tracer; missile: seconds of flight (it lands on the next beat once past halfway, or at its deadline) ---- */
 /* rounds a trigger by the beat's strength (from a weak beat to the strongest), and the light guns that fire on any beat in dense music */
-const BURST = { g25: [5, 14], b40: [2, 5], apk: [2, 6] }, LIGHT_ARMS = new Set(['g25', 'g30', 'b40']);
+const BURST = { g25: [5, 14], b40: [2, 5], apk: [2, 6] }, BURST_LET_GO = 8, LIGHT_ARMS = new Set(['g25', 'g30', 'b40']);
 /* fast music: the light guns fire between the beats too, on a grid locked to the kick (subdivisions of a beat at a tempo 0..1 over it) */
 const SUBDIV = { g25: [[0.2, 2], [0.6, 4]], g30: [[0.4, 2]], b40: [[0.4, 2]] };
 const GUN = {
@@ -472,13 +472,15 @@ const BATTLE = {
     if (!AUD.fighting) return;
     this.after(rand(0.5, 1), () => {
       const p = u.pos.clone();   // (where the wreck is now: it may have rolled on)
+      let at = null;
       for (let t = 0, a0 = rand(0, TAU); t < 16; t++) {   // (all round it, then closer in: it may have rolled up to a wall)
         const a = a0 + t * TAU * 5 / 16, r = t < 8 ? 4.5 : 3.2, x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r; if (!walkable(x, z, x, z)) continue;
-        const loop = patrolLoop(p.x, p.z, 15, 35, [x, z]); if (loop.length < 3) continue;
-        const q = new Squad(side, n, x, z, loop); if (!q.m.length) return;
-        q.from = 'bail'; q.wi = 1; q.wait = 0; q.go = T + 4; for (const s of q.m) { const jx = x + rand(-1.2, 1.2), jz = z + rand(-1.2, 1.2); if (walkable(jx, jz, jx, jz)) s.position.set(jx, groundH(jx, jz), jz); s.a = a; }
-        this.squads.push(q); this.stat.bailed += q.m.length; return;
+        const loop = patrolLoop(p.x, p.z, 15, 35, [x, z]); if (!at || loop.length > 2) at = { a, x, z, loop }; if (loop.length > 2) break;
       }
+      if (!at) return;   // (a spot with a round to walk; in a lane between walls, none: they hold where they got out, not lost aboard)
+      const { a, x, z, loop } = at, q = new Squad(side, n, x, z, loop); if (!q.m.length) return;
+      q.from = 'bail'; q.wi = 1; q.wait = 0; q.go = T + 4; for (const s of q.m) { const jx = x + rand(-1.2, 1.2), jz = z + rand(-1.2, 1.2); if (walkable(jx, jz, jx, jz)) s.position.set(jx, groundH(jx, jz), jz); s.a = a; }
+      this.squads.push(q); this.stat.bailed += q.m.length;
     });
   },
   /* the pace of the units' fire: up to twice as often in dense music, half in a quiet part, twice more in a drop's surge; each round
@@ -541,7 +543,8 @@ const BATTLE = {
   /* the target in the frame nearest the reticle other than x (null: none) */
   nearestTo(w, x) {
     let best = null, bs = 1e9;
-    for (const u of UNITS) { if (u === x || !this.canHit(w, u)) continue; const n = VIEW.ndc(u.pos), d = Math.hypot(n.x * camera.aspect, n.y); if (d < bs) { bs = d; best = u; } }
+    const R = VIEW.ret(), rx = R.x, ry = R.y;
+    for (const u of UNITS) { if (u === x || !this.canHit(w, u)) continue; const n = VIEW.ndc(u.pos), d = Math.hypot((n.x - rx) * camera.aspect, n.y - ry); if (d < bs) { bs = d; best = u; } }
     return best;
   },
   onBeat(band, st) {
@@ -618,17 +621,16 @@ const BATTLE = {
   /* is the target under the reticle (RET_ON)? Never a shot off it: one the sensor cannot bring there in OFF_SWITCH s is given up
      for the one nearest the reticle (aimCamera) */
   onReticle(u) { return this.onAim(u); },
-  /* is it where the sensor points? At the map's edge the frame stops short of the point it is turned to (clampFrame): then
-     what counts is that point, wherever it shows in the frame (else a wide lens, the 105 mm's, may never fire there) */
+  /* is it under the reticle (VIEW.ret: at the map's edge the frame stops short of the point the sensor is turned to, clampFrame,
+     and the reticle shows that point wherever it is in the frame; the frame's centre counted as well, and a target there was
+     fired on with the rounds going to the point instead) */
   onAim(u, r = RET_ON) {
-    const n = VIEW.ndc(u.pos), ax = n.x * camera.aspect, ay = n.y; if (Math.hypot(ax, ay) < r) return true;
-    if (Math.hypot(GUNSHIP.look.x - CAM_TGT.x, GUNSHIP.look.z - CAM_TGT.z) < 0.5) return false;
-    const m = VIEW.ndc(_bla.copy(GUNSHIP.look)); return Math.hypot(ax - m.x * camera.aspect, ay - m.y) < r;
+    const R = VIEW.ret(); if (R.z) return false; const rx = R.x, ry = R.y, n = VIEW.ndc(u.pos); return Math.hypot((n.x - rx) * camera.aspect, n.y - ry) < r;
   },
   /* near the reticle: a gun may already fire */
   near(u) { return this.onAim(u, RET_NEAR); },
-  /* the ground under the reticle (the frame's centre) */
-  aimPoint(out) { return out.set(CAM_TGT.x, groundH(CAM_TGT.x, CAM_TGT.z), CAM_TGT.z); },
+  /* the ground under the reticle: the sensor's point (the frame's centre, but where the frame is held off the map's edge) */
+  aimPoint(out) { const L = GUNSHIP.look; return out.set(L.x, groundH(L.x, L.z), L.z); },
   /* where a trigger at t goes: 0 no shot, 1 the target, 2 off it (MISS), 3 under the reticle while the target is only near it;
      2 and 3 put the point in atP */
   shotAt(w, t) {
@@ -643,7 +645,11 @@ const BATTLE = {
   /* the camera onto a unit: a little ahead of a moving one, so the slew's lag leaves the reticle on it */
   lookAt(u) {
     this.velOf(u, _bd); const lead = 2 / (SLEW_LOCK * GUNSHIP.slewK) + 0.125; _bp.set(u.pos.x + _bd.x * lead, 0, u.pos.z + _bd.z * lead);
-    const h = u.pos.y - groundH(u.pos.x, u.pos.z); if (h > 3) { _bd.subVectors(CAM_TGT, camera.position).normalize(); _bp.addScaledVector(_bd, -h / _bd.y); }   // (one in the air: the ground point behind it on the line of sight)
+    if (u.pos.y - groundH(u.pos.x, u.pos.z) > 3) {   // (one in the air: the ground point behind it on its own line of sight, over the ground there; the line to the frame's centre missed it by 10 m and more where the frame is held off the map's edge)
+      _bp.y = u.pos.y; _bd.subVectors(_bp, camera.position).normalize(); let t = 0;
+      for (let i = 0; i < 3; i++) t = (groundH(_bp.x + _bd.x * t, _bp.z + _bd.z * t) - u.pos.y) / Math.min(-0.05, _bd.y);   // (metres along it, down to the ground)
+      _bp.x += _bd.x * t; _bp.z += _bd.z * t; _bp.y = 0;
+    }
     GUNSHIP.track(_bp);
   },
   velOf(u, out) {
@@ -662,8 +668,9 @@ const BATTLE = {
     // once the aircraft is off to another place (a transit) the rest stay on the trigger's point
     const P0 = A || t.pos, fl = G.missile || 0.28; let px = P0.x, pz = P0.z;
     if (!A && !G.missile) { this.velOf(t, _bd); px += _bd.x * fl; pz += _bd.z * fl; }
-    const ox = px - GUNSHIP.look.x, oz = pz - GUNSHIP.look.z;
+    const ox = px - GUNSHIP.look.x, oz = pz - GUNSHIP.look.z, lx = GUNSHIP.look.x, lz = GUNSHIP.look.z, tx = t.pos.x, tz = t.pos.z;
     for (let i = 0; i < n; i++) this.after(i * G.step, () => {
+      if (i && !G.missile && GUNSHIP.state === 'orbit' && Math.hypot(GUNSHIP.look.x - lx - (t.pos.x - tx), GUNSHIP.look.z - lz - (t.pos.z - tz)) > BURST_LET_GO) return;   // (the sensor off to another target, not following this one: the trigger let go, not a line of hits across the ground between them)
       const a = rand(0, TAU), r = Math.sqrt(Math.random()) * G.spread, c = Math.cos(a) * r, s = Math.sin(a) * r, L = GUNSHIP.state === 'orbit' ? GUNSHIP.look : null;
       const to = G.missile ? new V3(P0.x + c, 0, P0.z + s) : L ? new V3(L.x + ox + c, 0, L.z + oz + s) : new V3(px + c, 0, pz + s);
       to.y = G.air ? t.pos.y + t.ah : groundH(to.x, to.z);

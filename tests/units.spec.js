@@ -74,3 +74,35 @@ test('every unit model has a sensible size and goes through the sensor', async (
   }
   expect(r.soldier.h).toBeGreaterThan(1.7); expect(r.soldier.h).toBeLessThan(1.9);
 });
+
+/* two vehicles standing nose to nose on a single track, in sight (no giving up on each other): both pull out and get past (once
+   their hulls touched, a move forward and aside was refused as one and neither moved again; a column then counted as home
+   without the one left standing and drove back through it, across the fields) */
+test('two vehicles nose to nose on a single track get past each other', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&transit=0' });
+  const r = await wp.run(() => {
+    let base = 0, P = null;
+    for (const rd of LAYOUT.roads) {
+      const n = rd.pts.length;
+      if (!P && rd.kind === 'track' && n > 70 && !rd.br.some(Boolean)) {
+        const nodes = Array.from({ length: n }, (_, i) => base + i), p = Path.fromNodes(nodes);
+        if (p.L > 260) P = p;
+      }
+      base += n;
+    }
+    if (!P) return { none: true };
+    const A = new Vehicle('apc', 'ally'), B = new Vehicle('apc', 'ally'), ca = new Column([A]), cb = new Column([B]), R = P.reversed();
+    ca.place(P); A.setPath(P, 120, true); cb.place(R); B.setPath(R, R.L - 120 - 9, true);
+    GUNSHIP.look.copy(A.pos); GUNSHIP.aim.copy(A.pos); GUNSHIP.aimS.copy(A.pos); GUNSHIP.ctr.copy(A.pos); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.nextWander = 1e9; __t.sim(0.5);
+    const seen = VIEW.onScreen(A.pos, 0.5), a0 = A.s, b0 = B.s; let wet = 0, off = 0;
+    for (let i = 0; i < 900; i++) {
+      ca.update(0.05, A.s < a0 + 60); cb.update(0.05, B.s < b0 + 60); __t.sim(0.05);
+      for (const v of [A, B]) { const o = occAt(v.pos.x, v.pos.z); if (o & (OCC_BUILD | OCC_WATER)) wet++; if (ROADNET.nearest(v.pos.x, v.pos.z, 12) < 0) off++; }
+    }
+    return { seen, a: A.s - a0, b: B.s - b0, ghosts: BATTLE.stat.ghost, wet, off };
+  });
+  expect(r.none, 'a long single track').toBeFalsy();
+  expect(r.seen, 'in sight').toBe(true);
+  expect(r.a, 'the first got past').toBeGreaterThan(30); expect(r.b, 'the second got past').toBeGreaterThan(30);
+  expect(r.wet, 'samples in a building or water').toBe(0); expect(r.off, 'samples off the road').toBe(0); expect(r.ghosts, 'gave up on each other').toBe(0);
+});

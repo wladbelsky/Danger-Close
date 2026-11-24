@@ -143,10 +143,37 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   fires only through its lock (`LOCK`, `BATTLE.lock`, `lockStep`, `launch`): a helicopter held under the reticle `LOCK.t` 1.4 s
   (off it the lock slips back, gone after `lose` s), then SHOOT and the launch `fire` 0.5 s on, or on a strong beat in
   `win`; ammunition only at the launch; no auto-switch mid-lock (`stat.locks`, `lockShots`, `lockLog`). The HUD draws four
-  arrows closing in on the target's box, the box closed, SHOOT blinking over it (`HUD.lockOn`, `lockDraw`). Every hit on a
+  arrows closing in on the target's box, the box closed, SHOOT blinking (`HUD.lockOn`, `lockDraw`). Every hit on a
   soldier, either side, any source, kicks up dust (`hurt` → `hitPuff`, at most `PUFF_MAX` a step); a death a burst of 8
   lighter sprites and a wisp of smoke that hides him as he goes (`puffDust`), in a pool of its own (`FX.puff`). Sheets:
   helis-close.png, aim-lock.png.
+- **SHOOT boxed; the helicopters' cockpits; nose to nose**: SHOOT is drawn in a box low in the middle, under the reticle and
+  over the weapon selector, not over the target (`HUD.shootCue`). The cockpits had glass blocks with frame bars laid over them
+  (crosses seen from above); now each is a body-coloured shape with flat panes set into its faces, the strips of the body
+  between them the frames (`canopy()` in helis.js: faces `f` / `b` / `s` / `t` / `T`, panes, sill), as the vehicles' windows
+  are: the Apache's and the Hind's two stepped canopies, the Ka-52's side-by-side one with a centre post, the Black Hawk's
+  two-pane windscreen and door windows. Traffic: two vehicles standing nose to nose (a column met another on a single track)
+  stood for good: each pulled aside away from the other, and with a lat of nearly nothing both went the same way; their hulls
+  touching, the move forward and aside was refused as one; a crawl's target speed kept the stuck clock at 0. A column then
+  counted as home without the one left standing and drove back through it, across the fields (`Column.reroute` runs the new
+  path through every vehicle). Now facing each other nearly in line both keep right (`blocker()` `opp`), half the clearance
+  will do from each (the other pulls out too); a refused move is tried aside only (`step`); going round one it stands nose
+  to, it steers out slowly (0.5 m/s); stuck counts what it really does (`v < 0.3`). The sensor on a helicopter
+  (`BATTLE.lookAt`): the ground point behind it on the line of sight was taken along the line to the frame's centre, not to
+  the helicopter, and over the ground under it: 10 m and more off where the frame is held off the map's edge (`CAM_TGT` ≠
+  `GUNSHIP.look`), the AIM-9X's lock slipping again and again (40–80 locks for 1–2 launches a minute on some seeds); now
+  along its own line, down to the ground there (3 steps): 12–16 locks, 4–5 launches. A gun's burst whose sensor point jumps
+  off to the next target (its own killed) let go of the trigger: no rounds once the point has moved `BURST_LET_GO` 8 m more
+  than the target has since the trigger (following it is not letting go; they swept a line of hits across the ground between
+  the two). An APC knocked out in a lane between
+  walls let nobody out (no spot round it with a round to walk, `patrolLoop`): they now get out where they can and hold there.
+  The reticle at the map's edge: where the frame is held off the edge (`clampFrame`) the sensor's point is not its centre;
+  the reticle was drawn in the centre while the guns fired at the point 30–80 m off, and `onAim` took either (a target in the
+  centre was fired on with the rounds going to the point; one at a point out of the frame altogether too). Now `VIEW.ret()`
+  is where the reticle is (the centre, or the point's place in the frame, held 8 % in from its border): the HUD draws it there
+  (`HUD.retAt`), `onAim`, `nearestTo` and the test's measure go by it alone, a shot under the reticle goes to the sensor's
+  point (`aimPoint`, was the frame's centre). Within some 60 m of the edge the point is out of the frame (`VIEW.ret().z` 1):
+  nothing is fired at it.
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -218,7 +245,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=79`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=80`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

@@ -57,7 +57,8 @@ const HUD = {
     if (!this.on) return;
     const g = this.g, W = this.W, H = this.H, u = this.u;
     g.clearRect(0, 0, W, H); g.lineCap = 'butt'; g.textBaseline = 'middle';
-    this.brackets(); this.designate(); this.lockOn(); this.compass(W / 2, 52 * u); this.ladder(W - 64 * u, (H - this.sb) / 2); this.reticle(W / 2, H / 2);
+    this.brackets(); this.designate(); this.lockOn(); this.compass(W / 2, 52 * u); this.ladder(W - 64 * u, (H - this.sb) / 2);
+    const R = VIEW.ret(), ra = this.retAt || (this.retAt = { x: 0.5, y: 0.5 }); ra.x = (R.x + 1) / 2; ra.y = (1 - R.y) / 2; this.reticle(ra.x * W, ra.y * H);   // (at the map's edge: on the sensor's point, not the frame's centre)
     // the clock and the sensor point at the top right
     const now = getNow(), p2 = n => String(n).padStart(2, '0'), x = W - 40 * u;
     this.text(`${p2(now.getHours())}:${p2(now.getMinutes())}:${p2(now.getSeconds())}`, x, 44 * u, 26, 'right');
@@ -129,9 +130,10 @@ const HUD = {
     g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s, y); g.lineTo(x, y + s); g.lineTo(x - s, y); g.closePath(); this.stroke(1.4 * u);
   },
   /* the AIM-9X's lock (BATTLE.lock): four arrows closing in on the target's box as the seeker locks on, the box closed when it has
-     it, then SHOOT blinking over it until the launch */
+     it, then SHOOT boxed and blinking low in the middle (under the reticle, over the weapon selector) until the launch */
   lockOn() {
     const L = BATTLE.lock; this.lockDraw = null; if (!L || !L.t.alive || GUNSHIP.state !== 'orbit') return;
+    const shoot = !!L.shootT; if (shoot && Math.floor((T - L.shootT) * 8) % 2 === 0) this.shootCue(this.W / 2, this.H - this.sb - 112 * this.u);
     _hp.copy(L.t.pos); _hp.y += 2.5; _hp.project(camera); if (_hp.z > 1 || Math.abs(_hp.x) > 1.05 || Math.abs(_hp.y) > 1.05) return;
     const g = this.g, u = this.u, x = (_hp.x + 1) / 2 * this.W, y = (1 - _hp.y) / 2 * this.H, s = 30 * u, e = smoothstep(0, 1, L.k), d = lerp(150 * u, s + 8 * u, e), a = 11 * u;
     g.beginPath();
@@ -141,8 +143,13 @@ const HUD = {
     }
     if (L.k >= 1) g.rect(x - s - 4 * u, y - s - 4 * u, 2 * s + 8 * u, 2 * s + 8 * u);
     this.stroke(2 * u);
-    const shoot = !!L.shootT; if (shoot && Math.floor((T - L.shootT) * 8) % 2 === 0) this.text('SHOOT', x, y - s - 28 * u, 18, 'center');
     this.lockDraw = { k: L.k, shoot, x: x / this.W, y: y / this.H };
+  },
+  /* SHOOT in a box, centred on (x, y) */
+  shootCue(x, y) {
+    const g = this.g, u = this.u; g.font = `600 ${Math.round(18 * u)}px Consolas, "Courier New", monospace`;
+    const hw = g.measureText('SHOOT').width / 2 + 10 * u, hh = 15 * u;
+    g.beginPath(); g.rect(x - hw, y - hh, 2 * hw, 2 * hh); this.stroke(2 * u); this.text('SHOOT', x, y + u, 18, 'center');
   },
   /* corner brackets of a fixed screen size: allies blue, enemies white */
   brackets() {

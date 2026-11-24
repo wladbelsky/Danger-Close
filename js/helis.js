@@ -29,6 +29,31 @@ function tailRotor(g, x, y, z, r, color, angles) {
   for (const a of angles || [0, TAU / 4, TAU / 2, TAU * 3 / 4]) { const h = new THREE.Group(); h.rotation.z = a; t.add(h); box(h, 0.026, r, 0.006, color, 0, r / 2 + 0.012, 0).castShadow = false; }
   return t;
 }
+/* a cockpit: a body-coloured taper (as taper()) glazed with flat panes set into its faces; the strips of the body left between
+   them are the frames (no bar laid over the glass). faces: [face, panes, sill] — 'f' the front (split across), 'b' the back,
+   's' both sides (split along), 't' the roof split along, 'T' the roof split across; sill: the share of the face under the glass
+   (from its bottom edge; for the roof from its front edge). fr: the frames' width */
+function canopy(g, w, h, d, C, G, x, y, z, tx, tz, sx, faces, fr) {
+  taper(g, w, h, d, C, x, y, z, tx, tz, sx); fr = fr || 0.01; sx = sx || 0;
+  const P = (i, j, top) => new V3(x + i * w / 2 * (top ? tx : 1) + (top ? sx : 0), y + (top ? h / 2 : -h / 2), z + j * d / 2 * (top ? tz : 1));
+  const F = { f: [P(1, 1), P(1, -1), P(1, -1, 1), P(1, 1, 1)], b: [P(-1, -1), P(-1, 1), P(-1, 1, 1), P(-1, -1, 1)],
+    l: [P(1, -1), P(-1, -1), P(-1, -1, 1), P(1, -1, 1)], r: [P(-1, 1), P(1, 1), P(1, 1, 1), P(-1, 1, 1)],
+    t: [P(1, -1, 1), P(-1, -1, 1), P(-1, 1, 1), P(1, 1, 1)], T: [P(1, -1, 1), P(1, 1, 1), P(-1, 1, 1), P(-1, -1, 1)] };
+  const ctr = new V3(x + sx / 2, y, z), pos = [], nor = [];
+  for (const [f, n, sill] of faces) for (const k of f === 's' ? ['l', 'r'] : [f]) {
+    const [a, b, c, e] = F[k], L = (u, v) => new V3().addScaledVector(a, (1 - u) * (1 - v)).addScaledVector(b, u * (1 - v)).addScaledVector(c, u * v).addScaledVector(e, (1 - u) * v);
+    const fu = fr / ((a.distanceTo(b) + e.distanceTo(c)) / 2), fv = fr / ((a.distanceTo(e) + b.distanceTo(c)) / 2);
+    const N = new V3().subVectors(b, a).cross(new V3().subVectors(e, a)).normalize(); if (N.dot(new V3().subVectors(L(0.5, 0.5), ctr)) < 0) N.negate();
+    for (let i = 0; i < n; i++) {
+      const u0 = i / n + (i ? fu / 2 : fu), u1 = (i + 1) / n - (i < n - 1 ? fu / 2 : fu), v0 = (sill || 0) + fv, v1 = 1 - fv;
+      let q = [L(u0, v0), L(u1, v0), L(u1, v1), L(u0, v1)].map(p => p.addScaledVector(N, 0.003));
+      if (new V3().subVectors(q[1], q[0]).cross(new V3().subVectors(q[2], q[0])).dot(N) < 0) q = q.reverse();
+      for (const p of [q[0], q[1], q[2], q[0], q[2], q[3]]) { pos.push(p.x, p.y, p.z); nor.push(N.x, N.y, N.z); }
+    }
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  const m = shade(new THREE.Mesh(geo, mm(G)), false); g.add(m); return m;
+}
 function heliDone(g, nav) { const dyn = []; g.traverse(o => { if (o !== g && o.name) dyn.push(o); }); mergeStatic(g, dyn); g.scale.setScalar(HELI_SCALE); g.userData.nav = nav; return g; }
 const heliMats = (c, c3, c2) => ({ C: HOT(c, 0.2), C3: HOT(c3, 0.2), C2: HOT(c2, 0.62), D: HOT(0x262924, 0.3), X: HOT(0x1e1f1e, 0.85), X2: HOT(0x2a2422, 0.97), GB: HOT(0x34372e, 0.42), G: HGLASS(), K: HOT(0x161616, 0.22), HUB: HOT(0x2a2c28, 0.35) });
 const P3 = (x, y, z) => new V3(x, y, z);
@@ -36,12 +61,9 @@ const P3 = (x, y, z) => new V3(x, y, z);
 /* UH-60 Black Hawk — the allies' transport: framed windscreen, cabin doors and windows, door guns, the canted tail rotor */
 function buildUH60() {
   const g = new THREE.Group(), { C, C3, C2, D, X, X2, GB, G, K, HUB } = heliMats(0x474d3c, 0x51574a, 0x3f4535), R = 0x2a2d30;
-  taper(g, 0.46, 0.2, 0.24, C, 0.03, 0.14, 0, 1.0, 0.85); taper(g, 0.22, 0.2, 0.235, C, 0.37, 0.14, 0, 0.55, 0.8, -0.05);
-  taper(g, 0.14, 0.11, 0.2, C, 0.53, 0.095, 0, 0.6, 0.8, -0.03); taper(g, 0.12, 0.1, 0.24, G, 0.43, 0.2, 0, 0.4, 0.8, -0.035);   // (cabin, cockpit, nose, windscreen)
-  strut(g, P3(0.49, 0.15, 0), P3(0.42, 0.25, 0), 0.004, D); for (const s of [-1, 1]) strut(g, P3(0.49, 0.15, s * 0.115), P3(0.42, 0.25, s * 0.093), 0.004, D);   // (the windscreen's posts)
-  box(g, 0.05, 0.006, 0.2, D, 0.4, 0.252, 0);
+  taper(g, 0.46, 0.2, 0.24, C, 0.03, 0.14, 0, 1.0, 0.85); taper(g, 0.14, 0.11, 0.2, C, 0.53, 0.095, 0, 0.6, 0.8, -0.03);   // (cabin, nose)
+  canopy(g, 0.22, 0.2, 0.235, C, G, 0.37, 0.14, 0, 0.55, 0.8, -0.05, [['f', 2, 0.52], ['s', 2, 0.45]]);   // (the cockpit: the windscreen's two panes, the quarter and door windows)
   for (const s of [-1, 1]) {
-    box(g, 0.15, 0.065, 0.006, G, 0.36, 0.175, s * 0.119); box(g, 0.006, 0.07, 0.008, D, 0.31, 0.175, s * 0.12);   // (cockpit door window, its frame)
     box(g, 0.17, 0.14, 0.006, C3, 0.04, 0.12, s * 0.122); box(g, 0.07, 0.05, 0.004, G, 0.06, 0.16, s * 0.126); box(g, 0.32, 0.006, 0.006, D, -0.02, 0.2, s * 0.124);   // (sliding door, its window, its rail)
     box(g, 0.05, 0.045, 0.006, G, 0.2, 0.17, s * 0.121); box(g, 0.06, 0.045, 0.006, G, -0.12, 0.17, s * 0.116);   // (gunner's window, the rear cabin window)
     box(g, 0.03, 0.02, 0.02, D, 0.2, 0.15, s * 0.13); tube(g, 0.2, 0.31, 0.006, 0.006, D, 0.15, s * 0.14, 4);   // (door gun)
@@ -69,10 +91,9 @@ function buildUH60() {
 /* AH-64 Apache — the allies' attack helicopter: tandem framed canopies, TADS / PNVS, the chin gun, Longbow, rockets and Hellfires */
 function buildAH64() {
   const g = new THREE.Group(), { C, C3, C2, D, X, X2, GB, G, K, HUB } = heliMats(0x3e4436, 0x474d3f, 0x363b30), MS = HOT(0xb8b8b0, 0.12), R = 0x262924;
-  taper(g, 0.5, 0.17, 0.13, C, 0.3, 0.16, 0, 0.9, 0.8); taper(g, 0.16, 0.08, 0.11, G, 0.43, 0.27, 0, 0.7, 0.75, -0.01); taper(g, 0.18, 0.11, 0.115, G, 0.25, 0.29, 0, 0.75, 0.75, -0.02);
-  box(g, 0.12, 0.008, 0.008, D, 0.42, 0.312, 0); box(g, 0.13, 0.008, 0.008, D, 0.23, 0.347, 0); box(g, 0.008, 0.008, 0.085, D, 0.42, 0.312, 0); box(g, 0.008, 0.008, 0.09, D, 0.24, 0.347, 0);   // (canopy frames)
-  for (const s of [-1, 1]) { box(g, 0.15, 0.006, 0.006, D, 0.43, 0.275, s * 0.05); box(g, 0.17, 0.006, 0.006, D, 0.25, 0.3, s * 0.052); }
-  box(g, 0.012, 0.1, 0.1, D, 0.34, 0.29, 0);   // (the blast panel between the seats)
+  taper(g, 0.5, 0.17, 0.13, C, 0.3, 0.16, 0, 0.9, 0.8);
+  canopy(g, 0.16, 0.08, 0.11, C, G, 0.43, 0.27, 0, 0.62, 0.75, -0.015, [['f', 1, 0.3], ['s', 1, 0.3], ['t', 1, 0]]);   // (the gunner's flat-plate canopy, the pilot's higher behind it)
+  canopy(g, 0.18, 0.11, 0.115, C, G, 0.25, 0.29, 0, 0.7, 0.75, -0.02, [['f', 1, 0.55], ['s', 2, 0.3], ['t', 1, 0]]);
   cyl(g, 0.045, 0.045, 0.05, 10, D, 0.62, 0.115, 0); for (const s of [-1, 1]) { tube(g, 0.6, 0.67, 0.03, 0.03, D, 0.115, s * 0.055, 8); box(g, 0.006, 0.03, 0.03, G, 0.672, 0.115, s * 0.055); }   // (TADS)
   cyl(g, 0.022, 0.022, 0.04, 8, D, 0.58, 0.225, 0); box(g, 0.006, 0.02, 0.02, G, 0.602, 0.225, 0);   // (PNVS)
   for (const s of [-1, 1]) strut(g, P3(0.55, 0.2, s * 0.04), P3(0.65, 0.21, s * 0.06), 0.003, D);
@@ -112,10 +133,8 @@ function buildAH64() {
 function buildMi24() {
   const g = new THREE.Group(), { C, C3, C2, D, X, X2, GB, G, K, HUB } = heliMats(0x6a6648, 0x77734f, 0x5a5640), R = 0x262924;
   taper(g, 0.6, 0.22, 0.2, C, 0.05, 0.18, 0, 0.9, 0.85); taper(g, 0.34, 0.16, 0.16, C, 0.5, 0.14, 0, 0.75, 0.8, -0.03); box(g, 0.2, 0.07, 0.13, C, 0.4, 0.25, 0);   // (cabin, nose, the step the rear cockpit sits on)
-  for (const [x, y, s] of [[0.5, 0.2, 0.06], [0.37, 0.27, 0.07]]) {
-    const c = shade(new THREE.Mesh(new THREE.SphereGeometry(s, 10, 6, 0, TAU, 0, Math.PI / 2), G)); c.position.set(x, y, 0); c.scale.set(1.4, 1, 1); g.add(c);
-    box(g, s * 2.4, 0.007, 0.007, D, x, y + s * 0.99, 0); box(g, 0.007, 0.007, s * 1.4, D, x - s * 0.3, y + s * 0.93, 0);   // (the bubble's frames)
-  }
+  canopy(g, 0.17, 0.09, 0.13, C, G, 0.51, 0.255, 0, 0.5, 0.65, -0.02, [['f', 1, 0.2], ['s', 2, 0.2], ['t', 1, 0]]);   // (the gunner's canopy, the pilot's on the step behind)
+  canopy(g, 0.15, 0.085, 0.13, C, G, 0.37, 0.32, 0, 0.55, 0.7, -0.02, [['f', 1, 0.4], ['s', 2, 0.25], ['t', 1, 0]]);
   cyl(g, 0.035, 0.035, 0.04, 8, D, 0.6, 0.065, 0); tube(g, 0.6, 0.7, 0.007, 0.007, D, 0.058, 0, 4); tube(g, 0.6, 0.69, 0.005, 0.005, D, 0.07, 0.008, 4);   // (chin turret, its four barrels)
   box(g, 0.08, 0.035, 0.03, D, 0.6, 0.12, -0.075); box(g, 0.006, 0.02, 0.02, G, 0.642, 0.12, -0.075); tube(g, 0.58, 0.66, 0.018, 0.014, D, 0.11, 0.075, 6);   // (guidance and sight pods)
   strut(g, P3(0.64, 0.17, 0.05), P3(0.78, 0.17, 0.06), 0.004, D);   // (air data boom)
@@ -147,9 +166,8 @@ function buildMi24() {
    right, three pylons a wing, wheels, no tail rotor */
 function buildKa52() {
   const g = new THREE.Group(), { C, C3, C2, D, X, X2, GB, G, K, HUB } = heliMats(0x4e5446, 0x585e4f, 0x444a3c), R = 0x262924;
-  taper(g, 0.55, 0.2, 0.17, C, 0.2, 0.18, 0, 0.9, 0.85); taper(g, 0.22, 0.16, 0.16, C, 0.55, 0.15, 0, 0.6, 0.8, -0.04); taper(g, 0.2, 0.12, 0.17, G, 0.42, 0.3, 0, 0.6, 0.8, -0.03);
-  box(g, 0.13, 0.008, 0.008, D, 0.39, 0.362, 0); box(g, 0.006, 0.008, 0.136, D, 0.45, 0.362, 0); strut(g, P3(0.52, 0.24, 0), P3(0.45, 0.36, 0), 0.004, D);   // (canopy frames)
-  for (const s of [-1, 1]) { box(g, 0.18, 0.006, 0.006, D, 0.41, 0.3, s * 0.078); strut(g, P3(0.52, 0.24, s * 0.085), P3(0.45, 0.36, s * 0.068), 0.004, D); }
+  taper(g, 0.55, 0.2, 0.17, C, 0.2, 0.18, 0, 0.9, 0.85); taper(g, 0.22, 0.16, 0.16, C, 0.55, 0.15, 0, 0.6, 0.8, -0.04);
+  canopy(g, 0.2, 0.12, 0.17, C, G, 0.42, 0.29, 0, 0.6, 0.8, -0.03, [['f', 2, 0.15], ['s', 2, 0.2], ['T', 2, 0]]);   // (side by side: the windscreen and the roof in two halves)
   tube(g, 0.66, 0.75, 0.055, 0.025, C3, 0.16, 0, 10);   // (radome)
   const ball = shade(new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), D)); ball.position.set(0.6, 0.07, 0); g.add(ball); box(g, 0.006, 0.03, 0.03, G, 0.638, 0.07, 0);   // (sensor ball)
   box(g, 0.14, 0.04, 0.04, D, 0.22, 0.12, 0.1); tube(g, 0.29, 0.52, 0.009, 0.009, D, 0.12, 0.1, 5); tube(g, 0.5, 0.53, 0.013, 0.013, D, 0.12, 0.1, 6);   // (the 30 mm)

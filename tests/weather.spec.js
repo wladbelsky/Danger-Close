@@ -22,6 +22,9 @@ test('anti-aircraft fire and flares only in a fight, and not with the setting of
   expect(await wp.run(() => [AA.shots, AA.launched, AA.flares.length])).toEqual([0, 0, 0]);
   const r = await wp.run(() => {
     __t.sim(6, { audio: true });
+    // (over the enemy's base, where its guns are: only vehicles and those guns fire up at the aircraft, and a fight the sensor
+    // follows may have none near it for minutes)
+    const B = BATTLE.base; if (B) { GUNSHIP.look.set(B.x, groundH(B.x, B.z), B.z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.ctr.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); }
     AA.nextSam = 0; let flares = 0;
     let guns = 0, aimed = 0;
     for (let i = 0; i < 2400; i++) {
@@ -32,9 +35,10 @@ test('anti-aircraft fire and flares only in a fight, and not with the setting of
         guns++; if ((e[0] * dx + e[2] * dz) / d / Math.hypot(e[0], e[2]) > 0.95) aimed++;   // (not every moment: the aircraft may pass right over a gun)
       }
     }
-    return { shots: AA.shots, launched: AA.launched, flares, guns, aimed: aimed / Math.max(1, guns) };
+    return { base: !!B, shots: AA.shots, launched: AA.launched, flares, guns, aimed: aimed / Math.max(1, guns) };
   });
-  expect(r.shots).toBeGreaterThan(4); expect(r.launched).toBeGreaterThan(0); expect(r.flares).toBeGreaterThan(0);
+  console.log('AA ' + JSON.stringify(r));
+  expect(r.base, 'the enemy has a base').toBe(true); expect(r.shots).toBeGreaterThan(20); expect(r.launched).toBeGreaterThan(0); expect(r.flares).toBeGreaterThan(0);
   expect(r.guns, 'guns seen').toBeGreaterThan(0); expect(r.aimed, 'the guns point at the aircraft').toBeGreaterThan(0.9);
   await wp.run(() => { CFG.aa = false; const a = AA.shots; __t.sim(60, { audio: true }); window.__d = AA.shots - a; });
   expect(await wp.run(() => window.__d), 'with the setting off').toBeLessThan(20);
