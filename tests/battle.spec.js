@@ -480,8 +480,8 @@ test('the AIM-9X locks on first: arrows close in on the helicopter, SHOOT, the l
   await wp.boot({ query: '?hour=12&seed=11&weapons=aim&auto=0' });
   await wp.sim(8, { audio: true });
   const r = await wp.run(() => {
-    BATTLE.nextHeli = 1e9;
-    const put = () => { const p = new V3(CAM_TGT.x + 30, 0, CAM_TGT.z); p.y = groundH(p.x, p.z) + 60; const h = new Heli(0, 'enemy', null, p); BATTLE.helis.push(h); const c = CAM_TGT.clone(); h.round = () => [0, 1, 2, 3, 4, 5].map(i => [c.x + Math.cos(i) * 50, c.z + Math.sin(i) * 50]); h.wps = h.round(); return h; };
+    BATTLE.nextHeli = 1e9; for (const u of BATTLE.helis.slice()) u.remove();   // (only the one put here: the others fly over the frame now, the lock would go from one to another)
+    const put = () => { const p = new V3(CAM_TGT.x + 30, 0, CAM_TGT.z); p.y = groundH(p.x, p.z) + 60; const h = new Heli(0, 'enemy', null, p); h.runNext = 1e9; BATTLE.helis.push(h);   /* (no rocket runs: diving at 55 m/s it slips the lock, and runs are at the frame now) */ const c = CAM_TGT.clone(); h.round = () => [0, 1, 2, 3, 4, 5].map(i => [c.x + Math.cos(i) * 50, c.z + Math.sin(i) * 50]); h.wps = h.round(); return h; };
     const f0 = BATTLE.fire.bind(BATTLE), fired = []; BATTLE.fire = (w, ...a) => { fired.push(w.id); return f0(w, ...a); };
     let h = put(), drawn = 0, arrows = 0, shoot = 0, k0 = 1, kUp = false;
     for (let i = 0; i < 1200; i++) {

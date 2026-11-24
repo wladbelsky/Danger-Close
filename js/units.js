@@ -147,6 +147,15 @@ class Vehicle {
     enlist(this, side, type, this.obj.position, type === 'car' ? 1.3 : 1.9);
     TRACKS.push({ obj: this.obj, side, inf: false, h: type === 'car' ? 1.5 : 2.2 });
   }
+  /* where it can turn off its way from, at its speed (a little further than it takes to stop: `x`, `z`), and its way there (`via`) */
+  ahead() {
+    const L = clamp(this.v * this.v / 4 + 2, 3, 25), via = [], tL = L / Math.max(this.v, 1);
+    for (let d = 1.5; ; d = Math.min(d + 4, L)) {   // (the first a step on: the way's first stretch leaves the way it is going)
+      const s = Math.min(this.path.L, this.s + d), t = d / Math.max(this.v, 1), e = t * (1 - t / (2 * tL)), k = clamp(this.laneK + this.lv * e, -2.2, 2.2), po = this.po + this.pov * e;   // (a swerve or a move aside under way carries on, easing out: the way on leaves where it is going, not a kink)
+      const hd = this.dirAt(s, k); this.path.at(s, k, _va); via.push({ x: _va.x - Math.sin(hd) * po, z: _va.z + Math.cos(hd) * po, y: NaN, hw: 0 }); if (d >= L || s >= this.path.L) break;
+    }
+    const e = via[via.length - 1]; return { x: e.x, z: e.z, via };
+  }
   setPath(path, s, snap) { this.path = path; this.s = s; if (snap) { this.pose(0, true); } }
   /* towards the target speed (a gentle start, firmer brakes), then along the path */
   drive(dt, vt, smax, va) {   // (smax: no further than this along the path, va: then no faster than this; it never goes back)
@@ -155,6 +164,7 @@ class Vehicle {
     else vt = Math.min(vt, Math.max(3, Math.sqrt(BEND_ACC / Math.max(this.bend(), T < (this.weaveUntil || 0) ? this.bend(this.laneT) : 0, 1e-3))));   // (weaving: the bend on the lane it swerves to as well, the inner one of a corner is tighter)
     this.near = VIEW.near(this.pos, TRAFFIC.near);   // (TRAFFIC.near)
     if (this.near) this.shove(dt); else this.shoveD = 0;
+    if (!(occAt(this.pos.x, this.pos.z) & OCC_ROAD) && !(T < (this.dashUntil || 0))) vt = Math.min(vt, this.vmax * FIELD.speed);   // (across a field: slower, but for a dash into cover)
     vt = this.traffic(dt, vt);
     this.v += clamp(vt - this.v, -5 * dt, 2.5 * dt); let s = Math.min(this.path.L, this.s + this.v * dt);
     if (smax !== undefined && s > smax) { s = Math.max(this.s, smax); this.v = Math.min(this.v, va); }
@@ -174,16 +184,19 @@ class Vehicle {
      offset while it touches (traffic() does not pull it back, and bumps() refuses a move back into it) */
   shove(dt) {   // (sets shoveD: -1 / 1 to its left / right, 0 touching nothing)
     const H = this.hull, c = Math.cos(this.yaw), sn = Math.sin(this.yaw), A = { x: this.pos.x + c * H.c, z: this.pos.z + sn * H.c, c, s: sn, l: H.l, w: H.w + 0.3 };
+    const hd = this.dirAt(this.s, this.laneK), hc = Math.cos(hd), hs = Math.sin(hd);   // (sideways measured across its path, not its nose: the nose turns as it moves aside)
     const push = (u, p, still) => {
+      if (this.byp && this.byp.o === u) return false;   // (the one it is going round: that steers it, bumps() keeps them apart)
       const h = u.hull, dx = p.x - this.pos.x, dz = p.z - this.pos.z; if (dx * dx + dz * dz > (H.l + h.l + 1) ** 2) return false;
       const oc = Math.cos(u.yaw), os = Math.sin(u.yaw), B = { x: p.x + oc * h.c, z: p.z + os * h.c, c: oc, s: os, l: h.l, w: h.w + 0.3 }; if (!obbOverlap(A, B)) return false;
-      const lat = -(B.x - A.x) * sn + (B.z - A.z) * c, d = Math.abs(lat) > 0.1 ? -Math.sign(lat) : this.ph < u.ph || still ? -1 : 1;   // (away from it; right on top of each other: one each way)
-      for (const e of [d, -d]) { const po = clamp(this.po + e * 1.5, -TRAFFIC.side - 3, TRAFFIC.side + 3); if (Math.abs(po - this.po) > 0.1 && this.clear(po, 6)) { this.shoveD = e; this.shoveT = T + 2; BATTLE.stat.shove += dt; return true; } }   // (traffic() eases it out that way)
+      const lat = -(B.x - A.x) * hs + (B.z - A.z) * hc, d = this.shoveO === u ? this.shoveE : Math.abs(lat) > 0.1 ? -Math.sign(lat) : this.ph < u.ph || still ? -1 : 1;   // (away from it, the same way while they touch; right on top of each other: one each way)
+      for (const e of [d, -d]) { const po = clamp(this.po + e * 1.5, -TRAFFIC.side - 3, TRAFFIC.side + 3); if (Math.abs(po - this.po) > 0.1 && this.clear(po, 6)) { this.shoveD = this.shoveE = e; this.shoveO = u; this.shoveT = T + 2; BATTLE.stat.shove += dt; return true; } }   // (traffic() eases it out that way)
       return false;
     };
     this.shoveD = 0;
     for (const u of UNITS) if (u !== this && u instanceof Vehicle && push(u, u.pos, false)) return;
     for (const w of WRECKS.list) { const u = w.veh; if (u && u !== this && w.obj.parent === scene && w.obj.position.y > w.y0 - 2 && push(u, u.obj.position, true)) return; }
+    this.shoveO = null;
   }
   bumps(x0, z0) {
     const H = this.hull, c = Math.cos(this.yaw), sn = Math.sin(this.yaw), A = { x: this.pos.x + c * H.c, z: this.pos.z + sn * H.c, c, s: sn, l: H.l, w: H.w };
@@ -196,14 +209,16 @@ class Vehicle {
     for (const w of WRECKS.list) { const u = w.veh; if (u && u !== this && !(this.ghosts && this.ghosts.has(u)) && w.obj.parent === scene && w.obj.position.y > w.y0 - 2 && test(u, u.obj.position)) { this._bo = u; return true; } }
     return false;
   }
-  /* what is in its way ahead (TRAFFIC): { o, al: metres ahead, lat: metres to its right, need: the sideways clearance, hl: its half
-     length, still, head: oncoming } or null */
+  /* what is in its way ahead (TRAFFIC): { o, al: metres ahead, lat: metres to the right of its path's line (po is its own),
+     need: the sideways clearance, hl: its half length, still, head: oncoming } or null. Measured along its path, not its nose:
+     the nose turns as it pulls aside, and a lat that turned with it sent the aside's target back and forth (the jitter) */
   blocker() {
-    const c = Math.cos(this.yaw), s = Math.sin(this.yaw), H = this.hull, x0 = this.pos.x + c * H.c, z0 = this.pos.z + s * H.c; let best = null;
+    const H = this.hull, hd = this.dirAt(this.s, this.laneK), c = Math.cos(hd), s = Math.sin(hd); this.path.at(this.s, this.laneK, _va);
+    const x0 = _va.x + c * H.c, z0 = _va.z + s * H.c, po = this.po; let best = null;
     const look = (o, ox, oz, oyaw, h, still) => {
       const dx = ox - x0, dz = oz - z0, al = dx * c + dz * s; if (al <= 0 || al > TRAFFIC.look) return;
-      const lat = -dx * s + dz * c, rel = Math.abs(angleWrap(oyaw - this.yaw)), need = H.w + (rel > 0.5 && rel < 2.6 ? h.l : h.w) + 0.5;   // (crossing: its length is across our way)
-      if (Math.abs(lat) > need + 2.5 || (best && best.al < al)) return;
+      const lat = -dx * s + dz * c, rel = Math.abs(angleWrap(oyaw - hd)), need = H.w + (rel > 0.5 && rel < 2.6 ? h.l : h.w) + 0.5;   // (crossing: its length is across our way)
+      if (Math.abs(lat - po) > need + 2.5 || (best && best.al < al)) return;
       best = { o, al, lat, need, hl: rel > 0.5 && rel < 2.6 ? h.w : h.l, still, opp: rel > 2.1, head: !still && rel > 2.1 };
     };
     for (const u of UNITS) { if (u === this || !(u instanceof Vehicle) || (u.col && u.col === this.col) || (this.ghosts && this.ghosts.has(u))) continue; const h = u.hull, a = u.yaw; look(u, u.pos.x + Math.cos(a) * h.c, u.pos.z + Math.sin(a) * h.c, a, h, u.v < 0.5); }
@@ -219,14 +234,14 @@ class Vehicle {
       if ((op.x - this.pos.x) * c + (op.z - this.pos.z) * sn < -(H.l + o.hull.l + 1)) this.byp = null; else { want = this.byp.po; vt = Math.min(vt, 4); }
     }
     if (b) {
-      const inWay = Math.abs(b.lat) < b.need, side = b.opp && Math.abs(b.lat) < 1.5 ? 1 : b.lat >= 0 ? -1 : 1, round = this.byp && this.byp.o === b.o;   // (side: aside away from it; nose to nose, both to their right: away from a lat of nearly nothing both went the same way)
-      if (round) { this.byp.po = want = clamp(this.po + b.lat + this.byp.d * (b.need + 0.4), -TRAFFIC.side, TRAFFIC.side); }   // (round it: as far aside as it takes, measured again as it goes; a bend turns it)
-      if (b.head) { want = this.po + side * Math.max(0, b.need + side * b.lat + 0.4) * 0.6; vt = Math.min(vt, TRAFFIC.head); }   // (both pull aside, each a share of it)
+      const rl = b.lat - this.po, inWay = Math.abs(rl) < b.need, side = b.opp && Math.abs(rl) < 1.5 ? 1 : rl >= 0 ? -1 : 1, round = this.byp && this.byp.o === b.o;   // (rl: where it is from this one; side: aside away from it; nose to nose, both to their right: away from a lat of nearly nothing both went the same way)
+      if (round) { this.byp.po = want = clamp(b.lat + this.byp.d * (b.need + 0.4), -TRAFFIC.side, TRAFFIC.side); }   // (round it: as far aside as it takes, from its path's line: steady as the nose turns; a bend turns it)
+      if (b.head) { want = this.po + side * Math.max(0, b.need + side * rl + 0.4) * 0.6; vt = Math.min(vt, TRAFFIC.head); }   // (both pull aside, each a share of it)
       else if (inWay && b.still && !round && this.path.L - this.s > b.al + 12) {   // (a new one in its way: round that one now)
         const mates = this.col && this.col.u.some(v => v.byp && v.byp.o === b.o);   // (a wreck, or the one ahead of it in the column already going round: at once)
         this.blkT = b.o.dead || mates ? TRAFFIC.wait : this.blkT + dt;
         if (this.blkT >= TRAFFIC.wait) for (const d of [side, -side]) {
-          const raw = this.po + b.lat + d * (b.need + 0.4), po = clamp(raw, -TRAFFIC.side, TRAFFIC.side);   // (its lat then: need + 0.4 to that side; one facing it pulls out as well, not a wreck: half of it will do)
+          const raw = b.lat + d * (b.need + 0.4), po = clamp(raw, -TRAFFIC.side, TRAFFIC.side);   // (its lat then: need + 0.4 to that side; one facing it pulls out as well, not a wreck: half of it will do)
           if (Math.abs(raw) <= TRAFFIC.side + (b.opp && !b.o.dead ? b.need / 2 : 0.5) && this.clear(po, b.al + b.hl + 6)) { this.byp = { o: b.o, po, d }; want = po; BATTLE.stat.bypass++; break; }
         }
       }
@@ -234,12 +249,13 @@ class Vehicle {
         const gap = H.l + b.hl + (round ? 0.8 : b.still ? TRAFFIC.gap + 8 : TRAFFIC.gap);   // (short of one standing: room to go round it)
         vt = Math.min(vt, b.al > gap + 1 && round ? Math.max(1.5, Math.sqrt(2 * TRAFFIC.brake * (b.al - gap))) : Math.sqrt(2 * TRAFFIC.brake * Math.max(0, b.al - gap)));   // (going round it: on at a crawl, steering out)
         if (vt < 0.5 || this.v < 0.3) { this.stuckT = (this.stuckT || 0) + dt; BATTLE.stat.yield += dt; } else this.stuckT = 0;
-        if (this.stuckT > TRAFFIC.ghost && !VIEW.onScreen(this.pos, 0.5)) { (this.ghosts || (this.ghosts = new Set())).add(b.o); this.stuckT = 0; this.blk = null; BATTLE.stat.ghost++; }   // (no way past: it stops looking at that one)
+        if (this.stuckT > TRAFFIC.ghost && (!VIEW.onScreen(this.pos, 0.5) || this.stuckT > 3 * TRAFFIC.ghost)) { (this.ghosts || (this.ghosts = new Set())).add(b.o); this.stuckT = 0; this.blk = null; BATTLE.stat.ghost++; }   // (no way past: it stops looking at that one; in sight only once turning off did not help)
+        else if (this.stuckT > TRAFFIC.ghost && T > (this.unjamT || 0) && BATTLE.unjam(this, b.o)) { this.unjamT = T + 20; this.stuckT = 0; }   // (in sight: its column turns off another way)
       } else this.stuckT = 0;
     } else { this.blkT = 0; this.stuckT = 0; }
     if (!this.byp && !(b && b.head)) want = this.shoveT > T ? this.po : 0;   // (pushed aside: it stays there while it touches)
     want = clamp(want, -TRAFFIC.side, TRAFFIC.side);
-    const r = Math.max(this.byp && this.v < 0.5 ? 0.5 : 0, Math.min(TRAFFIC.rate, this.v * 0.6) + (this.v > 0.3 ? 0.1 : 0)), pv = this.shoveD && this.shoveT > T ? this.shoveD * TRAFFIC.shove : clamp(want - this.po, -r, r);   // (shoved: out at TRAFFIC.shove m/s, eased like the rest; aside only as it rolls on: no crabbing; but going round one it stands nose to: slowly out, steering)
+    const r = Math.max(this.byp && this.v < 0.5 ? 0.5 : 0, Math.min(TRAFFIC.rate, this.v * 0.6) + (this.v > 0.3 ? 0.1 : 0)), e = want - this.po, pv = this.shoveD && this.shoveT > T ? this.shoveD * TRAFFIC.shove : Math.abs(e) < 0.03 ? 0 : Math.sign(e) * Math.min(r, Math.sqrt(3 * Math.abs(e)));   // (towards its target no faster than it can stop there at 1.5 m/s per second: no overshoot, no swinging about it)   // (shoved: out at TRAFFIC.shove m/s, eased like the rest; aside only as it rolls on: no crabbing; but going round one it stands nose to: slowly out, steering)
     const room = TRAFFIC.side + (this.shoveT > T ? 3 : 0) - Math.sign(pv) * this.po, pvs = Math.sign(pv) * Math.min(Math.abs(pv), Math.sqrt(4 * Math.max(0, room)));   // (easing to a stop at TRAFFIC.side: never further aside, off the verge)
     this.pov += clamp(pvs - this.pov, -2 * dt, 2 * dt); this.po += this.pov * dt;   // (its rate aside eased at 2 m/s per second: no jerk)
     if (this.ghosts && Math.random() < dt * 0.05) this.ghosts = null;
@@ -273,7 +289,7 @@ class Vehicle {
     else if (weave) { const st = clamp((0.12 - this.bend(this.laneK, -8)) / 0.06, 0, 1); this.lane(dt, 1 + (this.laneT - 1) * st, WEAVE_RATE); }   // (swerving across the road; not round a sharp corner just behind or ahead: the lane's sideways turns fast there)
     else this.lane(dt, 1, 0.7);   // (back into its lane)
     if (snap) { this.po = this.pov = 0; }
-    const hd = this.dirAt(this.s, this.laneK); let yt = hd; if (!snap) yt += Math.atan2(this.lv * P.wAt(this.s) + this.pov, Math.max(this.v, 2));   // (the nose along its own track: into the swerve, or aside)
+    const hd = this.dirAt(this.s, this.laneK); let yt = hd; if (!snap) yt += Math.atan2(this.lv * P.wAt(this.s) + this.pov, Math.max(this.v, 2)) * clamp(this.v / 2, 0.3, 1);   // (the nose along its own track: into the swerve, or aside; standing, it edges aside without swinging its nose)
     this.yaw = snap ? yt : approachAngle(this.yaw, yt, dt * (weave ? 2.5 : 1.8));
     P.at(this.s, this.laneK, _vc);
     if (this.po) { const deck = _vc.y > groundH(_vc.x, _vc.z) + 0.3; _vc.x -= Math.sin(hd) * this.po; _vc.z += Math.cos(hd) * this.po; if (!deck) _vc.y = groundH(_vc.x, _vc.z); }
@@ -320,19 +336,42 @@ class Column {
   /* onto a path from where the column is now: its head runs through the vehicles' own positions, so nobody jumps. If the way
      leads back, the rear vehicle leads (everyone turns round where he stands) */
   reroute(dest, tail) {
-    const N = ROADNET, U = this.u, plan = v => { const k = N.nearest(v.pos.x, v.pos.z, 60); let n = k < 0 ? null : N.route(k, dest); while (n && n.length > 2 && Math.hypot(N.X[n[0]] - v.pos.x, N.Z[n[0]] - v.pos.z) < 9) n = n.slice(1); return n; };   // (no kink back to a node just behind)
+    const N = ROADNET, U = this.u, plan = v => { let k = N.nearest(v.pos.x, v.pos.z, 60); if (k < 0) k = N.nearest(v.pos.x, v.pos.z, 700); let n = k < 0 ? null : N.route(k, dest); while (n && n.length > 2 && Math.hypot(N.X[n[0]] - v.pos.x, N.Z[n[0]] - v.pos.z) < 9) n = n.slice(1); return n; };   // (no kink back to a node just behind; out in a field: the nearest road within 700 m)
     let nodes = plan(U[0]); if (!nodes) return false;
     const j = nodes[Math.min(nodes.length - 1, 3)], back = U.length > 1 && (N.X[j] - U[0].pos.x) * (U[0].pos.x - U[U.length - 1].pos.x) + (N.Z[j] - U[0].pos.z) * (U[0].pos.z - U[U.length - 1].pos.z) < 0;
     if (back) { nodes = plan(U[U.length - 1]); if (!nodes) return false; }
     const order = back ? U.slice() : U.slice().reverse();   // (rear to front on the new way)
     const head = order.map(v => ({ x: v.pos.x, z: v.pos.z, y: v.pos.y > groundH(v.pos.x, v.pos.z) + 0.3 ? v.pos.y : NaN, hw: 0 }));
-    const path = Path.fromNodes(nodes, head, tail); let d = 0;
+    const lead = order[order.length - 1].pos;
+    if (!(occAt(lead.x, lead.z) & OCC_ROAD) && Math.hypot(N.X[nodes[0]] - lead.x, N.Z[nodes[0]] - lead.z) > 15) {   // (off the road: back to it across the field, to the nearest node it can reach)
+      const tried = [], cand = [nodes[0]]; N.near(lead.x, lead.z, 250, k => cand.push(k)); cand.sort((a, b) => Math.hypot(N.X[a] - lead.x, N.Z[a] - lead.z) - Math.hypot(N.X[b] - lead.x, N.Z[b] - lead.z));
+      let f = null;
+      for (const k of cand) {
+        if (tried.length >= 6) break; if (N.BR[k] || tried.some(j => Math.hypot(N.X[j] - N.X[k], N.Z[j] - N.Z[k]) < 30)) continue; tried.push(k);
+        const n = k === nodes[0] ? nodes : N.route(k, dest); if (!n) continue; f = fieldRoute(lead.x, lead.z, N.X[k], N.Z[k], 700); if (f) { nodes = n; break; }
+      }
+      if (!f) return false; head.push(...f.slice(1, -1));
+    }
+    this.lay(Path.fromNodes(nodes, head, tail), order); return true;
+  }
+  /* off the road along pts (fieldRoute from the leader's ahead() point), the others following through where they are; via: its
+     way on to that point (no turning on the spot at speed) */
+  goField(pts, via) {
+    const order = this.u.slice().reverse(), head = order.map(v => ({ x: v.pos.x, z: v.pos.z, y: NaN, hw: 0 }));
+    this.lay(new Path(head.concat(via || [], pts.slice(1)).filter((q, i, a) => !i || Math.hypot(q.x - a[i - 1].x, q.z - a[i - 1].z) > 0.3)), order);
+  }
+  /* each vehicle a column of its own (BATTLE wraps them): returns the new ones */
+  split() { const out = this.u.slice(1).map(v => { const c = new Column([v]); c.path = this.path; c.alarm = this.alarm; return c; }); this.u.length = Math.min(1, this.u.length); return out; }
+  /* onto a path whose head runs through the vehicles (order: rear to front) */
+  lay(path, order) {
+    let d = 0;
     order.forEach((v, i) => { if (i) d += Math.hypot(v.pos.x - order[i - 1].pos.x, v.pos.z - order[i - 1].pos.z); v.setPath(path, Math.min(d, path.L)); });
+    const U = this.u;
     for (const v of U) {   // (the new way is smoothed: off where it stands by up to a metre; s and po take that up, po eases back: no jump)
       const h = v.dirAt(v.s, v.laneK); path.at(v.s, v.laneK, _va); const c = Math.cos(h), sn = Math.sin(h), dx = v.pos.x - _va.x, dz = v.pos.z - _va.z;
-      v.s = clamp(v.s + dx * c + dz * sn, 0, path.L); v.po = clamp(-dx * sn + dz * c, -TRAFFIC.side, TRAFFIC.side); v.pov = 0;
+      v.s = clamp(v.s + dx * c + dz * sn, 0, path.L); v.po = clamp(-dx * sn + dz * c, -TRAFFIC.side, TRAFFIC.side); v.pov = 0; v.byp = null;
     }
-    this.path = path; this.sort(); return true;
+    this.path = path; this.sort();
   }
   /* units ordered front first (largest s) */
   sort() { this.u.sort((a, b) => b.s - a.s); }
@@ -362,6 +401,8 @@ class Column {
 
 /* ---- a helicopter: sits on its pad, takes off, flies a round of waypoints, comes back and lands ---- */
 const _hv = new V3();
+/* helicopters in a fight: their rounds `r` m round the sensor's point, the enemy's rocket runs at a target within `near` m past the frame up to `reach` m away first */
+const HELI_FIGHT = { r: [60, 180], near: 40, reach: 900 };
 class Heli {
   /* pad: where it lives (the allies'); without one it starts in the air at `start` and never lands (the enemies') */
   constructor(variant, side, pad, start) {
@@ -420,7 +461,8 @@ class Heli {
     if (!R) {
       if (!AUD.fighting || AUD.calm || this.retreat || T < this.runNext) return null;
       this.runNext = T + 3;   // (nothing to run at: looked for again in 3 s)
-      let t = null, bd = 600; for (const u of UNITS) { if (u.side === this.side || u.kind === 'heli' || !u.alive) continue; const d = Math.hypot(u.pos.x - p.x, u.pos.z - p.z); if (d < bd) { bd = d; t = u; } }
+      let t = null, bd = this.side === 'enemy' ? HELI_FIGHT.reach : 0; for (const u of UNITS) { if (u.side === this.side || u.kind === 'heli' || !u.alive || !VIEW.near(u.pos, HELI_FIGHT.near)) continue; const d = Math.hypot(u.pos.x - p.x, u.pos.z - p.z); if (d < bd) { bd = d; t = u; } }   // (what is in the frame first)
+      if (!t) { bd = 600; for (const u of UNITS) { if (u.side === this.side || u.kind === 'heli' || !u.alive) continue; const d = Math.hypot(u.pos.x - p.x, u.pos.z - p.z); if (d < bd) { bd = d; t = u; } } }
       if (!t) return null;
       R = this.run = { tgt: t, ph: 'in', armed: 0, until: 0, sx: 0, sz: 0 };
       if (bd < 320) { const k = 450 / Math.max(bd, 1); R.ph = 'setup'; R.sx = clamp(t.pos.x + (p.x - t.pos.x) * k, -900, 900); R.sz = clamp(t.pos.z + (p.z - t.pos.z) * k, -900, 900); }
@@ -442,8 +484,13 @@ class Heli {
   die() { delist(this); untrack(this.obj); this.state = 'crash'; this.dir = this.yaw; this.run = null; }
   remove() { delist(this); untrack(this.obj); scene.remove(this.obj); this.out = true; }
   /* a round: 3–4 districts or outposts, not too near the edge; in a fight: round the enemies' base */
+  /* a round of waypoints: in a fight the enemy's fly two rounds in three over where the camera looks (HELI_FIGHT: through the frame;
+     the allies' stay on their round over the base: firing 2.8 times as often, over the frame they cleared it of the enemy's armour and
+     helicopters), else over the enemy's base; out of one, over the districts and the outposts */
   round() {
-    const B = BATTLE.base; if (B && AUD.combat) { const out = []; for (let i = 0; i < 3; i++) { const a = rand(0, TAU), r = rand(20, 90); out.push([clamp(B.x + Math.cos(a) * r, -900, 900), clamp(B.z + Math.sin(a) * r, -900, 900)]); } return out; }
+    const L = GUNSHIP.look, B = BATTLE.base;
+    if (AUD.combat && this.side === 'enemy' && !BATTLE.slow() && ((this.rounds = (this.rounds || 0) + 1) % 3 || !B)) {   /* (very slow music fights group by group, with breaks once the frame is clear: not then) */ const out = []; for (let i = randi(3, 4); i > 0; i--) { const a = rand(0, TAU), r = rand(...HELI_FIGHT.r); out.push([clamp(L.x + Math.cos(a) * r, -900, 900), clamp(L.z + Math.sin(a) * r, -900, 900)]); } return out; }
+    if (B && AUD.combat) { const out = []; for (let i = 0; i < 3; i++) { const a = rand(0, TAU), r = rand(20, 90); out.push([clamp(B.x + Math.cos(a) * r, -900, 900), clamp(B.z + Math.sin(a) * r, -900, 900)]); } return out; }
     const c = GUNSHIP.list.map(d => [d.x, d.z]).concat(LAYOUT.outposts.map(o => [o.x, o.z])), out = [];
     for (let i = 0; i < randi(3, 4); i++) { const q = pick(c); out.push([clamp(q[0] + rand(-120, 120), -850, 850), clamp(q[1] + rand(-120, 120), -850, 850)]); }
     return out;
@@ -558,6 +605,56 @@ function patrolLoop(cx, cz, r0, r1, start) {
   }
   while (out.length > 2 && !walkable(out[out.length - 1][0], out[out.length - 1][1], start[0], start[1])) out.pop();
   return out.length > 2 ? out : [start, start];
+}
+
+/* ---- off the road: a way across the fields for a vehicle (A* on FIELD.cell m cells in a box round the two points). Never through a
+   building, a yard, water, a forest (FIELD.forest: its trees stand that thick) or up a slope steeper than FIELD.slope, nor near the
+   map's edge; roads are cheap (through a town it takes the streets), hedges, rail and sparse trees dear. Smoothed like the roads,
+   every point checked again. [{ x, z, y: NaN, hw: 0 }] or null ---- */
+const FIELD = { cell: 4, pad: 80, forest: 0.15, slope: 0.4, probe: 2.2, wide: 3.2, speed: 0.6, fail: { far: 0, end: 0, way: 0, smooth: 0 } };   // (fail: why none was found, for the tests)
+function fieldBlocked(x, z, r = FIELD.probe, soft) {   // (r: the clearance round it; on a road the forest beside it does not count: the road is cut through it; soft: the forest only where it stands, thick)
+  const road = occAt(x, z) & OCC_ROAD; if (road) r = Math.min(r, 1);   // (a street between houses: as narrow as the road is)
+  if (soft && !road && MAP.sample(MAP.forest, x, z) > 2 * FIELD.forest) return true;
+  for (const [dx, dz] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]]) {
+    const px = x + dx, pz = z + dz, w = waterAt(px, pz), o = occAt(px, pz);
+    if ((o & (OCC_BUILD | OCC_WATER)) || (o & (OCC_YARD | OCC_ROAD)) === OCC_YARD || w === 1 || w === 2 ||   /* (a yard where the road runs through its edge: the road) */ Math.abs(px) > MAP_HALF - 30 || Math.abs(pz) > MAP_HALF - 30 || (!soft && !road && !(o & OCC_ROAD) && MAP.sample(MAP.forest, px, pz) > FIELD.forest)) return true;
+  }
+  return false;
+}
+function fieldRoute(ax, az, bx, bz, max = 500) {
+  if (Math.hypot(bx - ax, bz - az) > max) { FIELD.fail.far++; return null; } if (fieldBlocked(bx, bz)) { FIELD.fail.end++; return null; }
+  const G = FIELD.cell, x0 = Math.min(ax, bx) - FIELD.pad, z0 = Math.min(az, bz) - FIELD.pad, nx = Math.ceil((Math.max(ax, bx) + FIELD.pad - x0) / G) + 1, nz = Math.ceil((Math.max(az, bz) + FIELD.pad - z0) / G) + 1, N = nx * nz;
+  const cc = new Float32Array(N).fill(-1), hh = new Float32Array(N).fill(NaN), g = new Float32Array(N).fill(Infinity), from = new Int32Array(N).fill(-1), done = new Uint8Array(N);
+  const X = k => x0 + (k % nx) * G, Z = k => z0 + ((k / nx) | 0) * G, at = (x, z) => clamp(Math.round((z - z0) / G), 0, nz - 1) * nx + clamp(Math.round((x - x0) / G), 0, nx - 1);
+  const cost = k => { if (cc[k] < 0) { const x = X(k), z = Z(k), o = occAt(x, z); cc[k] = fieldBlocked(x, z, FIELD.wide) ? Infinity : (o & OCC_ROAD ? 0.6 : 1) + MAP.sample(MAP.forest, x, z) * 30 + (o & OCC_HEDGE ? 6 : 0) + (o & OCC_RAIL ? 3 : 0); } return cc[k]; };
+  const hgt = k => hh[k] === hh[k] ? hh[k] : (hh[k] = groundH(X(k), Z(k)));
+  const s = at(ax, az), t = at(bx, bz), tx = t % nx, tz = (t / nx) | 0, H = k => Math.hypot(k % nx - tx, ((k / nx) | 0) - tz) * G;
+  const hk = [], hv = [], push = (k, v) => { hk.push(k); hv.push(v); let i = hk.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (hv[p] <= hv[i]) break; [hk[p], hk[i]] = [hk[i], hk[p]]; [hv[p], hv[i]] = [hv[i], hv[p]]; i = p; } };
+  const pop = () => { const k = hk[0], lk = hk.pop(), lv = hv.pop(); if (hk.length) { hk[0] = lk; hv[0] = lv; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < hk.length && hv[l] < hv[m]) m = l; if (r < hk.length && hv[r] < hv[m]) m = r; if (m === i) break; [hk[m], hk[i]] = [hk[i], hk[m]]; [hv[m], hv[i]] = [hv[i], hv[m]]; i = m; } } return k; };
+  g[s] = 0; push(s, H(s));
+  while (hk.length) {
+    const k = pop(); if (done[k]) continue; done[k] = 1; if (k === t) break;
+    const x = k % nx, z = (k / nx) | 0;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dz) continue; const ux = x + dx, uz = z + dz; if (ux < 0 || uz < 0 || ux >= nx || uz >= nz) continue;
+      const n = uz * nx + ux; if (done[n]) continue;
+      const c = cost(n); if (!(c < Infinity)) continue;
+      const d = Math.hypot(dx, dz) * G, sl = Math.abs(hgt(n) - hgt(k)) / d; if (sl > FIELD.slope) continue;
+      const v = g[k] + d * (c + sl * sl * 40); if (v < g[n]) { g[n] = v; from[n] = k; push(n, v + H(n)); }
+    }
+  }
+  if (from[t] < 0) { FIELD.fail.way++; return null; }
+  const raw = []; for (let k = t; k >= 0; k = from[k]) { raw.push([X(k), Z(k)]); if (k === s) break; }
+  raw.reverse(); raw[0] = [ax, az]; raw[raw.length - 1] = [bx, bz];
+  const free = (p, q) => { const n = Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / 2); let h0 = groundH(p[0], p[1]); for (let i = 1; i <= n; i++) { const x = lerp(p[0], q[0], i / n), z = lerp(p[1], q[1], i / n), h = groundH(x, z); if (fieldBlocked(x, z, FIELD.probe + 0.4) || Math.abs(h - h0) / (Math.hypot(q[0] - p[0], q[1] - p[1]) / n) > FIELD.slope) return false; h0 = h; } return true; };
+  const pulled = [raw[0]]; for (let i = 0; i < raw.length - 1;) { let j = raw.length - 1; while (j > i + 1 && !free(raw[i], raw[j])) j--; pulled.push(raw[j]); i = j; }   // (the cells' staircase pulled straight wherever the line between is clear: a nose that swung at every step of it)
+  for (const [line, tol, ch] of [[pulled, 0, 3], [pulled, 0, 2], [raw, 4, 2], [raw, 1.5, 2], [raw, 0.5, 1], [raw, 0, 1], [raw, 0, 0]]) {   // (the way is found with FIELD.wide clearance and checked with FIELD.probe: the smoothing's corners have room)
+    const pts = resample(chaikin(rdp(line, tol), ch), 4);
+    const okB = pts.every((p, i) => i === 0 || !fieldBlocked(p[0], p[1], FIELD.probe, true)), okS = pts.every((p, i) => !i || Math.abs(groundH(p[0], p[1]) - groundH(pts[i - 1][0], pts[i - 1][1])) / Math.max(0.5, Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1])) <= FIELD.slope + 0.1);
+    if (okB && okS)
+      return pts.map(p => ({ x: p[0], z: p[1], y: NaN, hw: 0 }));
+  }
+  FIELD.fail.smooth++; return null;
 }
 
 /* ---- the allies: a garrison per outpost. In a fight the columns drive to the enemies' base and the helicopters fly round it;

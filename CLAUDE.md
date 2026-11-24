@@ -198,6 +198,39 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   Tests: "the enemy armour comes into the frame" (maps 5 and 71, where it was 0); the music test's target stands in the frame; the
   reticle test leaves out rounds in the air when the sensor jumps to another target (BURST_LET_GO m within 0.3 s), as before < 0.21;
   the weave test's share of steps over 6 m/s² < 5 % (more vehicles weave at full speed now, none queued out of sight).
+- Off the road; scattering; the helicopters over the fight; no jitter. Measured (prev. commit -> now, 16 maps x 10 min unless said):
+  enemy helicopters in the frame 1.4 % -> ~10 % of the time; vehicles by the frame standing 55 % -> ~39 %; the nose swinging three
+  times in 3 s 25–45 % -> 0–18 % of the windows (2 maps, 150 s); an enemy vehicle in the frame ~50–54 % (was 52–58 % on the same
+  measure: run-to-run spread ±3). What changed:
+  - `fieldRoute(ax, az, bx, bz, max)` (units.js, `FIELD`): A* on 4 m cells in a box round the two points; never through a building,
+    a yard (but a road through a yard's edge), water, a forest over `FIELD.forest` (a road through a forest is fine), up a slope over
+    `FIELD.slope` or near the map's edge (`fieldBlocked(x, z, r, soft)`: `wide` clearance to search, `probe` to check, 1 m on a
+    road); roads cheap, hedges / rail / sparse trees dear; the cells' staircase pulled straight where the line is clear, then
+    chaikin and checked again (fallbacks down to the raw cells). `FIELD.fail` counts why none was found. Off a road a vehicle drives
+    at most `FIELD.speed` x its top speed (not in a dash: `dashUntil`);
+  - `Column.reroute` from a field: back across it to the nearest of 6 road nodes it can reach; `goField(pts, via)` (a way from the
+    leader), `split()` (each vehicle a column of its own), `lay()`; `Vehicle.ahead()`: where it can turn off at its speed and the
+    way there, its swerve and move aside carried on, easing out (a turn-off at 10 m/s mid-swerve kinked 20–500 m/s²);
+  - `BATTLE.toPlace(x, z)` -> `{ node, tail }`: a column bound for the fight goes on across the field to 25 m of the sensor's point
+    when the road is over 70 m off (`dests`, `steer`, `spawnColumn`, `feed`, the QRF, `columnTo` / `columnOn(..., tail)`; cached 5 s);
+  - `OFFROAD`: `assault`: an enemy column within `near` m past the frame goes across the field at the nearest of the allies in the
+    picture (`tgtNear`) off the road, to `short` m of them (no way round longer than 1.8x the line); the column does not halt for
+    a fight on its way (`E.move`), its APC lets its infantry out there; given up after `assaultT` s, on alarm or with the target
+    dead. `deploy`: a column halted for a fight on the road in the frame takes positions 15–35 m off it towards the enemy, 15 m
+    apart. `scatterNear` (from the gunship's `strike`): each vehicle of a column hit within `scatterR` m in the frame dashes to a
+    spot 30–60 m off, away from the hit and off the road to one side, in the frame if it can (a side street in a town), 20 m apart,
+    holds `hold` s once there (`scatHold`, `scat`), then goes on alone (`retask`). `steer` and `unjam` leave a column on its own way;
+  - helicopters: the enemy's fly two rounds in three over the sensor's point (`HELI_FIGHT`, `Heli.round`; not in very slow music:
+    its breaks wait for a clear frame) and make rocket runs at
+    what is by the frame first; they come in some 700 m from the fight, out of sight (`spawnHeli`). The allies' keep their rounds
+    (over the frame, firing 2.8x as often, they cleared it of the enemy's armour and helicopters);
+  - jitter: `blocker()` measures lat across its path's line, not its nose (the nose turned as it pulled aside, the target aside
+    moved with it); `byp.po` from that line; the aside rate brakes to its target (`sqrt(3 e)`: no overshoot); `shove` keeps its side
+    while touching the same one and leaves alone the one it is going round; standing, the nose does not swing with a move aside;
+  - a vehicle stuck in sight for `TRAFFIC.ghost` s: its column turns off to a road 150–400 m away, away from what blocks it
+    (`BATTLE.unjam`); after 3x `ghost` it stops looking at that one there too.
+  Tests: tests/offroad.spec.js (the way across a field, the assault, the scatter, the helicopters over the frame, no jitter); the
+  AIM-9X's lock test keeps one helicopter, without rocket runs (diving at 55 m/s it slips the lock).
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -269,7 +302,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=82`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=83`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

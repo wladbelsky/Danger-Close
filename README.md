@@ -92,8 +92,11 @@ fullscreen apps by default.
   and a swerve eases in and out. They keep out of each other: they brake for what is ahead, pull aside for one coming the other
   way and drive round a wreck or a halted column.
 - **The armour comes to the fight**: enemy columns drive on to where the camera looks (to the nearest road, even when the fight is
-  out in the fields) instead of stopping to fight the allies somewhere out of sight. Out of the frame nobody fights and the
-  vehicles drive as they like; near it they keep out of each other.
+  out in the fields, across them) instead of stopping to fight the allies somewhere out of sight. Out of the frame nobody fights
+  and the vehicles drive as they like; near it they keep out of each other without jittering.
+- **Off the road**: enemy armour leaves the road to assault the allies' infantry in the fields, a column halted for a fight
+  takes positions beside the road, and one the gunship hits scatters off it in every direction, holds, then goes on alone.
+- **Helicopters over the fight**: the enemy's circle over the frame and make their rocket runs at what is in it.
 - **Detailed helicopters**: cockpits with flat panes set in their frames, tapering blades on a full rotor head, sensors, guns,
   rockets and missiles on their pylons, wheels, hot exhausts on the thermal sensor.
 - **The reticle is where the guns fire**: at the map's edge, where the picture cannot centre the sensor's point, the reticle
