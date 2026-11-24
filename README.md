@@ -91,6 +91,9 @@ fullscreen apps by default.
 - **Smooth driving**: vehicles steer round the corners of a road instead of turning on the spot, each slows for its own bend,
   and a swerve eases in and out. They keep out of each other: they brake for what is ahead, pull aside for one coming the other
   way and drive round a wreck or a halted column.
+- **The armour comes to the fight**: enemy columns drive on to where the camera looks (to the nearest road, even when the fight is
+  out in the fields) instead of stopping to fight the allies somewhere out of sight. Out of the frame nobody fights and the
+  vehicles drive as they like; near it they keep out of each other.
 - **Detailed helicopters**: cockpits with flat panes set in their frames, tapering blades on a full rotor head, sensors, guns,
   rockets and missiles on their pylons, wheels, hot exhausts on the thermal sensor.
 - **The reticle is where the guns fire**: at the map's edge, where the picture cannot centre the sensor's point, the reticle

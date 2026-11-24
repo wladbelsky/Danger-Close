@@ -171,6 +171,7 @@ function updateCamera() {
   camera.aspect = Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight);
   updateCameraPose();
   camera.fov = 2 * Math.atan(viewH * 0.5 / camera.position.distanceTo(CAM_TGT)) / DEG;
+  VIEW.frameR = Math.hypot(viewH * 0.5 * camera.aspect, viewH * 0.5 / Math.sin(CAM_ELEV));   // (VIEW.near)
   camera.updateProjectionMatrix();
   for (let i = 0; i < 3 && clampFrame(); i++) updateCameraPose();   // (moving the look-at point turns the line of sight: a few passes settle it)
 }
@@ -196,6 +197,10 @@ const VIEW = {
      sensor's point wherever it shows in it: the guns fire there, so the reticle is drawn there too */
   ret() { if (Math.hypot(GUNSHIP.look.x - CAM_TGT.x, GUNSHIP.look.z - CAM_TGT.z) < 0.5) return _rt.set(0, 0, 0); const n = this.ndc(GUNSHIP.look), x = clamp(n.x, -0.92, 0.92), y = clamp(n.y, -0.88, 0.88); return _rt.set(x, y, x !== n.x || y !== n.y ? 1 : 0); },   // (z 1: the point is out of the frame, nothing is under the reticle)
   onScreen(p, m) { const n = this.ndc(p); return Math.abs(n.x) < 1 + (m || 0) && Math.abs(n.y) < 1 + (m || 0); },
+  /* within m metres past the frame: frameR is the half diagonal of the ground it shows (the view's height × the aspect across,
+     stretched by the slant down the view), measured from the frame's centre, so it grows with the zoom out */
+  frameR: 150,
+  near(p, m) { return Math.hypot(p.x - CAM_TGT.x, p.z - CAM_TGT.z) < this.frameR + m; },
   groundAt(nx, ny, alt, out) {          // the point at height alt seen at screen position (nx, ny)
     _rd.set(nx, ny, 0.5).unproject(camera).sub(camera.position).normalize();
     return (out || new V3()).copy(camera.position).addScaledVector(_rd, (alt - camera.position.y) / _rd.y);

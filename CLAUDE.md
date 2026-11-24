@@ -174,6 +174,30 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   (`HUD.retAt`), `onAim`, `nearestTo` and the test's measure go by it alone, a shot under the reticle goes to the sensor's
   point (`aimPoint`, was the frame's centre). Within some 60 m of the edge the point is out of the frame (`VIEW.ret().z` 1):
   nothing is fired at it.
+- The enemy's armour reaches the frame; out of sight they drive as they like and nobody fights. Measured over 16 maps × 10 min:
+  an enemy vehicle in the frame 35 % of the time on average (9 % on the worst map; before the traffic rules ~33 %, with maps at 0),
+  ~50 per map killed without ever being in it. Now 46 % (worst 32 %), ~9 killed unseen. What changed:
+  - `VIEW.near(p, m)`: within m metres past the frame, from its centre (`VIEW.frameR`: the half diagonal of the ground it shows,
+    set in `updateCamera`, so it grows with the zoom out). Everything below is measured by it;
+  - the traffic rules (`blocker`, `bumps`, `shove`) only within `TRAFFIC.near` (80 m) past the frame: further off vehicles drive
+    through each other (columns queued for minutes 1–1.5 km off). Two that come in inside each other (or a wreck rolled into one)
+    are pushed apart sideways (`Vehicle.shove`: `shoveD`, at `TRAFFIC.shove` m/s through the eased `pov`, up to 3 m past `side`,
+    where no building or water is; held while they touch); `po` eases to a stop at its limit;
+  - nobody fires unless the shooter or its target is within `FIRE_NEAR` (150 m) past the frame (`unitShot` reloads and holds,
+    `stat.quiet`). A column halts for a fight only within `COL_ZONE` (60 m) past it (`BATTLE.inPlay`), further off it fires on the
+    move and drives on, and the allies' fire does an enemy vehicle there no harm (`stat.spared`). Very slow music (`BATTLE.slow`)
+    keeps the column rules as they were: it fights group by group, with breaks;
+  - `BATTLE.steer`: an enemy column far off (300 m) and out of sight, bound for where the camera was (it drifts with the fight), is
+    sent on to the road nearest to where it looks now (not one bound for the base or an outpost or already for that road; not in
+    very slow music);
+  - `ROADNET.toward`: the node for a place is the nearest within 250 m, else within 700 m (was none: with the sensor over fields
+    away from the roads every column went off to the base or an outpost);
+  - `Column.reroute` keeps each vehicle where it stands (the smoothed new way is off by up to a metre: s and po take it up), was a
+    0.6 m jump; a weaving vehicle slows for the bend on the lane it swerves to as well (`bend(k)`) and does not swerve round a sharp
+    corner just behind or ahead (`bend(k, -8)`: the lane's sideways turns fast after a hairpin junction, up to 23 m/s²).
+  Tests: "the enemy armour comes into the frame" (maps 5 and 71, where it was 0); the music test's target stands in the frame; the
+  reticle test leaves out rounds in the air when the sensor jumps to another target (BURST_LET_GO m within 0.3 s), as before < 0.21;
+  the weave test's share of steps over 6 m/s² < 5 % (more vehicles weave at full speed now, none queued out of sight).
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -245,7 +269,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=80`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=82`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

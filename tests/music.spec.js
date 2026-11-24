@@ -28,7 +28,7 @@ test('denser music: more shots, the same damage a second', async ({ wp }) => {
   await wp.boot({ query: '?hour=12&seed=11' });
   const r = await wp.run(() => {
     const u = UNITS.find(o => o.side === 'ally' && o.kind === 'tank') || UNITS.find(o => o.side === 'ally' && FIRE[o.kind]);
-    const tgt = { alive: true, kind: 'inf', pos: u.pos.clone(), ah: 1.6 }; tgt.pos.x += 30;
+    const tgt = { alive: true, kind: 'inf', pos: CAM_TGT.clone(), ah: 1.6 };   // (in the frame: further off nobody fires, FIRE_NEAR)
     const fire0 = BATTLE.unitFire, out = {};
     for (const H of [0.1, 1]) {
       Object.defineProperty(AUD, 'heavy', { get: () => H, set() {}, configurable: true });
