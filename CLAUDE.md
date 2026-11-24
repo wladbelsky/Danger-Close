@@ -231,6 +231,13 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
     (`BATTLE.unjam`); after 3x `ghost` it stops looking at that one there too.
   Tests: tests/offroad.spec.js (the way across a field, the assault, the scatter, the helicopters over the frame, no jitter); the
   AIM-9X's lock test keeps one helicopter, without rocket runs (diving at 55 m/s it slips the lock).
+- **The Hellfire is laser-guided**: as the real AGM-114K/R (semi-active laser homing, lock-on before launch), the sensor's
+  designator puts its spot on the vehicle under the reticle and the seeker locks on it in `LOCK_T.hf` 0.8 s (the AIM-9X's lock
+  generalised: `LOCK_T`, `BATTLE.lock.w`, `lockStep` for both), SHOOT, the launch on a strong beat (or `LOCK.fire` s on); in flight
+  it goes for the spot (`BATTLE.lase`: `tgt`, `p`, `m`; `missiles[].laser`), wherever the laser holds it: the sensor stays on the
+  target until the hit (`aimCamera`), the auto-switching waits, no new lock meanwhile; its target killed first, the spot stays
+  where it was. HUD: the lock's arrows with a pulsing diamond (the spot, `HUD.spot`), then LASE and the time of flight boxed where
+  SHOOT was and the diamond on the spot (`HUD.laseOn`, `laseDraw`, `cue`). Sheet: hellfire-lase.png.
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -302,7 +309,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=83`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=84`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

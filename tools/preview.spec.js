@@ -554,6 +554,25 @@ test('aim lock', async ({ wp }) => {
   }
   await sheet(wp, shots, 2, 'aim-lock.png');
 });
+
+test('hellfire lase', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1200, height: 675 });
+  await wp.boot({ query: '?hour=11&seed=11&weapons=hf&auto=0&weather=clear&clouds=0&transit=0' });
+  await wp.sim(8, { audio: true });
+  await wp.run(() => {
+    for (const u of UNITS.slice()) if (u.side === 'enemy' && u instanceof Vehicle) u.remove();
+    BATTLE.nextWave = BATTLE.nextFeed = 1e9;
+    const v = new Vehicle('tank', 'enemy'); v.hp = 1e9; v.obj.position.set(CAM_TGT.x + 15, 0, CAM_TGT.z); v.obj.position.y = groundH(v.obj.position.x, v.obj.position.z); v.path = new Path([{ x: v.pos.x, z: v.pos.z, y: NaN, hw: 0 }, { x: v.pos.x + 1, z: v.pos.z, y: NaN, hw: 0 }]);
+  });
+  const shots = [];
+  for (const want of ['k0.5', 'shoot', 'lase0.4', 'lase0.8']) {
+    const ok = await wp.run(want => { for (let i = 0; i < 1200; i++) { __t.sim(0.05, { audio: true }); HUD.draw(); const L = BATTLE.lock, d = HUD.lockDraw, S = BATTLE.lase;
+      const hit = want.startsWith('lase') ? S && S.m.p > +want.slice(4) : want === 'shoot' ? d && d.shoot && Math.floor((T - L.shootT) * 8) % 2 === 0 : d && !d.shoot && Math.abs(d.k - +want.slice(1)) < 0.07;
+      if (hit) { __t.render(); HUD.draw(); return true; } } return false; }, want);
+    if (ok) shots.push((await wp.page.screenshot()).toString('base64'));
+  }
+  await sheet(wp, shots, 2, 'hellfire-lase.png');
+});
 /* a Hellfire on its way down beside a string of flares; a SAM coming up; a BTR firing up from its roof machine gun */
 test('missiles and flares', async ({ wp }) => {
   await wp.page.setViewportSize({ width: 1200, height: 675 });

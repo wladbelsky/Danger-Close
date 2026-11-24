@@ -546,3 +546,40 @@ for (const seed of [5, 71]) test(`the enemy armour comes into the frame, not kil
   expect(r.share, 'the share of the time an enemy vehicle is in the frame').toBeGreaterThan(0.1);   // (was 0 on both maps)
   expect(r.unseen, 'enemy vehicles killed without ever being in the frame').toBeLessThan(Math.max(15, r.seen * 0.4));
 });
+
+/* the Hellfire is laser-guided (semi-active): the sensor's designator puts its spot on a vehicle, the seeker locks on it before
+   the launch (LOCK_T.hf), SHOOT, the launch on a strong beat; in flight it goes for the spot, wherever the laser holds it, and the
+   sensor stays on the target until the hit (BATTLE.lase), LASE and the time of flight on the HUD */
+test('the Hellfire locks on the laser spot first and flies to it, the sensor holding the target until the hit', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=hf&auto=0&transit=0' });
+  await wp.sim(8, { audio: true });
+  const r = await wp.run(() => {
+    const put = () => { const v = new Vehicle('apc', 'enemy'); v.hp = 1e9; v.troops = 0; v.obj.position.set(CAM_TGT.x + 15, 0, CAM_TGT.z); v.obj.position.y = groundH(v.obj.position.x, v.obj.position.z); v.path = new Path([{ x: v.pos.x, z: v.pos.z, y: NaN, hw: 0 }, { x: v.pos.x + 1, z: v.pos.z, y: NaN, hw: 0 }]); return v; };
+    for (const u of UNITS.slice()) if (u.side === 'enemy' && u instanceof Vehicle) u.remove();
+    BATTLE.nextWave = BATTLE.nextFeed = 1e9;
+    const v = put(), f0 = BATTLE.fire.bind(BATTLE), s0 = BATTLE.strike.bind(BATTLE), fired = [], hits = [];
+    BATTLE.fire = (w, ...a) => { if (w.id === 'hf') fired.push(T); return f0(w, ...a); };
+    BATTLE.strike = (p, rr, d, w, air) => { if (w.id === 'hf') hits.push({ p: p.clone(), spot: BATTLE.lase ? BATTLE.lase.p.clone() : null, v: v.pos.clone() }); return s0(p, rr, d, w, air); };
+    let lased = 0, held = 0, drawn = 0, moved = false, lockSeen = false;
+    for (let i = 0; i < 1600; i++) {
+      __t.sim(0.05, { audio: true }); HUD.draw();
+      const L = BATTLE.lock; if (L && L.w === 'hf') lockSeen = true;
+      const S = BATTLE.lase; if (S) { lased++; if (Math.hypot(GUNSHIP.look.x - S.tgt.pos.x, GUNSHIP.look.z - S.tgt.pos.z) < 6) held++; if (HUD.laseDraw) drawn++;
+        if (!moved && S.m.p > 0.3) { moved = true; v.obj.position.x += 12; v.obj.position.y = groundH(v.obj.position.x, v.obj.position.z); } }   // (the target moves off under the laser: the missile follows the spot)
+    }
+    BATTLE.fire = f0; BATTLE.strike = s0;
+    const log = BATTLE.lockLog.filter(l => l.w === 'hf');
+    return { lockSeen, launches: log.length, fired: fired.length, lock: log.map(l => +(l.shoot - l.t0).toFixed(2)), wait: log.map(l => +(l.fire - l.shoot).toFixed(2)), lased, held, drawn, hits: hits.map(h => +Math.hypot(h.p.x - h.v.x, h.p.z - h.v.z).toFixed(1)), moved };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.lockSeen, 'a lock on the laser spot').toBe(true);
+  expect(r.launches, 'launches').toBeGreaterThanOrEqual(2);
+  expect(r.fired, 'every Hellfire through the lock').toBe(r.launches);
+  for (const t of r.lock) expect(t, 'the seeker takes LOCK_T.hf (0.8 s, less a 0.05 s step) of the spot').toBeGreaterThanOrEqual(0.74);
+  for (const t of r.wait) { expect(t).toBeGreaterThanOrEqual(0.34); expect(t).toBeLessThan(0.75); }
+  expect(r.held / r.lased, 'the sensor kept on the target while the missile flies').toBeGreaterThan(0.9);
+  expect(r.drawn, 'LASE and the spot on the HUD').toBeGreaterThan(0);
+  expect(r.moved, 'the target moved off under the laser').toBe(true);
+  expect(r.hits.length).toBeGreaterThanOrEqual(2);
+  for (const d of r.hits) expect(d, 'where it hit, from the target (it moved 12 m in flight: the missile followed the spot)').toBeLessThan(4);
+});

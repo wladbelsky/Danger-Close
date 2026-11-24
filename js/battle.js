@@ -156,7 +156,11 @@ function baseModel(type) {
 const RET_ON = 0.07, OFF_SWITCH = 3;
 /* the AIM-9X's lock: the seeker takes LOCK.t s of a helicopter held under the reticle (off it, the lock slips back; off it for
    `lose` s, it is gone); then SHOOT, and the launch `fire` s on (on a strong beat if one falls between win[0] and win[1] s) */
-const LOCK = { t: 1.4, fire: 0.5, lose: 0.5, win: [0.35, 0.7] };   // the reticle is "on" a target within this of the frame's centre (in half frame heights): no shot before that
+const LOCK = { t: 1.4, fire: 0.5, lose: 0.5, win: [0.35, 0.7] };
+/* the seekers that lock on before the launch, and how long they take: the AIM-9X's infrared one on a helicopter; the Hellfire's
+   semi-active laser one on the spot the sensor's designator puts on a vehicle on the ground (the Hellfire then flies to that spot,
+   wherever the laser holds it: BATTLE.lase, the sensor kept on the target until the hit) */
+const LOCK_T = { aim: LOCK.t, hf: 0.8 };   // the reticle is "on" a target within this of the frame's centre (in half frame heights): no shot before that
 /* a gun already fires at a target this near the reticle (half frame heights): its rounds land under the reticle and walk onto the
    target as the sensor comes round; the missiles, the laser and the railgun wait for it to be on */
 const RET_NEAR = 0.4, NEAR_ARMS = new Set(['g25', 'g30', 'b40', 'h105']);
@@ -185,8 +189,8 @@ const SCATTER = { r0: 10, k: 3, d: [8, 16], t: [2.5, 4], v: 3.6, spread: 10, res
 const COOK = { tank: 3, apc: 2, car: 1, first: 0.6, gap: 0.5, late: 1.6, toss: 0.35 };
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0);
 const BATTLE = {
-  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, chase: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, feed: 0, breaks: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0, allyFeed: 0, scatter: 0, refocus: 0, yield: 0, bypass: 0, ghost: 0, bump: 0, locks: 0, lockShots: 0, spared: 0, steer: 0, shove: 0, quiet: 0, unjam: 0, assaults: 0, deploys: 0, scatterV: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
-  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], nextFeed: 0, nextAllyFeed: 0, nextAllyCol: 0, allyFrameT: 0, feedT: 0, breakUntil: 0, armT: -99, ricoN: 0, puffN: 0, lock: null, lockLog: [], atP: new V3(),
+  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, chase: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, feed: 0, breaks: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0, allyFeed: 0, scatter: 0, refocus: 0, yield: 0, bypass: 0, ghost: 0, bump: 0, locks: 0, lockShots: 0, spared: 0, steer: 0, shove: 0, quiet: 0, unjam: 0, assaults: 0, deploys: 0, scatterV: 0, lased: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
+  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], nextFeed: 0, nextAllyFeed: 0, nextAllyCol: 0, allyFrameT: 0, feedT: 0, breakUntil: 0, armT: -99, ricoN: 0, puffN: 0, lock: null, lase: null, lockLog: [], atP: new V3(),
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
     this.beam = new THREE.Mesh(geo, sensorMat(new THREE.MeshBasicMaterial({ color: 0xff4a36, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), 1));   // the laser: a red core
@@ -650,7 +654,7 @@ const BATTLE = {
     const w = ARMS.w, f = CFG.fire / 100; if (!w || f <= 0) return;
     force = force || T < this.forceUntil;   // (a drop's shot waits up to 1.5 s for the reticle to come onto a target)
     if (w.band === 'hold') { const t = this.target(w); if (t && this.onReticle(t)) { this.laserUntil = T + (force ? 1.5 : 0.5); if (force) this.forceUntil = 0; } return; }
-    if (w.id === 'aim') { const L = this.lock; if (L && L.shootT && T - L.shootT >= LOCK.win[0] && st > 1.2) this.launch(w, L); return; }   // (the AIM-9X only through its lock: SHOOT, then on a strong beat or LOCK.fire s on)
+    if (LOCK_T[w.id]) { const L = this.lock; if (L && L.shootT && T - L.shootT >= LOCK.win[0] && st > 1.2) this.launch(w, L); return; }   // (the AIM-9X and the Hellfire only through their lock: SHOOT, then on a strong beat or LOCK.fire s on)
     const idle = T - this.lastShot, strong = st > 1.45 || (band === 'low' && AUD.heavy > 0.45);
     let ok = w.band === 'strong' ? (strong || (band === 'low' && idle > w.reload + 2.5)) : (w.band === band || idle > 1.4 / Math.min(2, f) || (LIGHT_ARMS.has(w.id) && AUD.drive > 0.6));   // (music with no such beats: any beat will do after a while; dense music: any beat for the light guns)
     if (AUD.calm && st <= 1.45) ok = false;                                            // (a quiet part: only the strong beats)
@@ -661,21 +665,23 @@ const BATTLE = {
     if (ARMS.st[w.id].reload > 0) this.autoTick = Math.min(this.autoTick, T + 0.3);   // (it has to reload: another weapon may take over meanwhile)
     this.lastShot = T; this.shotRT = RT(); this.stat.shots++; this.fire(w, t, st, 1, k > 1 ? this.atP : null);
   },
-  /* the AIM-9X's lock on the helicopter it has (each step, in a fight) */
+  /* the lock of the weapon in hand (LOCK_T: the AIM-9X on a helicopter, the Hellfire on the laser's spot on a vehicle) on what it has
+     (each step, in a fight); none while a Hellfire is still flying to the spot (the designator is busy: lase) */
   lockStep(dt) {
-    const w = ARMS.w; let L = this.lock;
-    if (!w || w.id !== 'aim' || GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled || CFG.fire <= 0) { this.lock = null; return; }
+    const w = ARMS.w, LT = w && LOCK_T[w.id]; let L = this.lock;
+    if (!LT || GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled || CFG.fire <= 0 || this.lase) { this.lock = null; return; }
+    if (L && L.w !== w.id) L = this.lock = null;
     if (L && L.shootT) { if (!L.t.alive || !this.canHit(w, L.t)) this.lock = null; else if (T >= L.fireT) this.launch(w, L); return; }   // (SHOOT: the launch is coming)
     const t = this.target(w);
-    if (!t || t.kind !== 'heli' || !ARMS.ready(w)) { if (L && (L.k -= dt / LOCK.t * 2) <= 0) this.lock = null; return; }
-    if (!L || L.t !== t) { L = this.lock = { t, t0: T, k: 0, off: 0, shootT: 0, fireT: 0 }; this.stat.locks++; }
-    if (this.onAim(t)) { L.off = 0; L.k = Math.min(1, L.k + dt / LOCK.t); }
-    else { L.off += dt; L.k = Math.max(0, L.k - dt / LOCK.t); if (L.off > LOCK.lose) { this.lock = null; return; } }
+    if (!t || (t.kind === 'heli') !== (w.id === 'aim') || !ARMS.ready(w)) { if (L && (L.k -= dt / LT * 2) <= 0) this.lock = null; return; }
+    if (!L || L.t !== t) { L = this.lock = { w: w.id, t, t0: T, k: 0, off: 0, shootT: 0, fireT: 0 }; this.stat.locks++; }
+    if (this.onAim(t)) { L.off = 0; L.k = Math.min(1, L.k + dt / LT); }
+    else { L.off += dt; L.k = Math.max(0, L.k - dt / LT); if (L.off > LOCK.lose) { this.lock = null; return; } }
     if (L.k >= 1) { L.shootT = T; L.fireT = T + LOCK.fire; }
   },
   launch(w, L) {
     this.lock = null; if (!ARMS.shoot()) return;
-    this.lockLog.push({ t0: L.t0, shoot: L.shootT, fire: T }); if (this.lockLog.length > 40) this.lockLog.shift();
+    this.lockLog.push({ w: L.w, t0: L.t0, shoot: L.shootT, fire: T }); if (this.lockLog.length > 40) this.lockLog.shift();
     if (ARMS.st[w.id].reload > 0) this.autoTick = Math.min(this.autoTick, T + 0.3);
     this.lastShot = T; this.shotRT = RT(); this.stat.shots++; this.stat.lockShots++; this.fire(w, L.t, 1.6, 1, null);
   },
@@ -765,7 +771,9 @@ const BATTLE = {
       const a = rand(0, TAU), r = Math.sqrt(Math.random()) * G.spread, c = Math.cos(a) * r, s = Math.sin(a) * r, L = GUNSHIP.state === 'orbit' ? GUNSHIP.look : null;
       const to = G.missile ? new V3(P0.x + c, 0, P0.z + s) : L ? new V3(L.x + ox + c, 0, L.z + oz + s) : new V3(px + c, 0, pz + s);
       to.y = G.air ? t.pos.y + t.ah : groundH(to.x, to.z);
-      if (G.missile) { this.missiles.push({ w, G, tgt: G.spread < 2 && !A ? t : null, from: this.muzzle(new V3(), rand(-1, 1) > 0 ? rand(8, 14) : rand(-14, -8)).addScaledVector(_bt.set(camera.matrixWorld.elements[4], camera.matrixWorld.elements[5], camera.matrixWorld.elements[6]), -3), to, p: 0, t: 0, dur: G.missile, rush: false, puff: 0, fx, dmg }); return; }
+      if (G.missile) { this.missiles.push({ w, G, tgt: G.spread < 2 && !A ? t : null, from: this.muzzle(new V3(), rand(-1, 1) > 0 ? rand(8, 14) : rand(-14, -8)).addScaledVector(_bt.set(camera.matrixWorld.elements[4], camera.matrixWorld.elements[5], camera.matrixWorld.elements[6]), -3), to, p: 0, t: 0, dur: G.missile, rush: false, puff: 0, fx, dmg, laser: w.id === 'hf' });
+        if (w.id === 'hf') { this.lase = { tgt: t, p: t.pos.clone(), m: this.missiles[this.missiles.length - 1] }; this.stat.lased++; }   // (the designator holds the spot on it until the hit)
+        return; }
       this.muzzle(_bm); _bt.subVectors(to, _bm); const d = _bt.length();
       FX.tracers.spawn(_bm, _bt.multiplyScalar(1 / fl), { life: fl, len: G.tl, w: G.tw, color: 0xffc070 });
       FX.tracers.spawn(_bm, _bt, this.barrel ? { life: 0.08, len: 45, w: G.tw * 2.5, color: 0xffd090 } : { life: 0.06, len: 20, w: G.tw * 1.3, color: 0xffd090 });   // (out of the barrel in the frame, or in from its edge: a streak back to the muzzle for the first frames)
@@ -775,10 +783,12 @@ const BATTLE = {
   flyMissiles(dt) {
     for (let i = this.missiles.length - 1; i >= 0; i--) {
       const m = this.missiles[i], G = m.G; m.t += dt;
-      if (m.tgt && m.tgt.alive) { m.to.copy(m.tgt.pos); m.to.y += G.air ? m.tgt.ah : 0; }
+      const S = this.lase;
+      if (m.laser) { if (S && S.m === m) { if (S.tgt.alive) S.p.copy(S.tgt.pos); m.to.copy(S.p); } }   // (a Hellfire: to the laser's spot, where the sensor holds it; its target dead meanwhile: the spot stays where it was)
+      else if (m.tgt && m.tgt.alive) { m.to.copy(m.tgt.pos); m.to.y += G.air ? m.tgt.ah : 0; }
       if (m.t > m.dur * 1.5) m.rush = true;                                         // (no beat came: the deadline)
       m.p += dt / m.dur * (m.rush ? 6 : m.p < 0.8 ? 1 : 0.25);
-      if (m.p >= 1) { this.missiles.splice(i, 1); hitFx(m.to.x, m.to.y, m.to.z, m.fx, G.air); this.strike(m.to, G.r, m.dmg, m.w, G.air); continue; }
+      if (m.p >= 1) { this.missiles.splice(i, 1); if (S && S.m === m) this.lase = null; hitFx(m.to.x, m.to.y, m.to.z, m.fx, G.air); this.strike(m.to, G.r, m.dmg, m.w, G.air); continue; }
       _bp.lerpVectors(m.from, m.to, m.p); missileFx(m, _bp, _bd.subVectors(m.to, m.from).normalize(), { s: MISSILE_S[m.w.id] || 1, motor: !G.bomb });
     }
   },
@@ -905,6 +915,7 @@ const BATTLE = {
   },
   /* the camera: onto the target; with nothing to shoot at in the frame for a while, to the nearest enemy there is */
   aimCamera(dt) {
+    const S = this.lase; if (S && GUNSHIP.state === 'orbit') { if (S.tgt.alive) { this.focus = S.tgt; this.lookAt(S.tgt); } return; }   // (a Hellfire on its way: the laser stays on its target until the hit)
     if ((this.fTick -= dt) > 0) { if (this.focus && this.focus.alive && GUNSHIP.state === 'orbit') this.lookAt(this.focus); return; }
     this.fTick = 0.4; if (GUNSHIP.state === 'transit') { this.offT = 0; this.focus = this.chase = null; return; }
     const w0 = ARMS.w;   // a weapon picked by hand: the auto-switching takes over again after 30 s, or 3 s after the click once nothing it may hit is left round here
@@ -938,7 +949,7 @@ const BATTLE = {
   },
   /* the auto-switching: the enabled weapon that suits what is in the frame and how heavy the music is */
   autoArm() {
-    if (!CFG.autoArms || T < this.manualUntil || T < this.autoTick || this.lock) return;   // (never in the middle of a lock)
+    if (!CFG.autoArms || T < this.manualUntil || T < this.autoTick || this.lock || this.lase) return;   // (never in the middle of a lock, nor with a Hellfire on its way)
     this.autoTick = T + 1;
     const w0 = ARMS.w, s0 = w0 && ARMS.st[w0.id], hop = w0 && w0.mag && s0.reload > Math.max(RELOAD_HOP, 2 * (AUD.beatP || 0.5));   // (the weapon in hand reloads for a while: one that is ready fires meanwhile)
     const cnt = {}; let any = false; for (const u of UNITS) if (u.side === 'enemy' && this.inFrame(u.pos)) { cnt[u.kind] = (cnt[u.kind] || 0) + 1; any = true; }

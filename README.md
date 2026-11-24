@@ -101,6 +101,8 @@ fullscreen apps by default.
   rockets and missiles on their pylons, wheels, hot exhausts on the thermal sensor.
 - **The reticle is where the guns fire**: at the map's edge, where the picture cannot centre the sensor's point, the reticle
   moves off the centre onto it.
+- **The Hellfire rides the laser**: the sensor lases the vehicle under the reticle, the seeker locks on the spot, SHOOT, and in
+  flight the missile goes for the spot while the sensor holds it there, LASE and the time of flight on the HUD.
 - **The AIM-9X locks on**: arrows close in on the helicopter's box under the reticle, a boxed SHOOT over the weapon selector,
   and the launch half a second on.
 - **No lull**: as one group dies the next is already coming in from the edge of the frame, more and sooner the faster the
