@@ -144,10 +144,12 @@ const HUD = {
       case 'cluster': {   // (the CBU-97's: a small ring on the ground where each submunition comes down (CLUSTER_PAT: three in, seven round,
         // CLUSTER.r; turned with the line of sight, as they will fall), a cross in the middle)
         const C = CLUSTER, a0x = CAM_TGT.x - camera.position.x, a0z = CAM_TGT.z - camera.position.z, an = Math.hypot(a0x, a0z) || 1, ax = a0x / an, az = a0z / an, d = this.clusterDraw = { r: 0, subs: 0 };
-        for (const [s, t] of CLUSTER_PAT) {
-          const ox = (ax * s - az * t) * C.r, oz = (az * s + ax * t) * C.r;
-          for (let j = 0; j <= 12; j++) { const a = j * TAU / 12, [x, y] = this.onGround(ox + Math.cos(a) * C.mark, null, oz + Math.sin(a) * C.mark); if (j) g.lineTo(cx + x, cy + y); else g.moveTo(cx + x, cy + y); }
-          const [x, y] = this.onGround(ox, null, oz); d.r = Math.max(d.r, Math.hypot(x, y)); d.subs++;
+        for (const [s, t] of CLUSTER_PAT) {   // (each ring from three points projected, its centre and two radii on the ground's height there: across
+          // 3 m the perspective is as good as flat, under a pixel off; 30 projections a frame, not 130)
+          const ox = (ax * s - az * t) * C.r, oz = (az * s + ax * t) * C.r, h = groundH(CAM_TGT.x + ox, CAM_TGT.z + oz) - CAM_TGT.y;
+          const [x, y] = this.onGround(ox, h, oz), [ux, uy] = this.onGround(ox + C.mark, h, oz), [vx, vy] = this.onGround(ox, h, oz + C.mark), px = cx + x, py = cy + y;
+          for (let j = 0; j <= 12; j++) { const c = Math.cos(j * TAU / 12), sn = Math.sin(j * TAU / 12), qx = px + (ux - x) * c + (vx - x) * sn, qy = py + (uy - y) * c + (vy - y) * sn; if (j) g.lineTo(qx, qy); else g.moveTo(qx, qy); }
+          d.r = Math.max(d.r, Math.hypot(x, y)); d.subs++;
         }
         cross(5, 16); break;
       }

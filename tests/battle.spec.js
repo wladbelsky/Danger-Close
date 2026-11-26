@@ -726,6 +726,6 @@ test('a CBU-97 opens over a column: its submunitions fire their skeets one a six
 
 test('the CBU-97\'s reticle: a ring on the ground where each submunition comes down', async ({ wp }) => {
   await wp.boot({ query: '?hour=12&seed=11&weapons=cbu&auto=0&transit=0' });
-  const d = await wp.run(() => { ARMS.select('cbu'); HUD.draw(); return HUD.clusterDraw; });
-  expect(d.subs).toBe(10); expect(d.r, 'the outer rings well out from the middle').toBeGreaterThan(40);
+  const d = await wp.run(() => { ARMS.select('cbu'); HUD.draw(); const o = HUD.onGround; let n = 0; HUD.onGround = function (...a) { n++; return o.apply(this, a); }; HUD.draw(); HUD.onGround = o; return { ...HUD.clusterDraw, calls: n }; });
+  expect(d.subs).toBe(10); expect(d.r, 'the outer rings well out from the middle').toBeGreaterThan(40); expect(d.calls, 'three projections a ring').toBe(30);
 });

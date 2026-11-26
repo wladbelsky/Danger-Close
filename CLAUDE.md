@@ -344,7 +344,8 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   vehicle within `seek` 9 m that the ones before have not done for yet (`dmg` 8 each: a car or an APC at one, a tank at two), else
   into the ground, its fragments killing the enemy's infantry within 4 m; never an ally. `incoming` / `doomed` leave it out.
   `PREF.cbu` (armour), `HEAVY_ARMS`. HUD reticle `cluster`: a small ring (`mark` 3 m) on the ground where each submunition comes
-  down, a cross (`HUD.clusterDraw`; an ellipse with brackets looked odd). Stats: `clusters`, `skeets`, `skeetHits`, `cluSalvo`. Measured: a
+  down, a cross (`HUD.clusterDraw`; an ellipse with brackets looked odd); each ring from three projections (its centre and
+  two radii at the ground's height there, the 12-gon laid out between them: under a pixel off at 3 m), 30 a frame instead of 130. Stats: `clusters`, `skeets`, `skeetHits`, `cluSalvo`. Measured: a
   column of a car, two APCs and a tank under it: all four dead with 5 of the 40 skeets, an ally APC 15 m off untouched. Tests:
   battle.spec.js; sheet: cluster.png (the reticle, opening, striking, after; the selector with all eleven weapons).
 ## Design
@@ -418,7 +419,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=106`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=107`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
