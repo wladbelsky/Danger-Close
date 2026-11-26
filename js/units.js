@@ -299,6 +299,7 @@ class Vehicle {
     this.obj.rotation.set(0, -this.yaw, pitch, 'YZX');
     if (this.dead) return;
     if (this.turret && this.tgt) this.turret.rotation.y = approachAngle(this.turret.rotation.y, this.yaw - Math.atan2(this.tgt.pos.z - _vc.z, this.tgt.pos.x - _vc.x), dt * 1.6);   // (onto its target)
+    else if (this.turret && T < (this.tgtGoneT || -99) + TURRET_PICK.hold) { }   // (its target just gone: it holds there a while, not swung back and round again)
     else if (this.turret) this.turret.rotation.y = this.v > 1 ? this.turret.rotation.y * (1 - Math.min(1, dt)) : lerp(this.turret.rotation.y, Math.sin(T * 0.15 + this.ph) * 0.8, Math.min(1, dt));
     if (this.mg) this.aimMG(dt);
   }
@@ -508,7 +509,12 @@ class Heli {
 
 /* ---- an infantry squad: the leader walks a loop of waypoints, the others follow in file along the leader's trail ---- */
 /* an allied squad closes in on what it shoots at to SQUAD_CLOSE m before it halts to fight */
-const SQUAD_CLOSE = 35, SQUAD_ZONE = 100, SQUAD_IN = 15, SQUAD_NEAR = 220;   // (they halt for a fight within SQUAD_ZONE m of where the sensor looks; one further off they shoot at on the move)
+const SQUAD_CLOSE = 35, SQUAD_ZONE = 100, SQUAD_IN = 15, SQUAD_NEAR = 220;
+/* infantry keeps this far (m) from the other side's vehicles: not up against a tank (rifles do it no harm; their rockets, RPG, reach
+   further); a squad closer than STANDOFF_IN of it backs off, a waypoint by one is passed over, an advance on one halts at it */
+const STANDOFF = { tank: 45, apc: 32, car: 16 }, STANDOFF_IN = 0.85;
+/* the other side's vehicle the nearest past its STANDOFF × k to (x, z), or null */
+function armourNear(side, x, z, k) { let best = null, bm = 0; for (const u of UNITS) { const r = STANDOFF[u.kind]; if (!r || u.side === side || !u.alive) continue; const m = r * k - Math.hypot(u.pos.x - x, u.pos.z - z); if (m > bm) { bm = m; best = u; } } return best; }   // (they halt for a fight within SQUAD_ZONE m of where the sensor looks; one further off they shoot at on the move)
 class Squad {
   constructor(side, n, x, z, wps) {
     this.side = side; this.wps = wps; this.wi = 0; this.wait = rand(2, 8); this.gap = 4; this.go = 0;   // (go: running out until then, not halting to fight)
@@ -516,7 +522,7 @@ class Squad {
     this.trail = [[x, z, 0]]; this.D = 0;
     for (const s of this.m) s.position.set(x, groundH(x, z), z);
   }
-  join(x, z) { const s = INF.add(this.side, x, z); if (!s) return; enlist(s, this.side, 'inf', s.position, 1.1); s.die = () => { puffDust(s.position); this.lose(s); }; s.remove = () => this.lose(s); this.m.push(s); }
+  join(x, z) { const s = INF.add(this.side, x, z); if (!s) return; enlist(s, this.side, 'inf', s.position, 1.1); s.at = Math.random() < RPG.share; s.rpgT = T + rand(...RPG.reload) * 0.5; /* (s.at: he carries a rocket launcher, BATTLE.rpg) */ s.die = () => { puffDust(s.position); this.lose(s); }; s.remove = () => this.lose(s); this.m.push(s); }
   /* one more, out of sight: where he would be in the file (not at the gate, walking straight to it through the wall), or, the squad
      gone, at the start of its loop */
   refill(x, z) {
@@ -552,14 +558,21 @@ class Squad {
     // sensor watches, not from out of its frame; themselves out of the picture within SQUAD_NEAR m of its centre, on into it (at
     // their target if it is in it, to SQUAD_IN m of it, else at the centre: they stood round its edge, shooting at its edge). Their
     // next loop then goes round where they got to
-    let adv = null;
-    if (fight && this.side === 'ally' && !run(L)) {
-      let t = (L.tgt || this.m.find(s => s.tgt).tgt).pos; const lc = Math.hypot(L.position.x - CAM_TGT.x, L.position.z - CAM_TGT.z), out = lc < SQUAD_NEAR && !VIEW.onScreen(L.position, -0.15);
+    let adv = null; const P0 = L.position;
+    if ((this.offT = (this.offT || 0) - dt) <= 0) { this.offT = 0.3; this.off = armourNear(this.side, P0.x, P0.z, STANDOFF_IN); }   // (the other side's vehicle too close: STANDOFF)
+    if (this.off && !run(L)) {   // back off from it, firing (round what is in the way)
+      const o = this.off.pos, a0 = Math.atan2(P0.z - o.z, P0.x - o.x);
+      for (const da of [0, 0.6, -0.6, 1.2, -1.2]) { const a = a0 + da, ux = Math.cos(a), uz = Math.sin(a); if (walkable(P0.x, P0.z, P0.x + ux * 3, P0.z + uz * 3)) { adv = [ux, uz]; break; } }
+      if (adv) { fight = false; BATTLE.stat.backoff = (BATTLE.stat.backoff || 0) + 1; }
+    }
+    if (!adv && fight && this.side === 'ally' && !run(L)) {
+      const tg = L.tgt || this.m.find(s => s.tgt).tgt, so = STANDOFF[tg.kind] || 0; let t = tg.pos; const lc = Math.hypot(P0.x - CAM_TGT.x, P0.z - CAM_TGT.z), out = lc < SQUAD_NEAR && !VIEW.onScreen(P0, -0.15);
       if (out && !BATTLE.inFrame(t)) t = CAM_TGT;
-      const dx = t.x - L.position.x, dz = t.z - L.position.z, d = Math.hypot(dx, dz) || 1;
-      const near = this.m.some(s => s.tgt && Math.hypot(s.tgt.pos.x - s.position.x, s.tgt.pos.z - s.position.z) < SQUAD_CLOSE) && !(out && d > SQUAD_IN);
+      const dx = t.x - P0.x, dz = t.z - P0.z, d = Math.hypot(dx, dz) || 1;
+      const near = this.m.some(s => s.tgt && Math.hypot(s.tgt.pos.x - s.position.x, s.tgt.pos.z - s.position.z) < Math.max(SQUAD_CLOSE, (STANDOFF[s.tgt.kind] || 0) + 8)) && !(out && d > Math.max(SQUAD_IN, so + 8));   // (a vehicle: no closer than its STANDOFF)
+      const nx = P0.x + dx / d * 3, nz = P0.z + dz / d * 3;
       if (!near && Math.hypot(t.x - CAM_TGT.x, t.z - CAM_TGT.z) > SQUAD_ZONE) fight = false;   // (a fight out of the sensor's frame: on round their loop, which goes round where it looks)
-      else if (!near && walkable(L.position.x, L.position.z, L.position.x + dx / d * 3, L.position.z + dz / d * 3)) { adv = [dx / d, dz / d]; fight = false; }
+      else if (!near && walkable(P0.x, P0.z, nx, nz) && !armourNear(this.side, nx, nz, 1)) { adv = [dx / d, dz / d]; fight = false; }   // (not on into another vehicle's STANDOFF)
     }
     if (adv) { step = 1.5 * 1.6 * dt; L.position.x += adv[0] * step; L.position.z += adv[1] * step; L.a = approachAngle(L.a, Math.atan2(adv[1], adv[0]), dt * 6); this.moved = true; }
     else if (this.moved && !fight && !run(L)) {   // (got there: a loop round where it got to; the allies near the sensor's point round that, in the picture)
@@ -579,7 +592,7 @@ class Squad {
     else if (this.wait > 0) this.wait -= dt;
     else {
       const [wx, wz] = this.wps[this.wi], dx = wx - L.position.x, dz = wz - L.position.z, d = Math.hypot(dx, dz);
-      if (d < 1) { this.wi = (this.wi + 1) % this.wps.length; this.wait = rand(3, 10); }
+      if (d < 1 || (this.wps.length > 2 && armourNear(this.side, wx, wz, 1))) { this.wi = (this.wi + 1) % this.wps.length; this.wait = d < 1 ? rand(3, 10) : 0; }   // (one by the other side's vehicle: passed over, STANDOFF)
       else { step = Math.min(d, 1.5 * k * dt); L.position.x += dx / d * step; L.position.z += dz / d * step; L.a = Math.atan2(dz, dx); }
     }
     if (step > 0) { this.D += step; const last = this.trail[this.trail.length - 1]; if (this.D - last[2] > 0.5) { this.trail.push([L.position.x, L.position.z, this.D]); if (this.trail.length > 200) this.trail.shift(); } }

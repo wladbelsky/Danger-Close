@@ -749,3 +749,76 @@ test('the CBU-97\'s reticle: a ring on the ground where each submunition comes d
   expect(e.flat, 'a hillside: as it was (flat at its middle\'s height) pixels off the ground').toBeGreaterThan(5);
   expect(e.err, 'each ring on the ground, 4K, zoomed in').toBeLessThan(0.5);
 });
+
+test('infantry keeps off the other side\'s armour (STANDOFF), and its rocket launchers fire at the vehicles (RPG)', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=g25&auto=0&transit=0' });
+  await wp.sim(8, { audio: true });
+  const r = await wp.run(() => {
+    for (const u of UNITS.slice()) if (u instanceof Vehicle) u.remove(); for (const q of BATTLE.squads.slice()) for (const s of q.m.slice()) s.remove(); BATTLE.squads.length = 0;
+    BATTLE.nextWave = BATTLE.nextFeed = BATTLE.nextSquad = BATTLE.nextField = BATTLE.nextQrf = BATTLE.nextAsq = BATTLE.nextAllyFeed = BATTLE.nextAllyCol = BATTLE.nextHeli = 1e9; BATTLE.feed = () => {}; CFG.fire = 0;   // (only these here; the gunship holds its fire)
+    const C = CAM_TGT.clone(), put = (kind, dx) => { const v = new Vehicle(kind, 'enemy'); v.obj.position.set(C.x + dx, 0, C.z); v.obj.position.y = groundH(v.obj.position.x, v.obj.position.z); v.path = new Path([{ x: v.pos.x, z: v.pos.z, y: NaN, hw: 0 }, { x: v.pos.x + 1, z: v.pos.z, y: NaN, hw: 0 }]); v.troops = 0; return v; };
+    const tank = put('tank', 0); tank.hp = 1e9; const apc = put('apc', 6); apc.hp = 1e9;
+    let q = null; for (let t = 0; t < 30 && !q; t++) { const a = t * 0.7, x = C.x + Math.cos(a) * 40, z = C.z + Math.sin(a) * 40; if (walkable(x, z, x, z)) { const loop = patrolLoop(C.x, C.z, ...ALLY_LOOP, [x, z]); if (loop.length > 2) q = new Squad('ally', 6, x, z, loop); } }
+    BATTLE.squads.push(q); for (const s of q.m) { s.at = true; s.rpgT = 0; s.hp = 1e9; }   // (they hold: the test is where they stand)
+    let lead = 1e9, all = 1e9, bodies = 0;
+    for (let i = 0; i < 1200; i++) {
+      __t.sim(0.05, { audio: true }); if (!q.m.length) break; bodies = Math.max(bodies, BATTLE.rockets.filter(m => m.rpg).length);
+      if (i > 100) { lead = Math.min(lead, Math.hypot(q.m[0].position.x - tank.pos.x, q.m[0].position.z - tank.pos.z)); for (const s of q.m) all = Math.min(all, Math.hypot(s.position.x - tank.pos.x, s.position.z - tank.pos.z)); }
+    }
+    return { lead, all, rpg: BATTLE.stat.rpg || 0, hits: BATTLE.stat.rpgHits || 0, apc: apc.alive, inFlight: bodies, back: BATTLE.stat.backoff || 0, left: q.m.length };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.left, 'the squad still there').toBeGreaterThan(0);
+  expect(r.lead, 'its leader no closer to the tank than STANDOFF_IN of its 45 m (some slack for a step)').toBeGreaterThan(45 * 0.85 - 3);
+  expect(r.all, 'nor any of them').toBeGreaterThan(30);
+  expect(r.rpg, 'rockets fired at the vehicles').toBeGreaterThanOrEqual(3); expect(r.hits, 'some hit').toBeGreaterThan(0); expect(r.hits, 'not all').toBeLessThan(r.rpg + 1); expect(r.inFlight, 'seen in flight').toBeGreaterThan(0);
+});
+
+test('the safeguard: the sector empty of both sides for a while, everybody out of sight goes, a fight is set up ready elsewhere and the gunship flies there', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=g25,h105' });
+  await wp.sim(30, { audio: true });
+  const r = await wp.run(() => {
+    const stub = { B: ['feed', 'rush', 'columnTo', 'spawnColumn', 'spawnField', 'spawnHeli', 'edgeSquad'].map(k => [BATTLE, k]), A: [[ALLIES, 'update'], [GUNSHIP, 'mayLeave']] }, saved = [...stub.B, ...stub.A].map(([o, k]) => [o, k, o[k]]);
+    for (const [o, k] of [...stub.B, ...stub.A]) o[k] = () => false;   // (the feed stuck: nobody gets there; nor does the gunship leave by itself)
+    BATTLE.nextWave = BATTLE.nextSquad = BATTLE.nextField = BATTLE.nextQrf = BATTLE.nextAsq = BATTLE.nextHeli = 1e9;
+    const L0 = GUNSHIP.look.clone(); let keep = 2; for (const u of UNITS.slice()) if (u.kind !== 'struct' && u.kind !== 'heli' && u.remove && Math.hypot(u.pos.x - L0.x, u.pos.z - L0.z) < 400) { if (u.kind === 'inf' && keep > 0) { keep--; u.hp = 1e9; continue; } u.remove(); }   // (a couple of soldiers left: all but empty)
+    for (let i = BATTLE.squads.length - 1; i >= 0; i--) if (!BATTLE.squads[i].m.length) BATTLE.squads.splice(i, 1);
+    const veh0 = UNITS.filter(u => u instanceof Vehicle && u.alive).length;
+    let t = 0; for (; t < 40 && !BATTLE.stat.restage; t++) __t.sim(1, { audio: true }); for (const [o, k, f] of saved) o[k] = f;
+    const after = UNITS.filter(u => u instanceof Vehicle && u.alive).length, state = GUNSHIP.state;
+    for (let i = 0; i < 40 && GUNSHIP.state === 'transit'; i++) __t.sim(0.5, { audio: true }); __t.sim(6, { audio: true });
+    const L = GUNSHIP.look, near = s => UNITS.filter(u => u.side === s && u.alive && u.kind !== 'struct' && u.kind !== 'heli' && Math.hypot(u.pos.x - L.x, u.pos.z - L.z) < 200).length;
+    return { t, restage: BATTLE.stat.restage || 0, state, moved: Math.hypot(L.x - L0.x, L.z - L0.z), enemy: near('enemy'), ally: near('ally'), veh0, after };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.restage, 'restaged once').toBe(1); expect(r.t, 'after RESTAGE.wait s of a sector all but empty').toBeGreaterThanOrEqual(24);
+  expect(r.state, 'the gunship on its way').toBe('transit'); expect(r.moved, 'to another place').toBeGreaterThan(400);
+  expect(r.after, 'the vehicles out on the map taken away (a column of each side set up)').toBeLessThan(r.veh0 + 1);
+  expect(r.enemy, 'enemies there').toBeGreaterThan(2); expect(r.ally, 'and allies').toBeGreaterThan(2);
+});
+
+test('a tank\'s or an APC\'s turret keeps to its target: not swung back and forth between two (TURRET_PICK)', async ({ wp }) => {
+  test.setTimeout(240000);
+  const out = [];
+  for (const seed of [11, 3]) {
+    await wp.boot({ query: `?hour=12&seed=${seed}&transit=0` });
+    out.push(await wp.run(() => {
+      const st = new Map(); let win = 0, swing = 0;
+      for (let i = 0; i < 3000; i++) {
+        __t.sim(0.05, { audio: true });
+        for (const u of UNITS) {
+          if (!(u instanceof Vehicle) || !u.alive || !u.turret || !VIEW.near(u.pos, 0)) continue;
+          const b = u.yaw - u.turret.rotation.y; let s = st.get(u); if (!s) st.set(u, s = { b, dir: 0, acc: 0, fl: [], w0: T, sw: false });
+          const db = angleWrap(b - s.b); s.b = b;
+          if (Math.abs(db) > 0.004) { const d = Math.sign(db); if (s.dir && d !== s.dir) { if (Math.abs(s.acc) > 0.25) { s.fl.push(T); while (s.fl[0] < T - 6) s.fl.shift(); if (s.fl.length >= 2) s.sw = true; } s.acc = 0; } s.dir = d; s.acc += db; }
+          if (T - s.w0 >= 6) { win++; if (s.sw) swing++; s.w0 = T; s.sw = false; }
+        }
+      }
+      return { win, swing };
+    }));
+  }
+  console.log(JSON.stringify(out));
+  // (a turn of over 0.25 rad one way, then the other, twice in 6 s: 56 % of the windows by the frame before, 4 maps; ~14 % now)
+  const win = out[0].win + out[1].win, sw = out[0].swing + out[1].swing;
+  expect(win).toBeGreaterThan(40); expect(sw / win, 'share of 6 s windows a turret by the frame swings back and forth').toBeLessThan(0.25);
+});

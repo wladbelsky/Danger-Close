@@ -98,7 +98,13 @@ lamps and memory. Run it once in silence and once in a fight with music.
   fire weaves across the road. A vehicle hit on the move rolls on for a few seconds, slowing, before it stands burning.
 - **Allies in the fight**: their fireteams and columns come where the sensor looks, run into the picture and fight beside
   the enemy in it; the camera rather picks a target with an ally right by it, so you see what the enemy is firing at.
-- **Infantry under fire scatters**: soldiers near a hit run off from it, the squad spreads out, then they fight on.
+- **Infantry under fire scatters**: soldiers near a hit run off from it, the squad spreads out, then they fight on. They keep
+  their distance from the other side's armour, and some carry rocket launchers: a rocket with a smoke trail at a vehicle now
+  and then.
+- **Turrets keep to their target**: a tank or an APC sticks with what it is firing at and turns to the nearest one it is already
+  pointing at, instead of swinging back and forth.
+- **No dead sector**: if the fight where the aircraft looks runs dry (a soldier or two left for half a minute), the units still
+  on their way are cleared, a fresh fight is set up elsewhere and the aircraft flies to it.
 - **Smooth driving**: vehicles steer round the corners of a road instead of turning on the spot, each slows for its own bend,
   and a swerve eases in and out. They keep out of each other: they brake for what is ahead, pull aside for one coming the other
   way and drive round a wreck or a halted column.

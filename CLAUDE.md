@@ -373,6 +373,28 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
     every step).
   Measured: the same HUD before and after (`test-results/hud-text-before-after.png`, the words a sub-pixel off at most).
 - `perfReport(sec)` (from CarrierWallpaper) in the console, for measuring on a real GPU in Wallpaper Engine: see "Running & testing".
+- Infantry keeps off the other side's armour: `STANDOFF` m (tank 45, APC 32, car 16) from its vehicles. A squad within
+  `STANDOFF_IN` 0.85 of that backs off (its leader away from it, round what is in the way, firing; `armourNear`, checked every 0.3 s,
+  `stat.backoff`), a waypoint by one is passed over, the allies' advance on a vehicle halts at its standoff (+8 m) and never steps
+  into another's (they ran right up to the tanks: `SQUAD_IN` 15 m of a target in the frame). Their answer to armour is the rocket:
+  `RPG` - `share` 0.2 of the soldiers of either side carry a launcher (`s.at`); one ready (`reload` 25-45 s, `rpgT`) picks the
+  other side's nearest vehicle within `range` 160 m first (`pickTarget`) and fires on its beat (`unitShot` -> `BATTLE.rpg`): led at
+  where it will be, `acc` 0.55 hit (an APC at two, a tank at three, `dmg`; the allies' out of play spared as their other fire), a
+  body with a flame and a trail (`missileFx` at `s` 0.5, in `BATTLE.rockets` as `rpg`), a backblast, a blast where it lands; no
+  alarm (that is the gunship's fire: the column running and weaving; with it the jitter test went over). Rifles no longer "fire" at
+  armour they do nothing to (`VS` 0). `stat.rpg`, `rpgHits`. Test: battle.spec.js. 8-35 rockets a map in 150 s of fighting; at 0.3
+  and 12-22 s it was 23-92, the wrecks to drive round put the jitter measure up from 12 % to 20 % (6 maps), now 11.5 %.
+- The safeguard (`RESTAGE`, `BATTLE.emptyCheck` / `restage`): in a fight, the sector the sensor works (`r` 220 m) left with `few` 4
+  units or fewer of both sides on the ground for `wait` 25 s (a couple of soldiers: the feed stuck, its columns queued in the fields;
+  not in a transit, nor in slow music's break, nor within `every` 30 s of the last) - everybody of both sides out of sight is taken
+  away (columns, squads, the enemy's helicopters; not the base, nor the outposts' garrisons), a fight is set up ready at a district
+  `far` 450 m off at least (not by the base): a column of each side from `col` 70-160 m down two roads into it, a squad or two of
+  the enemy round it and one of the allies, and the gunship flies there over an empty map. `stat.restage`. Test: battle.spec.js.
+- A turret keeps to its target (`TURRET_PICK`): a tank's, an APC's, a car's gun picks by distance × (1 + `turn` 1.5 × the turn to it
+  over 180°), the one it has kept unless another scores under `keep` 0.65 × its; its target gone, the turret holds `hold` 3 s where
+  it was (`tgtGoneT`) instead of swinging back and round again. A turret swinging one way and back twice in 6 s (over 0.25 rad
+  each): 56 % of the windows by the frame before (4 maps), 14 % now; target switches and the turrets' turning about halved. Test:
+  battle.spec.js.
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -444,7 +466,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=109`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=111`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

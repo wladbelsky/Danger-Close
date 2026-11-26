@@ -34,6 +34,10 @@ const CLUSTER_PAT = [...[0, 1, 2].map(i => [0.35 * Math.cos(i * TAU / 3 + 0.5), 
 const STRUCT_REACH = { gbu: 8 }, structReach = (w, r) => Math.min(r, STRUCT_REACH[w.id] || 4);
 /* a helicopter's rocket run: it dives in, and on a beat looses a salvo of unguided rockets that burst on and round the target */
 const ROCKET = { n: 8, step: 0.07, v: 220, spread: 7, r: 6, dmg: 2.2, fx: 1.1, ally: 0.6, puff: 5 };   // (puff: metres between the trail's puffs)
+/* a soldier's rocket at a vehicle (an RPG / an AT launcher; rifles do nothing to armour): `share` of the soldiers carry one (s.at), fired
+   at the other side's nearest vehicle within `range` m once its `reload` is done, on the soldier's beat; `acc` of them hit, doing `dmg`
+   (an APC at two, a tank at three); a flying body with a flame and a trail (missileFx at `s`), a blast where it lands */
+const RPG = { share: 0.2, range: 160, min: 12, v: 140, reload: [25, 45], acc: 0.55, dmg: { car: 3, apc: 4, tank: 5 }, fx: 1.2, s: 0.5 };
 /* the allies fire this many times as often (their helicopters most of all), each round doing less: their damage a second is only
    ALLY_DPS × the enemy's, so the fight looks busier without the allies clearing it before the gunship gets a word in */
 const ALLY_RATE = { inf: 1.6, car: 1.6, apc: 1.6, tank: 1.3, heli: 2.8 }, ALLY_DPS = 1.2;
@@ -188,6 +192,14 @@ const ZONE_FILL = 12;
    sensor's point that an enabled weapon may hit are kept up to want (× the enemies' share), a group at most every `every` s, both
    from the music's pace (slow → fast); music slower than `slow` bpm has a break of brk s once the ground round the point is clear.
    cap: no feeding past that many enemies on the ground */
+/* the safeguard: in a fight, `few` units or fewer of both sides together on the ground within `r` m of the sensor's point for `wait` s
+   (a couple of soldiers left; the feed stuck: columns queued in the fields on their way to it) - everybody of both sides out of sight is taken away (not the base, nor the outposts'
+   garrisons), a fight is set up ready at another place (`far` m off at least: a squad or two of each side round it, a column of each
+   from `col` m down the roads) and the gunship goes there (BATTLE.restage) */
+/* a turret's next target (a tank's, an APC's, a car's gun): by its distance times 1 + `turn` × the turn to it over 180° (one the gun
+   points at first); the one it has kept unless another scores under `keep` × its; with none, the turret holds `hold` s where it was */
+const TURRET_PICK = { turn: 1.5, keep: 0.65, hold: 3 };
+const RESTAGE = { r: 220, few: 4, wait: 25, far: 450, col: [70, 160], every: 30 };
 const FEED = { r: 220, want: [5, 14], every: [6, 2], slow: 92, brk: [8, 14], cap: 90, sq: 0.6 };
 /* the allies in the sensor's frame: when fewer than `min` of theirs have been in it for ALLY_FEED.gap s, a fireteam of theirs runs in from its
    edge (every `every` s at most, while fewer than near + k × the enemies are round the point, FEED.r);
@@ -550,6 +562,40 @@ const BATTLE = {
     }
   },
   /* a fight out in the country, away from the base: enemies at a district (a squad or two, a column driving in) and allies coming for them */
+  /* the sector the sensor works all but empty of both sides (RESTAGE.few) for RESTAGE.wait s (not while the gunship flies, nor in slow
+     music's break): restage */
+  emptyCheck(dt) {
+    if ((this.emptyTick = (this.emptyTick || 0) - dt) > 0) return; this.emptyTick = 1;
+    const L = GUNSHIP.look; let any = GUNSHIP.state !== 'orbit' || T < this.breakUntil || T < (this.restageT || 0) + RESTAGE.every;
+    if (!any) { let n = 0; for (const u of UNITS) if (u.alive && u.kind !== 'struct' && u.kind !== 'heli' && Math.hypot(u.pos.x - L.x, u.pos.z - L.z) < RESTAGE.r && ++n > RESTAGE.few) { any = true; break; } }
+    if (any) { this.emptyT = 0; return; }
+    if ((this.emptyT = (this.emptyT || 0) + 1) >= RESTAGE.wait) { this.emptyT = 0; this.restage(); }
+  },
+  /* everybody of both sides out of sight taken away, a fight set up ready at another place, and the gunship off to it */
+  restage() {
+    const L = GUNSHIP.look, B = this.base;
+    const c = GUNSHIP.list.filter(d => d.n !== 'outpost' && Math.hypot(d.x - L.x, d.z - L.z) > RESTAGE.far && VIEW.fits(d, 0) && ROADNET.nearest(d.x, d.z, 160) >= 0 && (!B || Math.hypot(d.x - B.x, d.z - B.z) > 250));
+    if (!c.length) return false;
+    const off = p => !VIEW.onScreen(p, 0.1);
+    for (const E of this.cols) for (const v of E.col.u.slice()) if (off(v.pos)) { this.seen('out', v.pos); v.remove(); }
+    for (let i = this.squads.length - 1; i >= 0; i--) { const q = this.squads[i]; for (const s of q.m.slice()) if (off(s.position)) { this.seen('out', s.position); s.remove(); } if (!q.m.length) this.squads.splice(i, 1); }
+    for (const h of this.helis.slice()) if (h.alive && off(h.pos)) h.remove();
+    this.spots.length = 0; this.focus = this.chase = null; this.lock = null; this.pod = null;
+    const d = pick(c), node = ROADNET.nearest(d.x, d.z, 160), N = ROADNET; this.spots.push({ x: d.x, z: d.z });
+    const sides = CFG.allies > 0 ? ['enemy', 'ally'] : ['enemy'], used = [];
+    for (const side of sides) {   // a column of each side from a little way down a road into the place, from two ways (they meet there)
+      for (let t = 0; t < 60; t++) {
+        const k = randi(0, N.n - 1), x = N.X[k], z = N.Z[k], r = Math.hypot(x - N.X[node], z - N.Z[node]);
+        if (r < RESTAGE.col[0] || r > RESTAGE.col[1] || N.BR[k] || used.some(p => Math.hypot(p[0] - x, p[1] - z) < 80)) continue;
+        const nodes = N.route(k, node); if (!nodes || nodes.length < 12) continue;
+        if (this.columnOn(side, nodes, side === 'ally' ? pick(QRF_TYPES) : pick(WAVES))) { used.push([x, z]); break; }
+      }
+    }
+    this.squadAt('enemy', d.x, d.z, 20, 70, 15, 45); if (Math.random() < 0.6) this.squadAt('enemy', d.x, d.z, 20, 70, 15, 45);
+    if (CFG.allies > 0) this.squadAt('ally', d.x, d.z, 60, 110, ...ALLY_LOOP);
+    this.restageT = T; this.stat.restage = (this.stat.restage || 0) + 1; this.fedT = T;
+    GUNSHIP.goTo(VIEW.clampIn({ n: 'tgt', x: d.x, z: d.z })); return true;
+  },
   spawnField() {
     const L = GUNSHIP.look, zone = !this.spots.some(s => Math.hypot(L.x - s.x, L.z - s.z) < 300);   // (the first one in the camera's zone: its squads come in, running, from just out of sight)
     const B = this.base, c = zone ? [{ x: L.x, z: L.z }] : GUNSHIP.list.filter(d => d.n !== 'outpost' && this.hidden(d.x, d.z, 0.9) && (!B || Math.hypot(d.x - B.x, d.z - B.z) > 350) && !this.spots.some(s => Math.hypot(d.x - s.x, d.z - s.z) < 300));
@@ -577,9 +623,9 @@ const BATTLE = {
   think(u, dt, fight) {
     const F = FIRE[u.kind]; if (!F) return;
     if (!fight || u.retreat || u.state === 'pad' || u.state === 'crash') { u.tgt = null; return; }
-    if (u.tgt && !u.tgt.alive) u.tgt = null;
+    if (u.tgt && !u.tgt.alive) { u.tgt = null; u.tgtGoneT = T; }   // (its turret holds where it was a while: Vehicle.pose)
     if (u.troops && T > (u.dropT || 0)) this.dismount(u);
-    if ((u.think -= dt) <= 0) { u.think = rand(0.7, 1.3); u.tgt = this.pickTarget(u, F); }
+    if ((u.think -= dt) <= 0) { u.think = rand(0.7, 1.3); const had = u.tgt; u.tgt = this.pickTarget(u, F); if (!u.tgt && had) u.tgtGoneT = T; }
     if (u.tgt && (u.cool -= dt) <= 0) { if (!u.ready) u.ready = T; else if (T - u.ready > 3) { this.stat.uLate++; this.unitShot(u); } }   // (reloaded: it waits for a beat; with none, it fires anyway)
   },
   /* ---- an APC's infantry: halted near the enemy (or at its own base), it lets them out by the rear door one by one; they run
@@ -629,6 +675,8 @@ const BATTLE = {
     const F = FIRE[u.kind], r = this.pace(); u.ready = 0;
     u.cool = rand(F.reload[0], F.reload[1]) / (u.side === 'ally' ? ALLY_RATE[u.kind] : 1) / r;
     if (!VIEW.near(u.pos, FIRE_NEAR) && !VIEW.near(u.tgt.pos, FIRE_NEAR)) { this.stat.quiet++; return; }   // (FIRE_NEAR: it holds fire, reloaded again)
+    if (u.kind === 'inf' && RPG.dmg[u.tgt.kind] && u.at && T > (u.rpgT || 0)) { this.rpg(u, u.tgt); return; }   // (a vehicle and a rocket ready: the rocket)
+    if (!VS[u.kind][u.tgt.kind]) return;   // (rifles at armour: no harm, no shot)
     this.stat.uShots++; this.unitFire(u, u.tgt, F, r);
   },
   /* a beat: the units that have reloaded and whose band it is fire (any that waited 1.2 s too); a strong one (or a drop) is a volley of
@@ -644,8 +692,12 @@ const BATTLE = {
     if (all && n > 2) this.stat.volleys++;
   },
   pickTarget(u, F) {
-    const V = VS[u.kind]; let best = null, bd = F.range;
-    for (const o of UNITS) { if (o.side === u.side || !V[o.kind]) continue; const d = Math.hypot(o.pos.x - u.pos.x, o.pos.z - u.pos.z); if (d < bd) { bd = d; best = o; } }
+    if (u.at && T > (u.rpgT || 0)) { let a = null, ad = RPG.range; for (const o of UNITS) { if (o.side === u.side || !o.alive || !RPG.dmg[o.kind]) continue; const d = Math.hypot(o.pos.x - u.pos.x, o.pos.z - u.pos.z); if (d > RPG.min && d < ad) { ad = d; a = o; } } if (a) return a; }   // (a rocket ready: at the nearest vehicle in reach first)
+    const V = VS[u.kind], tr = u.turret, b = tr ? u.yaw - tr.rotation.y : 0;   // (b: where its gun points now)
+    const score = (o, d) => tr ? d * (1 + TURRET_PICK.turn * Math.abs(angleWrap(Math.atan2(o.pos.z - u.pos.z, o.pos.x - u.pos.x) - b)) / Math.PI) : d;
+    let best = null, bs = Infinity;
+    for (const o of UNITS) { if (o.side === u.side || !V[o.kind]) continue; const d = Math.hypot(o.pos.x - u.pos.x, o.pos.z - u.pos.z); if (d >= F.range) continue; const s = score(o, d); if (s < bs) { bs = s; best = o; } }
+    const c = u.tgt; if (tr && c && c !== best && c.alive && V[c.kind]) { const d = Math.hypot(c.pos.x - u.pos.x, c.pos.z - u.pos.z); if (d < F.range && score(c, d) * TURRET_PICK.keep <= bs) return c; }   // (the one it has, unless another is much the better)
     return best;
   },
   unitFire(u, t, F, pace) {
@@ -975,9 +1027,25 @@ const BATTLE = {
       FX.flash.spawn(from, { s0: 2.2, s1: 4.5, life: 0.09 }); FX.smoke.spawn(from, { s0: 1.5, s1: 5, life: 1.2, a0: 0.35, color: 0xd8d8d8 });
     });
   },
+  /* a soldier's rocket at a vehicle (RPG): led at where it will be, a hit or a miss decided as it leaves */
+  rpg(u, t) {
+    u.rpgT = T + rand(...RPG.reload); this.stat.rpg = (this.stat.rpg || 0) + 1;
+    const from = new V3(u.pos.x, u.pos.y + 1.5, u.pos.z), dur0 = Math.hypot(t.pos.x - from.x, t.pos.z - from.z) / RPG.v; this.velOf(t, _bd);
+    const hit = Math.random() < RPG.acc, a = rand(0, TAU), off = hit ? 0 : rand(3, 7), to = new V3(t.pos.x + _bd.x * dur0 + Math.cos(a) * off, 0, t.pos.z + _bd.z * dur0 + Math.sin(a) * off);
+    to.y = hit ? t.pos.y + t.ah * 0.5 : groundH(to.x, to.z); u.a = Math.atan2(to.z - from.z, to.x - from.x);   // (he turns to it)
+    const len = from.distanceTo(to); this.rockets.push({ from, to, t: 0, dur: len / RPG.v, len, side: u.side, rpg: true, tgt: hit ? t : null, dmg: RPG.dmg[t.kind] * (u.side === 'ally' ? 1 : ALLY_TOUGH_K(t)) });
+    FX.flash.spawn(from, { s0: 1.2, s1: 2.6, life: 0.08 }); FX.smoke.spawn(from, { s0: 1, s1: 4, life: 1.4, a0: 0.4, color: 0xd8d8d0, v: _bp.set(-Math.cos(u.a) * 4, 0.5, -Math.sin(u.a) * 4) });   // (the backblast)
+  },
   flyRockets(dt) {
     for (let i = this.rockets.length - 1; i >= 0; i--) {
       const m = this.rockets[i]; m.t += dt; const q = m.t / m.dur;
+      if (m.rpg) {
+        if (m.tgt && m.tgt.alive) { m.to.set(m.tgt.pos.x, m.tgt.pos.y + m.tgt.ah * 0.5, m.tgt.pos.z); m.len = m.from.distanceTo(m.to); }   // (a hit: it lands on it, wherever it has got to)
+        if (q >= 1) { this.rockets.splice(i, 1); hitFx(m.to.x, m.to.y, m.to.z, RPG.fx);
+          if (m.tgt && m.tgt.alive) { const sp = m.side === 'ally' && !this.inPlay(m.tgt.pos); if (sp) this.stat.spared++; else { hurt(m.tgt, m.dmg); this.stat.rpgHits = (this.stat.rpgHits || 0) + 1; /* (no alarm: that is the gunship's fire, the column running and weaving) */ } }   // (COL_ZONE: no harm out there, as the allies' other fire)
+          this.scare(m.to, 3, m.side === 'ally' ? 'enemy' : 'ally'); continue; }
+        _bp.lerpVectors(m.from, m.to, q); missileFx(m, _bp, _bd.subVectors(m.to, m.from).normalize(), { s: RPG.s }); continue;
+      }
       if (q >= 1) { this.rockets.splice(i, 1); hitFx(m.to.x, m.to.y, m.to.z, ROCKET.fx); this.splashAt(m.to, ROCKET.r, m.dmg, m.side); continue; }
       for (; m.trail < m.len * q; m.trail += ROCKET.puff) { _bp.lerpVectors(m.from, m.to, m.trail / m.len); FX.smoke.spawn(_bp, { s0: 1.2, s1: 4, life: rand(1, 1.6), a0: 0.34, color: 0xd8d8d8 }); }   // (a trail of puffs every few metres, whatever the frame rate)
     }
@@ -1097,7 +1165,7 @@ const BATTLE = {
     for (let i = this.squads.length - 1; i >= 0; i--) { const s = this.squads[i]; s.update(dt); if (!s.m.length) this.squads.splice(i, 1); }
     for (let i = this.helis.length - 1; i >= 0; i--) { const h = this.helis[i]; h.update(dt); if (h.out) this.helis.splice(i, 1); }
     WRECKS.update(dt);
-    if (fight) { this.waves(); this.aimCamera(dt); this.autoArm(); this.lockStep(dt); } else { this.focus = this.chase = null; this.lock = null; }
+    if (fight) { this.waves(); this.aimCamera(dt); this.autoArm(); this.lockStep(dt); this.emptyCheck(dt); } else { this.focus = this.chase = null; this.lock = null; }
     // the base: wrecked, it is left as a ruin and another is built elsewhere; a ruin, or the base after the fight, goes once out of sight
     const B = this.base;
     if (B && war && !B.parts.some(p => p.alive)) { this.ruins.push(B); this.base = null; this.nextBase = T + rand(12, 20); B.site.restUntil = T + 300; }   // (no base on that site again for five minutes)
