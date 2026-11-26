@@ -124,7 +124,7 @@ const HUD = {
   },
   /* a diamond on what the gunship is firing at */
   designate() {
-    const f = BATTLE.focus; if (!f || !f.alive || GUNSHIP.state !== 'orbit') return;
+    const f = BATTLE.focus; if (!f || !f.alive || GUNSHIP.state !== 'orbit' || (BATTLE.lock && BATTLE.lock.t === f)) return;   // (a lock on it draws its own diamond)
     _hp.copy(f.pos); _hp.y += f.ah; _hp.project(camera); if (_hp.z > 1 || Math.abs(_hp.x) > 1 || Math.abs(_hp.y) > 1) return;
     const g = this.g, u = this.u, x = (_hp.x + 1) / 2 * this.W, y = (1 - _hp.y) / 2 * this.H, s = 44 * u;
     g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s, y); g.lineTo(x, y + s); g.lineTo(x - s, y); g.closePath(); this.stroke(1.4 * u);
@@ -142,6 +142,7 @@ const HUD = {
     this.corners([[x, y - d], [x + d, y], [x, y + d], [x - d, y]], got ? 0.5 : 0.22 * 1.45 * s / d);   // (the diamond: corners the same length all the way in)
     this.stroke(2 * u);
     if (got) { g.beginPath(); g.arc(x, y, 2.4 * u, 0, TAU); this.stroke(1.2 * u); g.fillStyle = HUD_COL; g.fill(); }   // (the dot: locked)
+    if (L.w === 'hf') this.spot(x, y);   // (the Hellfire's: the designator's spot on the target)
     this.lockDraw = { k: L.k, shoot, d: d / s, x: x / this.W, y: y / this.H };
   },
   /* a closed shape (its corners in order) into the path: whole (f 0.5), or only its corners, f of each side from each corner */

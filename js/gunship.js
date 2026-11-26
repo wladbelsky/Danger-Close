@@ -85,8 +85,8 @@ const GUNSHIP = {
     }
     if (this.state === 'transit') {
       const t = this.tr; t.p = Math.min(1, t.p + dt / t.dur); const e = t.p * t.p * t.p * (t.p * (t.p * 6 - 15) + 10);   // (smootherstep)
-      const lx = this.look.x, lz = this.look.z; this.look.set(lerp(t.from.x, t.to.x, e), 0, lerp(t.from.z, t.to.z, e));
-      this.ctr.x += this.look.x - lx; this.ctr.z += this.look.z - lz;   // (a transit: the aircraft flies along with its sensor's point)
+      const e0 = t.e || 0; t.e = e; this.look.set(lerp(t.from.x, t.to.x, e), 0, lerp(t.from.z, t.to.z, e));
+      this.ctr.x += (t.to.x - t.from.x) * (e - e0); this.ctr.z += (t.to.z - t.from.z) * (e - e0);   // (a transit: the aircraft flies along with its sensor's point; by the transit's own step, not from where the frame was held off the edge: that added the hold every step)
       if (t.p >= 1) { this.state = 'orbit'; this.home = t.to; this.ao = this.list.indexOf(t.to) + 1; this.aim.copy(this.look); this.aimS.copy(this.look); this.vel.set(0, 0, 0); this.settled = T + 0.8; this.arrive(); this.nextTransit = T + this.interval(); this.nextWander = T + rand(6, 10); if (this.next) { const n = this.next; this.next = null; this.goTo(n); } }
     }
     this.look.y = groundH(this.look.x, this.look.z);
@@ -96,7 +96,7 @@ const GUNSHIP = {
     CAM_TGT.x = this.look.x; CAM_TGT.z = this.look.z; CAM_TGT.y += (this.look.y - CAM_TGT.y) * Math.min(1, dt * 2.5);   // (the height eased: bumps don't shake the picture)
     this.applied = this.zm * CFG.zoom; updateCamera();   // (every step: the lens follows the range to the point as well as the weapon's, the transit's and the setting's zoom)
     const sx = CAM_TGT.x - this.look.x, sz = CAM_TGT.z - this.look.z;   // (the frame held off the map's edge: the sensor's point with it, the reticle in the centre; its slew stopped that way)
-    if (sx || sz) { this.look.x = CAM_TGT.x; this.look.z = CAM_TGT.z; if (sx) this.vel.x = 0; if (sz) this.vel.z = 0; VIEW.clampIn(this.aim); VIEW.clampIn(this.aimS); }
+    if (sx || sz) { this.look.x = CAM_TGT.x; this.look.z = CAM_TGT.z; this.look.y = groundH(this.look.x, this.look.z); if (sx) this.vel.x = 0; if (sz) this.vel.z = 0; VIEW.clampIn(this.aim); VIEW.clampIn(this.aimS); }
   }
 };
 

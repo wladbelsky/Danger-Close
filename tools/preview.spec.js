@@ -537,7 +537,7 @@ test('helis close', async ({ wp }) => {
   await look(0, 520, 'wh'); await look(2, 520, 'bh');
   await sheet(wp, shots, 4, 'helis-close.png');
 });
-/* the AIM-9X's lock: the corners of the box and of the diamond shrinking onto it, both closed with the dot, SHOOT, the launch */
+/* the AIM-9X's lock: the corners of the box and of the diamond shrinking onto it, both closed with the dot, SHOOT */
 test('aim lock', async ({ wp }) => {
   await wp.page.setViewportSize({ width: 1200, height: 675 });
   await wp.boot({ query: '?hour=11&seed=11&weapons=aim&auto=0&weather=clear&clouds=0' });
@@ -547,9 +547,9 @@ test('aim lock', async ({ wp }) => {
     const h = new Heli(1, 'enemy', null, p); BATTLE.helis.push(h); const c = CAM_TGT.clone().multiplyScalar(0.75); h.round = () => [0, 1, 2, 3, 4, 5].map(i => [c.x + Math.cos(i) * 50, c.z + Math.sin(i) * 50]); h.wps = h.round(); window.__h = h;
   });
   const shots = [];
-  for (const want of ['k0.2', 'k0.6', 'k1', 'shoot']) {
+  for (const want of ['k0.2', 'k0.6', 'got', 'shoot']) {   // (got: locked, SHOOT blinked off: k reaches 1 and SHOOT comes in the same step)
     const ok = await wp.run(want => { for (let i = 0; i < 1200; i++) { __t.sim(0.05, { audio: true }); HUD.draw(); const L = BATTLE.lock, d = HUD.lockDraw;
-      if (want === 'fired' ? BATTLE.stat.lockShots > 0 && BATTLE.missiles.length : want === 'shoot' ? d && d.shoot && Math.floor((T - L.shootT) * 8) % 2 === 0 : d && !d.shoot && Math.abs(d.k - +want.slice(1)) < 0.04 && Math.abs(d.x - 0.5) < 0.3) { __t.render(); HUD.draw(); return true; } } return false; }, want);
+      if (want === 'shoot' || want === 'got' ? d && d.shoot && Math.floor((T - L.shootT) * 8) % 2 === (want === 'shoot' ? 0 : 1) : d && !d.shoot && Math.abs(d.k - +want.slice(1)) < 0.04 && Math.abs(d.x - 0.5) < 0.3) { __t.render(); HUD.draw(); return true; } } return false; }, want);
     if (ok) shots.push((await wp.page.screenshot()).toString('base64'));
   }
   await sheet(wp, shots, 2, 'aim-lock.png');

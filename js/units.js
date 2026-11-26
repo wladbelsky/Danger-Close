@@ -402,7 +402,7 @@ class Column {
 /* ---- a helicopter: sits on its pad, takes off, flies a round of waypoints, comes back and lands ---- */
 const _hv = new V3();
 /* helicopters in a fight: their rounds `r` m round the sensor's point, the enemy's rocket runs at a target within `near` m past the frame up to `reach` m away first */
-const HELI_FIGHT = { r: [60, 180], near: 40, reach: 900 };
+const HELI_FIGHT = { r: [60, 180], near: 40, reach: 900 }, _hrU = { pos: new V3() };   // (_hrU: a waypoint tried by BATTLE.reach)
 class Heli {
   /* pad: where it lives (the allies'); without one it starts in the air at `start` and never lands (the enemies') */
   constructor(variant, side, pad, start) {
@@ -489,7 +489,7 @@ class Heli {
      helicopters), else over the enemy's base; out of one, over the districts and the outposts */
   round() {
     const L = GUNSHIP.look, B = BATTLE.base;
-    if (AUD.combat && this.side === 'enemy' && !BATTLE.slow() && ((this.rounds = (this.rounds || 0) + 1) % 3 || !B)) {   /* (very slow music fights group by group, with breaks once the frame is clear: not then) */ const out = [], u = { pos: new V3() };
+    if (AUD.combat && this.side === 'enemy' && !BATTLE.slow() && ((this.rounds = (this.rounds || 0) + 1) % 3 || !B)) {   /* (very slow music fights group by group, with breaks once the frame is clear: not then) */ const out = [], u = _hrU;
       for (let i = randi(3, 4); i > 0; i--) for (let t = 0; t < 8; t++) {   /* (only where the sensor can bring it under the reticle: by the map's edge its line of sight runs past what the frame can be centred on, BATTLE.reach) */
         const a = rand(0, TAU), r = rand(...HELI_FIGHT.r) * (1 - t / 10), x = clamp(L.x + Math.cos(a) * r, -900, 900), z = clamp(L.z + Math.sin(a) * r, -900, 900);
         u.pos.set(x, groundH(x, z) + 60, z); if (BATTLE.reach(u) || t === 7) { out.push([x, z]); break; }

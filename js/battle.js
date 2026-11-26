@@ -294,7 +294,7 @@ const BATTLE = {
     return !VIEW.onScreen(_bp.set(x, groundH(x, z), z), 0.5) && Math.hypot(x - CAM_TGT.x, z - CAM_TGT.z) > Math.max(150, 1.6 * hd);
   },
   /* nothing left round the camera's zone that an enabled weapon may hit */
-  dry() { const en = ARMS.enabled(); return !UNITS.some(u => u.alive && u.side === 'enemy' && en.some(w => w.hitSet.has(u.kind)) && Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z) < ZONE.r); },
+  dry() { const en = ARMS.enabled(); return !UNITS.some(u => u.alive && u.side === 'enemy' && en.some(w => w.hitSet.has(u.kind)) && Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z) < ZONE.r && this.reach(u)); },   // (what the sensor cannot reach by the map's edge is the allies': it keeps nobody here)
   /* the music's pace for the feed, 0..1: the tempo (95–150 bpm), how hard it drives, half in a quiet part */
   pace() { return clamp(0.15 + 0.75 * AUD.tempo + 0.25 * AUD.drive, 0, 1) * (AUD.calm ? 0.5 : 1); },
   /* very slow music (its kicks under FEED.slow bpm) */
