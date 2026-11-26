@@ -77,6 +77,7 @@ const PREF = {
 const ARMOR = { g25: { car: 0.6, apc: 0.2 }, g30: { car: 0.8, apc: 0.4 }, gbu: { struct: 3 } };   // (the GBU-39 brings a building down: the HQ's 60 at one bomb)
 /* the missiles' and the bomb's bodies in flight, a scale on a 1.7 m missile (js/effects.js: missileFx) */
 const MISSILE_S = { hf: 1, apk: 1.1, gbu: 1.2, aim: 1.6 };
+const CUT = [0.55, 0.93];   // the share of its way past which a missile waits for a beat, at most and at least (BATTLE.cut; was 0.55 for the beat, 0.8 for the wait)
 /* the auto-switching changes weapon while the one in hand reloads longer than this (or two beats), seconds */
 const RELOAD_HOP = 1.5;
 const HEAVY_ARMS = new Set(['h105', 'hf', 'gbu', 'rail', 'apk']);
@@ -694,7 +695,7 @@ const BATTLE = {
   onBeat(band, st) {
     if (!ready || !AUD.fighting || paused) return;
     this.unitsOnBeat(band, st, false); AA.onBeat(band, st); this.cookBeat(band, st);
-    for (const m of this.missiles) if (m.p > 0.55) m.rush = true;                     // what is in flight lands on this beat
+    for (const m of this.missiles) if (m.p > this.cut(m)) m.rush = true;               // what is in flight and near enough lands on this beat (cut)
     this.gunOnBeat(band, st, false);
   },
   /* a song fading out: the share of the gunship's shots it still fires (AUD.fade); a drop's surge at full (the loudness over ~2 s lags behind its return) */
@@ -826,6 +827,9 @@ const BATTLE = {
       this.after(fl, () => { hitFx(to.x, to.y, to.z, fx); this.strike(to, G.r, dmg, w, false); });
     });
   },
+  /* how far along its way a missile or a bomb waits for a beat and makes for it on one: about a beat of its own flight short of the
+     end (the faster the music and the slower it flies, the nearer the ground: a bomb no longer hangs high, then drops at 6x) */
+  cut(m) { return clamp(1 - (AUD.beatP || 0.5) / m.dur, CUT[0], CUT[1]); },
   flyMissiles(dt) {
     for (let i = this.missiles.length - 1; i >= 0; i--) {
       const m = this.missiles[i], G = m.G; m.t += dt;
@@ -833,7 +837,7 @@ const BATTLE = {
       if (m.laser) { if (S && S.m === m) { if (S.tgt.alive) S.p.copy(S.tgt.pos); m.to.copy(S.p); } }   // (a Hellfire: to the laser's spot, where the sensor holds it; its target dead meanwhile: the spot stays where it was)
       else if (m.tgt && m.tgt.alive) { m.to.copy(m.tgt.pos); m.to.y += G.air ? m.tgt.ah : 0; }
       if (m.t > m.dur * 1.5) m.rush = true;                                         // (no beat came: the deadline)
-      m.p += dt / m.dur * (m.rush ? 6 : m.p < 0.8 ? 1 : 0.25);
+      m.p += dt / m.dur * (m.rush ? 6 : m.p < this.cut(m) ? 1 : 0.25);   // (past its cut it waits for a beat, then makes for it)
       if (m.p >= 1) { this.missiles.splice(i, 1); if (S && S.m === m) this.lase = null; hitFx(m.to.x, m.to.y, m.to.z, m.fx, G.air); this.strike(m.to, G.r, m.dmg, m.w, G.air); continue; }
       _bp.lerpVectors(m.from, m.to, m.p); missileFx(m, _bp, _bd.subVectors(m.to, m.from).normalize(), { s: MISSILE_S[m.w.id] || 1, motor: !G.bomb });
     }
@@ -997,6 +1001,7 @@ const BATTLE = {
   /* the auto-switching: the enabled weapon that suits what is in the frame and how heavy the music is */
   autoArm() {
     if (!CFG.autoArms || T < this.manualUntil || T < this.autoTick || this.lock || this.lase) return;   // (never in the middle of a lock, nor with a Hellfire on its way)
+    const P = this.pod; if (P && P.id === ARMS.cur && P.n < P.of) return;   // (nor mid-salvo: its rockets ripple off for up to 1.25 s, the pod's marks with them; pending ones are not yet `incoming`)
     this.autoTick = T + 1;
     const w0 = ARMS.w, s0 = w0 && ARMS.st[w0.id], hop = w0 && w0.mag && s0.reload > Math.max(RELOAD_HOP, 2 * (AUD.beatP || 0.5));   // (the weapon in hand reloads for a while: one that is ready fires meanwhile)
     const cnt = {}; let any = false; for (const u of UNITS) if (u.side === 'enemy' && this.inFrame(u.pos) && this.reach(u) && !this.doomed(u)) { cnt[u.kind] = (cnt[u.kind] || 0) + 1; any = true; }

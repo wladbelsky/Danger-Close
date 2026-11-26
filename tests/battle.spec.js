@@ -682,3 +682,20 @@ test('the GBU-39\'s reticle is drawn in the world: its fall line\'s ticks spread
   expect(r.gap, 'one at a time, to be seen: a rocket every GUN.apk.step 0.25 s, a mark every 0.25–0.5 s (in 0.05 s steps; at 0.12 s it was 0.1)').toBeGreaterThanOrEqual(0.19);
   expect(r.ok, 'the APKWS\'s salvo reticle draws').toBe(true);
 });
+
+test('a missile or a bomb makes for the beat only a beat of its flight short of the end: a bomb in fast music near the ground', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=gbu,hf&auto=0&transit=0' });
+  const fly = async (id, bpm) => wp.run(([id, bpm]) => {
+    __t.sim(8, { audio: true, bpm }); BATTLE.missiles.length = 0;
+    const t = { pos: CAM_TGT.clone(), kind: 'tank', side: 'enemy', alive: true, ah: 2, v: 0, yaw: 0, hp: 1e9 };
+    const k = BATTLE.pend.length; BATTLE.fire(WEAPON[id], t, 1.5); for (const q of BATTLE.pend.splice(k)) q.fn();
+    const m = BATTLE.missiles[BATTLE.missiles.length - 1], cut = BATTLE.cut(m); let rushAt = null, p0 = 0, wait = 0, fast = 0;
+    for (let i = 0; i < 100 && BATTLE.missiles.includes(m); i++) { __t.sim(0.05, { audio: true, bpm }); if (m.rush && rushAt === null) rushAt = p0; const dp = m.p - p0; if (!m.rush && p0 < cut - 0.02 && dp < 0.05 / m.dur * 0.5) wait++; if (dp > 0.05 / m.dur * 2) fast++; p0 = m.p; }
+    return { cut, rushAt, wait, bpm: AUD.bpm };
+  }, [id, bpm]);
+  const gbu = await fly('gbu', 150), hf = await fly('hf', 90);
+  console.log(JSON.stringify({ gbu, hf }));
+  expect(gbu.cut, 'a bomb in fast music: its cut near the ground').toBeGreaterThan(0.78); expect(hf.cut, 'a Hellfire in slow music: further up').toBeLessThan(0.65);
+  for (const r of [gbu, hf]) { expect(r.rushAt, 'it made for a beat').not.toBeNull(); expect(r.rushAt, 'not before its cut').toBeGreaterThanOrEqual(r.cut - 0.03); expect(r.wait, 'no waiting before the cut').toBe(0); }
+  expect(gbu.rushAt, 'the bomb makes for it nearer the ground than the Hellfire').toBeGreaterThan(hf.rushAt);
+});

@@ -328,10 +328,10 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   pipper, and the line it falls down onto it ticked at `BOMB_TICKS` 10 / 20 / 30 m over the point, up to `BOMB_TOP` 40 m: under
   the aircraft the line of sight is steep and the line short, further off it is flatter and the line longer (82 px for the top
   tick at 256 m slant, 182 px at 454 m; `HUD.bombDraw`). The APKWS's (`salvo`, unguided rockets): the ground its salvo covers
-  (`SALVO_R` 12 m: its spread and a rocket's blast) as a ring of 16 dashes, a cross, and the pod's four rockets under it: they go
+  (`SALVO_R` 12 m: its spread and a rocket's blast, `GUN.apk.spread` + `SPLASH.apk`) as a ring of 16 dashes, a cross, and the pod's four rockets under it: they go
   off as the salvo's rockets leave (`BATTLE.pod`: `n` of `of`, 2–6 by the beat, `BURST`; in step, the last with the last;
   `HUD.podDraw`), then fill up again as it reloads. The rockets ripple off 0.25 s apart (`GUN.apk.step`, was 0.12: the
-  salvo went in half a second, its marks went off as one). The Hellfire keeps `circle`. Sheet: none (test-results/reticles-near-far.png was made by hand).
+  salvo went in half a second, its marks went off as one); the auto-switching waits for the salvo to be gone (`BATTLE.pod`: it hopped 0.3 s in). Both rings lie on the ground (`onGround(dx, null, dz)`: `groundH`). The Hellfire keeps `circle`. Sheet: none (test-results/reticles-near-far.png was made by hand).
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -402,7 +402,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=104`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=105`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
