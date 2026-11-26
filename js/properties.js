@@ -224,6 +224,12 @@ const WE_PROPERTIES = {
   "type": "bool",
   "value": false
  },
+ "w_cbu": {
+  "order": 26,
+  "text": "CBU-97 cluster bombs (sensor-fuzed)",
+  "type": "bool",
+  "value": false
+ },
  "w_aim": {
   "order": 27,
   "text": "AIM-9X (helicopters only)",

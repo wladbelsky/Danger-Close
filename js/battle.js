@@ -24,6 +24,13 @@ const UNIT_BEAT_MAX = 24;   // unit shots on one beat at most (a volley)
    table says what a weapon is fired at, not what its blast spares): the gunship's blast radii, metres ---- */
 const SPLASH = { h105: 10, hf: 8, apk: 6, gbu: 18 };
 /* how far off a structure a hit still counts (from its 3 m pad): only what lands on it, but a bomb flattens what stands next to it too */
+/* the CBU-97: its canister opens `open` m over the point, its `subs` submunitions come down on chutes over `fall` s to `hover` m, spread
+   over a circle of `r` m (CLUSTER_PAT: three in, seven round, in its radii; turned with the line of sight from the aircraft); then one a
+   sixteenth of the beat (on the kick's grid) fires its `skeets` down at once: each at the nearest enemy vehicle within `seek` m of it
+   that the ones before have not already done for (`dmg` each: a car or an APC at one, a tank at two), else into the ground, its
+   fragments killing the enemy's infantry within `frag.r` m */
+const CLUSTER = { open: 40, subs: 10, fall: 1.0, hover: 15, r: 16, mark: 3, skeets: 4, seek: 9, dmg: 8, frag: { r: 4, dmg: 1.2 }, sub: 0.4 };
+const CLUSTER_PAT = [...[0, 1, 2].map(i => [0.35 * Math.cos(i * TAU / 3 + 0.5), 0.35 * Math.sin(i * TAU / 3 + 0.5)]), ...[0, 1, 2, 3, 4, 5, 6].map(i => [0.88 * Math.cos(i * TAU / 7), 0.88 * Math.sin(i * TAU / 7)])];   // (where each submunition comes down, in CLUSTER.r)
 const STRUCT_REACH = { gbu: 8 }, structReach = (w, r) => Math.min(r, STRUCT_REACH[w.id] || 4);
 /* a helicopter's rocket run: it dives in, and on a beat looses a salvo of unguided rockets that burst on and round the target */
 const ROCKET = { n: 8, step: 0.07, v: 220, spread: 7, r: 6, dmg: 2.2, fx: 1.1, ally: 0.6, puff: 5 };   // (puff: metres between the trail's puffs)
@@ -63,6 +70,7 @@ const GUN = {
   hf:   { n: 1, step: 0,     spread: 0.5, dmg: 18,   r: 5,   fx: 2.2,  missile: 1.5, gap: 0.5 },
   apk:  { n: 4, step: 0.25,  spread: 6,   dmg: 5,    r: 5,   fx: 1.3,  missile: 1.0, gap: 0.5 },
   gbu:  { n: 1, step: 0,     spread: 1,   dmg: 22,   r: 12,  fx: 4.6,  missile: 2.2, gap: 0.5, bomb: true },
+  cbu:  { n: 1, step: 0,     spread: 3,   dmg: 0,    r: 0,   fx: 1.5,  missile: 2.2, gap: 0.5, bomb: true, cluster: true },   // (to a point CLUSTER.open m over the ground, no homing: BATTLE.cluster)
   aim:  { n: 1, step: 0,     spread: 0,   dmg: 8,    r: 7,   fx: 1.6,  missile: 1.3, gap: 0.5, air: true },
   las:  { dps: 7, gap: 0 },
   rail: { dmg: 30, r: 5, len: 64, gap: 0.5 }
@@ -71,16 +79,16 @@ const GUN = {
 const PREF = {
   g25: { inf: 3, car: 1.5, apc: 0.3 }, g30: { inf: 1.5, car: 2.5, apc: 2, struct: 0.8 }, h105: { inf: 0.8, car: 1.5, apc: 2.5, tank: 4, struct: 2.5 },
   b40: { inf: 1.5, car: 2.5, apc: 2.2 }, hf: { car: 1.5, apc: 2.5, tank: 5, struct: 1.5 }, apk: { inf: 2, car: 2.5, apc: 2, struct: 1.5 },
-  gbu: { inf: 0.8, car: 1.2, apc: 2, tank: 4, struct: 4 }, aim: { heli: 8 }, las: { inf: 1.5, car: 1.5, apc: 1.5, tank: 1.5, heli: 3 }, rail: { inf: 1.2, car: 1.5, apc: 2, tank: 3, heli: 2 }
+  gbu: { inf: 0.8, car: 1.2, apc: 2, tank: 4, struct: 4 }, cbu: { inf: 1, car: 2, apc: 3, tank: 3.5 }, aim: { heli: 8 }, las: { inf: 1.5, car: 1.5, apc: 1.5, tank: 1.5, heli: 3 }, rail: { inf: 1.2, car: 1.5, apc: 2, tank: 3, heli: 2 }
 };
 /* armour against the light guns: a factor on their damage to a vehicle (a 25 mm burst stops a car, an APC takes a long hammering) */
 const ARMOR = { g25: { car: 0.6, apc: 0.2 }, g30: { car: 0.8, apc: 0.4 }, gbu: { struct: 3 } };   // (the GBU-39 brings a building down: the HQ's 60 at one bomb)
 /* the missiles' and the bomb's bodies in flight, a scale on a 1.7 m missile (js/effects.js: missileFx) */
-const MISSILE_S = { hf: 1, apk: 1.1, gbu: 1.2, aim: 1.6 };
+const MISSILE_S = { hf: 1, apk: 1.1, gbu: 1.2, cbu: 1.3, aim: 1.6 };
 const CUT = [0.55, 0.93];   // the share of its way past which a missile waits for a beat, at most and at least (BATTLE.cut; was 0.55 for the beat, 0.8 for the wait)
 /* the auto-switching changes weapon while the one in hand reloads longer than this (or two beats), seconds */
 const RELOAD_HOP = 1.5;
-const HEAVY_ARMS = new Set(['h105', 'hf', 'gbu', 'rail', 'apk']);
+const HEAVY_ARMS = new Set(['h105', 'hf', 'gbu', 'cbu', 'rail', 'apk']);
 const QRF_TYPES = [['tank', 'apc'], ['apc', 'car'], ['tank', 'car', 'car'], ['apc', 'apc']];
 const WAVES = [['car', 'car'], ['apc', 'car'], ['tank', 'apc'], ['tank', 'tank', 'apc'], ['car', 'apc', 'apc'], ['tank', 'car', 'car']];
 
@@ -199,8 +207,8 @@ const SCATTER = { r0: 10, k: 3, d: [8, 16], t: [2.5, 4], v: 3.6, spread: 10, res
 const COOK = { tank: 3, apc: 2, car: 1, first: 0.6, gap: 0.5, late: 1.6, toss: 0.35 };
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0), _br = new V3(), _bd2 = new V3(), _wobs = [];
 const BATTLE = {
-  base: null, spent: 0, silent: 0, silentRT: 0, ruins: [], cols: [], squads: [], helis: [], focus: null, chase: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, feed: 0, breaks: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0, allyFeed: 0, scatter: 0, refocus: 0, yield: 0, bypass: 0, ghost: 0, bump: 0, locks: 0, lockShots: 0, spared: 0, steer: 0, shove: 0, quiet: 0, unjam: 0, assaults: 0, deploys: 0, scatterV: 0, rescat: 0, lased: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
-  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], nextFeed: 0, nextAllyFeed: 0, nextAllyCol: 0, allyFrameT: 0, feedT: 0, breakUntil: 0, armT: -99, ricoN: 0, puffN: 0, lock: null, lase: null, pod: null, lockLog: [], atP: new V3(),
+  base: null, spent: 0, silent: 0, silentRT: 0, ruins: [], cols: [], squads: [], helis: [], focus: null, chase: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, feed: 0, breaks: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0, allyFeed: 0, scatter: 0, refocus: 0, yield: 0, bypass: 0, ghost: 0, bump: 0, locks: 0, lockShots: 0, spared: 0, steer: 0, shove: 0, quiet: 0, unjam: 0, assaults: 0, deploys: 0, scatterV: 0, rescat: 0, lased: 0, clusters: 0, skeets: 0, skeetHits: 0, cluSalvo: [] }, surgeUntil: 0, rockets: [], forceUntil: 0,
+  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], nextFeed: 0, nextAllyFeed: 0, nextAllyCol: 0, allyFrameT: 0, feedT: 0, breakUntil: 0, armT: -99, ricoN: 0, puffN: 0, lock: null, lase: null, pod: null, subs: [], lockLog: [], atP: new V3(),
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
     this.beam = new THREE.Mesh(geo, sensorMat(new THREE.MeshBasicMaterial({ color: 0xff4a36, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), 1));   // the laser: a red core
@@ -675,7 +683,7 @@ const BATTLE = {
   incoming(u) {
     let s = 0; const S0 = this.lase, fly = u.kind === 'heli' && u.pos.y > groundH(u.pos.x, u.pos.z) + 8;
     for (const m of this.missiles) {
-      const G = m.G, w = m.w, S = G.air ? 0 : SPLASH[w.id] || 0, r = Math.max(G.r, S); if ((!w.hitSet.has(u.kind) && !S) || fly !== !!G.air) continue;
+      const G = m.G, w = m.w, S = G.air ? 0 : SPLASH[w.id] || 0, r = Math.max(G.r, S); if (G.cluster || (!w.hitSet.has(u.kind) && !S) || fly !== !!G.air) continue;
       const on = m.tgt === u || (m.laser && S0 && S0.m === m && S0.tgt === u), d = on ? 0 : Math.max(0, Math.hypot(u.pos.x - m.to.x, u.pos.z - m.to.z) - (u.kind === 'struct' ? 3 : u.kind === 'inf' ? 0 : 1.5)); if (d >= (u.kind === 'struct' ? structReach(w, r) : r)) continue;
       const A = ARMOR[w.id]; s += m.dmg * (1 - d / r) * (u.kind === 'inf' ? 3 : 1) * (A && A[u.kind] || 1);
     }
@@ -811,13 +819,14 @@ const BATTLE = {
     // once the aircraft is off to another place (a transit) the rest stay on the trigger's point
     const P0 = A || t.pos, fl = G.missile || 0.28; let px = P0.x, pz = P0.z;
     if (!A && !G.missile) { this.velOf(t, _bd); px += _bd.x * fl; pz += _bd.z * fl; }
+    let mx = P0.x, mz = P0.z; if (!A && G.cluster) { this.velOf(t, _bd); const L = G.missile + CLUSTER.fall + 4 * (AUD.beatP ? AUD.beatP / 4 : 0.125); mx += _bd.x * L; mz += _bd.z * L; }   // (the CBU-97 has no homing: it opens where a moving target will be once its skeets fire, not where it was at release)
     const ox = px - GUNSHIP.look.x, oz = pz - GUNSHIP.look.z, lx = GUNSHIP.look.x, lz = GUNSHIP.look.z, tx = t.pos.x, tz = t.pos.z;
     for (let i = 0; i < n; i++) this.after(i * G.step, () => {
       if (i && !G.missile && GUNSHIP.state === 'orbit' && Math.hypot(GUNSHIP.look.x - lx - (t.pos.x - tx), GUNSHIP.look.z - lz - (t.pos.z - tz)) > BURST_LET_GO) return;   // (the sensor off to another target, not following this one: the trigger let go, not a line of hits across the ground between them)
       this.spent += w.cost;   // (the money: every round of the burst fired, every rocket of the salvo; none the trigger let go of)
       const a = rand(0, TAU), r = Math.sqrt(Math.random()) * G.spread, c = Math.cos(a) * r, s = Math.sin(a) * r, L = GUNSHIP.state === 'orbit' ? GUNSHIP.look : null;
-      const to = G.missile ? new V3(P0.x + c, 0, P0.z + s) : L ? new V3(L.x + ox + c, 0, L.z + oz + s) : new V3(px + c, 0, pz + s);
-      to.y = G.air ? t.pos.y + t.ah : groundH(to.x, to.z);
+      const to = G.missile ? new V3(mx + c, 0, mz + s) : L ? new V3(L.x + ox + c, 0, L.z + oz + s) : new V3(px + c, 0, pz + s);
+      to.y = G.air ? t.pos.y + t.ah : groundH(to.x, to.z) + (G.cluster ? CLUSTER.open : 0);
       if (G.missile) { if (this.pod && this.pod.id === w.id) this.pod.n++; this.missiles.push({ w, G, tgt: G.spread < 2 && !A ? t : null, from: this.muzzle(new V3(), rand(-1, 1) > 0 ? rand(8, 14) : rand(-14, -8)).addScaledVector(_bt.set(camera.matrixWorld.elements[4], camera.matrixWorld.elements[5], camera.matrixWorld.elements[6]), -3), to, p: 0, t: 0, dur: G.missile, rush: false, puff: 0, fx, dmg, laser: w.id === 'hf' });
         if (w.id === 'hf') { this.lase = { tgt: t, p: t.pos.clone(), m: this.missiles[this.missiles.length - 1] }; this.stat.lased++; }   // (the designator holds the spot on it until the hit)
         return; }
@@ -838,8 +847,43 @@ const BATTLE = {
       else if (m.tgt && m.tgt.alive) { m.to.copy(m.tgt.pos); m.to.y += G.air ? m.tgt.ah : 0; }
       if (m.t > m.dur * 1.5) m.rush = true;                                         // (no beat came: the deadline)
       m.p += dt / m.dur * (m.rush ? 6 : m.p < this.cut(m) ? 1 : 0.25);   // (past its cut it waits for a beat, then makes for it)
+      if (m.p >= 1 && G.cluster) { this.missiles.splice(i, 1); this.cluster(m.to, m.w); continue; }
       if (m.p >= 1) { this.missiles.splice(i, 1); if (S && S.m === m) this.lase = null; hitFx(m.to.x, m.to.y, m.to.z, m.fx, G.air); this.strike(m.to, G.r, m.dmg, m.w, G.air); continue; }
       _bp.lerpVectors(m.from, m.to, m.p); missileFx(m, _bp, _bd.subVectors(m.to, m.from).normalize(), { s: MISSILE_S[m.w.id] || 1, motor: !G.bomb });
+    }
+  },
+  /* the CBU-97's canister opens at p (CLUSTER): its submunitions spread out and down, and fire their skeets one a sixteenth */
+  cluster(p, w) {
+    const C = CLUSTER, ax0 = p.x - camera.position.x, az0 = p.z - camera.position.z, an = Math.hypot(ax0, az0) || 1, ax = ax0 / an, az = az0 / an;
+    FX.flash.spawn(p, { s0: 5, s1: 12, life: 0.16 }); FX.smoke.spawn(p, { s0: 2, s1: 7, life: 1.6, a0: 0.4, color: 0xc8c8c0, v: _wv.set(0, -1, 0), drag: 1 }); this.stat.clusters++;
+    const subs = CLUSTER_PAT.map(([s, t]) => { const x = p.x + (ax * s - az * t) * C.r + rand(-1, 1), z = p.z + (az * s + ax * t) * C.r + rand(-1, 1); return { from: p.clone(), p: p.clone(), at: new V3(x, groundH(x, z) + C.hover, z), t: 0, spin: rand(0, TAU), fired: 0 }; });
+    this.subs.push(...subs);
+    const q = AUD.beatP ? AUD.beatP / 4 : 0.125, ph = AUD.beatP ? (((RT() + C.fall - AUD.kickT) % q) + q) % q : 0, d0 = C.fall + (q - ph) % q, hit = new Map();   // (the first on the grid once they are down; hit: what each vehicle has coming)
+    subs.forEach((s, i) => this.after(d0 + i * q, () => this.skeets(s, hit, w)));
+  },
+  /* a submunition fires its skeets down: each at the nearest enemy vehicle in reach not yet done for, else into the ground */
+  skeets(s, hit, w) {
+    const C = CLUSTER; s.fired = T; this.stat.cluSalvo.push(RT()); if (this.stat.cluSalvo.length > 40) this.stat.cluSalvo.shift();
+    for (let k = 0; k < C.skeets; k++) {
+      this.stat.skeets++; let best = null, bd = C.seek;
+      for (const u of UNITS) { if (u.side !== 'enemy' || !u.alive || u.kind === 'inf' || !w.hitSet.has(u.kind) || (hit.get(u) || 0) >= u.hp) continue; const d = Math.hypot(u.pos.x - s.at.x, u.pos.z - s.at.z); if (d < bd) { bd = d; best = u; } }
+      const to = best ? _bp.set(best.pos.x, best.pos.y + best.ah * 0.8, best.pos.z) : _bp.set(s.at.x + rand(-4, 4), 0, s.at.z + rand(-4, 4)); if (!best) to.y = groundH(to.x, to.z);
+      FX.tracers.spawn(s.p, _bd.subVectors(to, s.p).multiplyScalar(1 / 0.06), { life: 0.06, len: 7, w: 0.32, color: 0xfff0c0, glow: TRACER_GLOW.unit });   // (the slug of molten copper, down)
+      const x = to.x, y = to.y, z = to.z;
+      if (best) { hit.set(best, (hit.get(best) || 0) + C.dmg); this.stat.skeetHits++; const v = best; this.after(0.06, () => { hitFx(x, y, z, 0.7); hit.set(v, hit.get(v) - C.dmg); if (v.alive) { this.note(w, v); hurt(v, C.dmg); } }); }   // (hit: the damage still on its way; once it lands it is in hp)
+      else this.after(0.06, () => { hitFx(x, y, z, 0.45); for (let i = UNITS.length - 1; i >= 0; i--) { const u = UNITS[i]; if (u.side === 'enemy' && u.kind === 'inf' && u.alive && Math.hypot(u.pos.x - x, u.pos.z - z) < C.frag.r) { this.note(w, u); hurt(u, C.frag.dmg); } } });
+    }
+    FX.flash.spawn(s.p, { s0: 1.2, s1: 2.4, life: 0.06, color: 0xfff4e0 });
+    const g = new V3(s.at.x, s.at.y - C.hover, s.at.z); this.scare(g, C.frag.r, 'enemy'); this.scatterNear(g);
+  },
+  /* the submunitions on their chutes: out and down from the canister, easing in, then drifting down a little as they spin */
+  flySubs(dt) {
+    const C = CLUSTER;
+    for (let i = this.subs.length - 1; i >= 0; i--) {
+      const s = this.subs[i]; s.t += dt; const k = Math.min(1, s.t / C.fall), e = 1 - (1 - k) * (1 - k);
+      s.p.lerpVectors(s.from, s.at, e); if (k >= 1) s.p.y = s.at.y - Math.min(4, (s.t - C.fall) * 1.5);
+      s.spin += dt * 14; _bd.set(Math.cos(s.spin) * 0.3, -1, Math.sin(s.spin) * 0.3).normalize(); FX.bodies.add(s.p, _bd, C.sub);
+      if (s.fired && T - s.fired > 0.35) this.subs.splice(i, 1);
     }
   },
   /* the damage of a hit at p: every enemy the weapon is allowed to hit within r, falling off with the distance */
@@ -1026,7 +1070,7 @@ const BATTLE = {
     const now = RT(); this.silent = AUD.active ? now - AUD.lastActive : this.silent + clamp(now - (this.silentRT || now), 0, 0.5); this.silentRT = now;   // (silence counted only while running: a paused wallpaper, music on, is no silence)
     if (this.spent && this.silent > COST_RESET) this.spent = 0;   // (the mission is over: the next one's cost from 0; the HUD rolls it down, HUD.spentAt)
     for (let i = this.pend.length - 1; i >= 0; i--) if (T >= this.pend[i].t) { const p = this.pend[i]; this.pend.splice(i, 1); p.fn(); }
-    this.ricoN = 0; this.puffN = 0; this.flyMissiles(dt); this.flyRockets(dt); this.laser(dt); this.subBeat(); this.cookUpdate(dt);
+    this.ricoN = 0; this.puffN = 0; this.flyMissiles(dt); this.flySubs(dt); this.flyRockets(dt); this.laser(dt); this.subBeat(); this.cookUpdate(dt);
     for (let i = UNITS.length - 1; i >= 0; i--) this.think(UNITS[i], dt, fight);
     for (let i = this.cols.length - 1; i >= 0; i--) {
       const E = this.cols[i], c = E.col;

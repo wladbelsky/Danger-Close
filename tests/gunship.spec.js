@@ -50,9 +50,9 @@ test('the selector lists only the enabled weapons; a click selects one and its z
   const r = await wp.run(() => ({ cur: ARMS.cur, zm: GUNSHIP.zm, on: document.querySelector('#arms button.on').dataset.id }));
   expect(r.cur).toBe('h105'); expect(r.on).toBe('h105'); expect(r.zm).toBeCloseTo(WEAPON_ZOOM_105, 2);
   await wp.goto('?hour=12&seed=11&weapons=all');
-  expect(await wp.page.locator('#arms button').count()).toBe(10);
+  expect(await wp.page.locator('#arms button').count()).toBe(WEAPONS_N);
 });
-const WEAPON_ZOOM_105 = 0.85;
+const WEAPON_ZOOM_105 = 0.85, WEAPONS_N = 11;
 
 test('a click on a mode switches the vision and recompiles nothing', async ({ wp }) => {
   await wp.boot({ query: '?hour=12&seed=11' });

@@ -595,6 +595,28 @@ test('hellfire lase', async ({ wp }) => {
   }
   await sheet(wp, shots, 2, 'hellfire-lase.png');
 });
+/* the CBU-97 over a column: its reticle on it, the canister opened and the submunitions coming down, their skeets striking, after;
+   and the weapon selector with all eleven weapons */
+test('cluster', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1200, height: 675 });
+  await wp.boot({ query: '?hour=11&seed=11&weapons=all&auto=0&weather=clear&clouds=0&transit=0' });
+  await wp.sim(8, { audio: true, bpm: 120 });
+  await wp.run(() => {
+    for (const u of UNITS.slice()) if (u instanceof Vehicle) u.remove();
+    BATTLE.nextWave = BATTLE.nextFeed = 1e9; CFG.fire = 0; ARMS.select('cbu'); HUD.markArms();
+    const put = (kind, dx, dz) => { const v = new Vehicle(kind, 'enemy'); v.troops = 0; v.obj.position.set(CAM_TGT.x + dx, 0, CAM_TGT.z + dz); v.obj.position.y = groundH(v.obj.position.x, v.obj.position.z); v.path = new Path([{ x: v.pos.x, z: v.pos.z, y: NaN, hw: 0 }, { x: v.pos.x + 1, z: v.pos.z, y: NaN, hw: 0 }]); };
+    put('car', 0, 0); put('apc', 8, 3); put('apc', -7, -3); put('tank', 3, -8);
+  });
+  const shots = [], snap = async () => { await wp.run(() => { __t.render(); HUD.draw(); }); shots.push((await wp.page.screenshot()).toString('base64')); };
+  await snap();
+  await wp.run(() => { const k = BATTLE.pend.length; BATTLE.fire(WEAPON.cbu, { pos: CAM_TGT.clone(), kind: 'car', side: 'enemy', alive: true, ah: 2, v: 0, yaw: 0 }, 1.5); for (const q of BATTLE.pend.splice(k)) q.fn(); for (let i = 0; i < 200 && !BATTLE.stat.clusters; i++) __t.sim(0.05, { audio: true, bpm: 120 }); __t.sim(0.5, { audio: true, bpm: 120 }); });
+  await snap();
+  await wp.run(() => { for (let i = 0; i < 100 && BATTLE.stat.cluSalvo.length < 5; i++) __t.sim(0.05, { audio: true, bpm: 120 }); });
+  await snap();
+  await wp.run(() => __t.sim(4, { audio: true, bpm: 120 }));
+  await snap();
+  await sheet(wp, shots, 2, 'cluster.png');
+});
 /* a Hellfire on its way down beside a string of flares; a SAM coming up; a BTR firing up from its roof machine gun */
 test('missiles and flares', async ({ wp }) => {
   await wp.page.setViewportSize({ width: 1200, height: 675 });

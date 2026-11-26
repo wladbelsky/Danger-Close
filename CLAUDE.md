@@ -332,6 +332,21 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   off as the salvo's rockets leave (`BATTLE.pod`: `n` of `of`, 2–6 by the beat, `BURST`; in step, the last with the last;
   `HUD.podDraw`), then fill up again as it reloads. The rockets ripple off 0.25 s apart (`GUN.apk.step`, was 0.12: the
   salvo went in half a second, its marks went off as one); the auto-switching waits for the salvo to be gone (`BATTLE.pod`: it hopped 0.3 s in). Both rings lie on the ground (`onGround(dx, null, dz)`: `groundH`). The Hellfire keeps `circle`. Sheet: none (test-results/reticles-near-far.png was made by hand).
+- A missile or a bomb makes for the beat only about a beat of its own flight short of the end (`BATTLE.cut(m)`: 1 - `beatP` /
+  `dur`, held to `CUT` 0.55–0.93; was 0.55 to make for it and 0.8 to wait at a quarter of its speed): a bomb no longer hangs high,
+  then drops at 6x. The faster the music and the slower it flies, the nearer the ground: the GBU-39 at 0.82 at 150 bpm (it made
+  for it at 0.86 of its way), the Hellfire at 0.6 at 90. Test: battle.spec.js.
+- **The CBU-97** (`cbu`, sensor-fuzed: `SFW`; off by default, property **CBU-97 cluster bombs (sensor-fuzed)**, $360K): a canister
+  glides to a point `CLUSTER.open` 40 m over the ground (`GUN.cbu`: `bomb`, `cluster`, no homing) and opens there on the beat
+  (`BATTLE.cluster`): 10 submunitions come down on chutes (`subs`, `flySubs`; bodies at `CLUSTER.sub`) to `hover` 15 m over
+  `CLUSTER_PAT`'s spots (three in, seven round) in a circle of `r` 16 m, turned with the line of sight; then one a sixteenth of the beat on
+  the kick's grid (`beatP` / 4, else 0.125 s) fires its 4 skeets at once (`skeets`): each a bright slug down at the nearest enemy
+  vehicle within `seek` 9 m that the ones before have not done for yet (`dmg` 8 each: a car or an APC at one, a tank at two), else
+  into the ground, its fragments killing the enemy's infantry within 4 m; never an ally. `incoming` / `doomed` leave it out.
+  `PREF.cbu` (armour), `HEAVY_ARMS`. HUD reticle `cluster`: a small ring (`mark` 3 m) on the ground where each submunition comes
+  down, a cross (`HUD.clusterDraw`; an ellipse with brackets looked odd). Stats: `clusters`, `skeets`, `skeetHits`, `cluSalvo`. Measured: a
+  column of a car, two APCs and a tank under it: all four dead with 5 of the 40 skeets, an ally APC 15 m off untouched. Tests:
+  battle.spec.js; sheet: cluster.png (the reticle, opening, striking, after; the selector with all eleven weapons).
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -358,6 +373,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | Hellfire | | + | + | + | | strong |
 | APKWS salvo | + | + | + | | | strong |
 | GBU-39 | + | + | + | + | | strong |
+| CBU-97 | + | + | + | + | | strong, its skeets on the sixteenths |
 | AIM-9X | | | | | + | strong |
 | Laser | + | + | + | + | + | held on the beat, targets burn up |
 | Railgun | + | + | + | + | + | strong, pierces a column along a line |
@@ -402,7 +418,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=105`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=106`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

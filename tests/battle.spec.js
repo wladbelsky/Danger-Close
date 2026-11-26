@@ -68,7 +68,7 @@ test('music arms the fight after 5 s; the camera stays and the enemy comes to it
 test('every weapon alone fires only at what its table allows', async ({ wp }) => {
   test.setTimeout(600000);
   const out = {};
-  for (const id of ['g25', 'g30', 'h105', 'b40', 'hf', 'apk', 'gbu', 'aim', 'las', 'rail']) {
+  for (const id of ['g25', 'g30', 'h105', 'b40', 'hf', 'apk', 'gbu', 'cbu', 'aim', 'las', 'rail']) {
     const q = `?hour=12&seed=11&weapons=${id}&auto=0`;
     if (!Object.keys(out).length) await wp.boot({ query: q }); else await wp.goto(q);
     await wp.sim(200, { audio: true });
@@ -698,4 +698,34 @@ test('a missile or a bomb makes for the beat only a beat of its flight short of 
   expect(gbu.cut, 'a bomb in fast music: its cut near the ground').toBeGreaterThan(0.78); expect(hf.cut, 'a Hellfire in slow music: further up').toBeLessThan(0.65);
   for (const r of [gbu, hf]) { expect(r.rushAt, 'it made for a beat').not.toBeNull(); expect(r.rushAt, 'not before its cut').toBeGreaterThanOrEqual(r.cut - 0.03); expect(r.wait, 'no waiting before the cut').toBe(0); }
   expect(gbu.rushAt, 'the bomb makes for it nearer the ground than the Hellfire').toBeGreaterThan(hf.rushAt);
+});
+
+test('a CBU-97 opens over a column: its submunitions fire their skeets one a sixteenth, every vehicle in reach done for, no ally hurt', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=cbu&auto=0&transit=0' });
+  await wp.sim(8, { audio: true, bpm: 120 });
+  const r = await wp.run(() => {
+    for (const u of UNITS.slice()) if (u instanceof Vehicle) u.remove();
+    BATTLE.nextWave = BATTLE.nextFeed = 1e9;
+    const put = (kind, side, dx, dz) => { const v = new Vehicle(kind, side); v.troops = 0; v.obj.position.set(CAM_TGT.x + dx, 0, CAM_TGT.z + dz); v.obj.position.y = groundH(v.obj.position.x, v.obj.position.z); v.path = new Path([{ x: v.pos.x, z: v.pos.z, y: NaN, hw: 0 }, { x: v.pos.x + 1, z: v.pos.z, y: NaN, hw: 0 }]); return v; };
+    const en = [put('car', 'enemy', 0, 0), put('apc', 'enemy', 8, 3), put('apc', 'enemy', -7, -3), put('tank', 'enemy', 3, -8)], ally = put('apc', 'ally', 13, 9), hp0 = ally.hp;
+    CFG.fire = 0; BATTLE.unitShot = () => {}; BATTLE.salvo = () => {};   // (only this one bomb: the gunship and the units hold their fire)
+    const log0 = BATTLE.log.length, k = BATTLE.pend.length; BATTLE.fire(WEAPON.cbu, { pos: CAM_TGT.clone(), kind: 'car', side: 'enemy', alive: true, ah: 2, v: 0, yaw: 0 }, 1.5); for (const q of BATTLE.pend.splice(k)) q.fn();
+    const m = BATTLE.missiles[BATTLE.missiles.length - 1], high = m.to.y - groundH(m.to.x, m.to.z);
+    let subsSeen = 0; for (let i = 0; i < 160; i++) { __t.sim(0.05, { audio: true, bpm: 120 }); subsSeen = Math.max(subsSeen, BATTLE.subs.length); }
+    const S = BATTLE.stat, t = S.cluSalvo, iv = t.slice(1).map((x, i) => x - t[i]), q = AUD.beatP / 4;
+    return { high, clusters: S.clusters, skeets: S.skeets, hits: S.skeetHits, subsSeen, dead: en.filter(v => !v.alive).length, ally: ally.alive && ally.hp === hp0, q, ivMax: Math.max(...iv.map(x => Math.abs(x - q))), log: [...new Set(BATTLE.log.slice(log0))] };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.high, 'the canister makes for a point over the ground').toBeGreaterThan(30);
+  expect(r.clusters, 'it opened').toBe(1); expect(r.subsSeen, 'its submunitions on their chutes').toBe(10);
+  expect(r.skeets, 'four skeets each').toBe(40); expect(r.hits, 'as many at the vehicles as it takes: a car and two APCs one each, the tank two').toBe(5);
+  expect(r.dead, 'every enemy vehicle under it').toBe(4); expect(r.ally, 'the ally beside them untouched').toBe(true);
+  expect(r.ivMax, 'one submunition a sixteenth of the beat (in 0.05 s steps)').toBeLessThan(0.051);
+  for (const l of r.log) expect(['cbu car', 'cbu apc', 'cbu tank', 'cbu inf']).toContain(l);
+});
+
+test('the CBU-97\'s reticle: a ring on the ground where each submunition comes down', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=cbu&auto=0&transit=0' });
+  const d = await wp.run(() => { ARMS.select('cbu'); HUD.draw(); return HUD.clusterDraw; });
+  expect(d.subs).toBe(10); expect(d.r, 'the outer rings well out from the middle').toBeGreaterThan(40);
 });

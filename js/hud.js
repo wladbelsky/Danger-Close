@@ -141,6 +141,16 @@ const HUD = {
         }
         break;
       }
+      case 'cluster': {   // (the CBU-97's: a small ring on the ground where each submunition comes down (CLUSTER_PAT: three in, seven round,
+        // CLUSTER.r; turned with the line of sight, as they will fall), a cross in the middle)
+        const C = CLUSTER, a0x = CAM_TGT.x - camera.position.x, a0z = CAM_TGT.z - camera.position.z, an = Math.hypot(a0x, a0z) || 1, ax = a0x / an, az = a0z / an, d = this.clusterDraw = { r: 0, subs: 0 };
+        for (const [s, t] of CLUSTER_PAT) {
+          const ox = (ax * s - az * t) * C.r, oz = (az * s + ax * t) * C.r;
+          for (let j = 0; j <= 12; j++) { const a = j * TAU / 12, [x, y] = this.onGround(ox + Math.cos(a) * C.mark, null, oz + Math.sin(a) * C.mark); if (j) g.lineTo(cx + x, cy + y); else g.moveTo(cx + x, cy + y); }
+          const [x, y] = this.onGround(ox, null, oz); d.r = Math.max(d.r, Math.hypot(x, y)); d.subs++;
+        }
+        cross(5, 16); break;
+      }
       case 'salvo': {   // (unguided rockets: the ground the salvo covers (SALVO_R) as a ring of dashes, a cross in the middle, the pod's four rockets under it)
         for (let k = 0; k < 16; k++) { const a0 = k * TAU / 16, a1 = a0 + TAU / 32, [x0, y0] = this.onGround(SALVO_R * Math.cos(a0), null, SALVO_R * Math.sin(a0)), [x1, y1] = this.onGround(SALVO_R * Math.cos(a1), null, SALVO_R * Math.sin(a1)); g.moveTo(cx + x0, cy + y0); g.lineTo(cx + x1, cy + y1); }
         cross(6, 20); const s = ARMS.st[w.id], P = BATTLE.pod, on = P && P.id === w.id && P.n < P.of, n = s.reload <= 0 ? 4 : on ? Math.round(4 * (1 - P.n / P.of)) : Math.floor(4 * (1 - s.reload / (s.rl || w.reload)));   // (a salvo: the marks go off as its rockets leave (2–6 of them: in step), the last with the last; then the pod fills up again as it reloads)
