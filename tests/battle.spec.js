@@ -666,12 +666,17 @@ test('the GBU-39\'s reticle is drawn in the world: its fall line\'s ticks spread
     const at = (k) => { CAM_TGT.set(c.x + ax / an * k, 0, c.z + az / an * k); CAM_TGT.y = groundH(CAM_TGT.x, CAM_TGT.z); updateCamera(); HUD.draw(); return { d: camera.position.distanceTo(CAM_TGT), ...HUD.bombDraw, u: HUD.u }; };
     const near = at(150), far = at(-150);
     ARMS.select('apk'); let ok = true; try { HUD.draw(); } catch (e) { ok = false; }
-    return { near, far, ok };
+    // a salvo: the pod's rockets go off its four marks one by one as they leave, then it fills up again as it reloads
+    HUD.draw(); const pod = [HUD.podDraw], t = { pos: CAM_TGT.clone(), kind: 'car', side: 'enemy', alive: true, ah: 2, v: 0, yaw: 0, hp: 1e9 };
+    ARMS.shoot(); BATTLE.fire(WEAPON.apk, t, 3); const of = BATTLE.pod.of;   /* (a strong beat: the most rockets, 6) */ for (let i = 0; i < 30; i++) { __t.sim(0.05); HUD.draw(); if (HUD.podDraw !== pod[pod.length - 1]) pod.push(HUD.podDraw); }
+    __t.sim(WEAPON.apk.reload); HUD.draw(); pod.push(HUD.podDraw);
+    return { near, far, ok, pod, of };
   });
   console.log(JSON.stringify(r));
   expect(r.far.d - r.near.d, 'looking further off').toBeGreaterThan(150);
   for (const s of [r.near, r.far]) { expect(s.ticks[0]).toBeLessThan(s.ticks[1]); expect(s.ticks[1]).toBeLessThan(s.ticks[2]); expect(s.ticks[2]).toBeLessThan(s.top); }
   expect(r.far.ticks[2] / r.near.ticks[2], 'further off, the line of sight flatter: the ticks further apart').toBeGreaterThan(1.15);
   expect(r.near.rx, 'the ring: the blast on the ground, on the screen').toBeGreaterThan(30 * r.near.u);
+  expect(r.of, 'a full salvo').toBe(6); expect(r.pod.slice(0, 5), 'the pod emptied rocket by rocket').toEqual([4, 3, 2, 1, 0]); expect(r.pod[r.pod.length - 1], 'and full again').toBe(4);
   expect(r.ok, 'the APKWS\'s salvo reticle draws').toBe(true);
 });

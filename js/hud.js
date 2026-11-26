@@ -141,7 +141,8 @@ const HUD = {
       }
       case 'salvo': {   // (unguided rockets: the ground the salvo covers (SALVO_R) as a ring of dashes, a cross in the middle, the pod's four rockets under it)
         for (let k = 0; k < 16; k++) { const a0 = k * TAU / 16, a1 = a0 + TAU / 32, [x0, y0] = this.onGround(SALVO_R * Math.cos(a0), 0, SALVO_R * Math.sin(a0)), [x1, y1] = this.onGround(SALVO_R * Math.cos(a1), 0, SALVO_R * Math.sin(a1)); g.moveTo(cx + x0, cy + y0); g.lineTo(cx + x1, cy + y1); }
-        cross(6, 20); const s = ARMS.st[w.id], n = s.reload > 0 ? Math.floor(4 * (1 - s.reload / w.reload)) : 4;   // (reloading: the pod fills up again)
+        cross(6, 20); const s = ARMS.st[w.id], P = BATTLE.pod, on = P && P.id === w.id && P.n < P.of, n = s.reload <= 0 ? 4 : on ? Math.round(4 * (1 - P.n / P.of)) : Math.floor(4 * (1 - s.reload / w.reload));   // (a salvo: the marks go off as its rockets leave (2–6 of them: in step), the last with the last; then the pod fills up again as it reloads)
+        this.podDraw = n;
         for (let i = 0; i < 4; i++) { const x = cx + (i - 1.5) * 14 * u, y = cy + 96 * u; g.moveTo(x + 3.5 * u, y); g.arc(x, y, 3.5 * u, 0, TAU); if (i < n) { g.moveTo(x + 1.2 * u, y); g.arc(x, y, 1.2 * u, 0, TAU); } }
         break;
       }

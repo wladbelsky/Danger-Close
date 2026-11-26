@@ -328,8 +328,9 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   pipper, and the line it falls down onto it ticked at `BOMB_TICKS` 10 / 20 / 30 m over the point, up to `BOMB_TOP` 40 m: under
   the aircraft the line of sight is steep and the line short, further off it is flatter and the line longer (82 px for the top
   tick at 256 m slant, 182 px at 454 m; `HUD.bombDraw`). The APKWS's (`salvo`, unguided rockets): the ground its salvo covers
-  (`SALVO_R` 12 m: its spread and a rocket's blast) as a ring of 16 dashes, a cross, and the pod's four rockets under it, filling
-  up again as it reloads. The Hellfire keeps `circle`. Sheet: none (test-results/reticles-near-far.png was made by hand).
+  (`SALVO_R` 12 m: its spread and a rocket's blast) as a ring of 16 dashes, a cross, and the pod's four rockets under it: they go
+  off as the salvo's rockets leave (`BATTLE.pod`: `n` of `of`, 2–6 by the beat, `BURST`; in step, the last with the last;
+  `HUD.podDraw`), then fill up again as it reloads. The Hellfire keeps `circle`. Sheet: none (test-results/reticles-near-far.png was made by hand).
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.

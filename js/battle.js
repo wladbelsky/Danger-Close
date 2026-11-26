@@ -199,7 +199,7 @@ const COOK = { tank: 3, apc: 2, car: 1, first: 0.6, gap: 0.5, late: 1.6, toss: 0
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0), _br = new V3(), _bd2 = new V3(), _wobs = [];
 const BATTLE = {
   base: null, spent: 0, silent: 0, silentRT: 0, ruins: [], cols: [], squads: [], helis: [], focus: null, chase: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, feed: 0, breaks: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0, allyFeed: 0, scatter: 0, refocus: 0, yield: 0, bypass: 0, ghost: 0, bump: 0, locks: 0, lockShots: 0, spared: 0, steer: 0, shove: 0, quiet: 0, unjam: 0, assaults: 0, deploys: 0, scatterV: 0, rescat: 0, lased: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
-  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], nextFeed: 0, nextAllyFeed: 0, nextAllyCol: 0, allyFrameT: 0, feedT: 0, breakUntil: 0, armT: -99, ricoN: 0, puffN: 0, lock: null, lase: null, lockLog: [], atP: new V3(),
+  pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], nextFeed: 0, nextAllyFeed: 0, nextAllyCol: 0, allyFrameT: 0, feedT: 0, breakUntil: 0, armT: -99, ricoN: 0, puffN: 0, lock: null, lase: null, pod: null, lockLog: [], atP: new V3(),
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
     this.beam = new THREE.Mesh(geo, sensorMat(new THREE.MeshBasicMaterial({ color: 0xff4a36, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), 1));   // the laser: a red core
@@ -804,7 +804,7 @@ const BATTLE = {
     const G = GUN[w.id], A = at && at.clone(); GUNS.shot(w.id);
     if (w.id === 'rail') { this.spent += w.cost; this.rail(w, G, t); return; }
     const k = clamp(((st || 1.5) - 1) / 1.5, 0, 1), B = BURST[w.id], n = B ? Math.round(lerp(B[0], B[1], k)) : G.n, fx = G.fx * (0.85 + 0.35 * k), dmg = G.dmg * G.n / n * dk;   // (a trigger does the same damage, in more or fewer rounds)
-    this.lastBurst = n;
+    this.lastBurst = n; if (G.missile && w.use > 1) this.pod = { id: w.id, n: 0, of: n };   // (a salvo of n (BURST: 2–6 by the beat): its rockets counted as they go, the HUD's salvo reticle)
     // a gun's burst goes where the sensor points: the point at the trigger (the target, led, or `at`) kept as an offset from the
     // sensor's point, so later rounds follow the reticle, not a target running off under it (a missile flies to its target);
     // once the aircraft is off to another place (a transit) the rest stay on the trigger's point
@@ -817,7 +817,7 @@ const BATTLE = {
       const a = rand(0, TAU), r = Math.sqrt(Math.random()) * G.spread, c = Math.cos(a) * r, s = Math.sin(a) * r, L = GUNSHIP.state === 'orbit' ? GUNSHIP.look : null;
       const to = G.missile ? new V3(P0.x + c, 0, P0.z + s) : L ? new V3(L.x + ox + c, 0, L.z + oz + s) : new V3(px + c, 0, pz + s);
       to.y = G.air ? t.pos.y + t.ah : groundH(to.x, to.z);
-      if (G.missile) { this.missiles.push({ w, G, tgt: G.spread < 2 && !A ? t : null, from: this.muzzle(new V3(), rand(-1, 1) > 0 ? rand(8, 14) : rand(-14, -8)).addScaledVector(_bt.set(camera.matrixWorld.elements[4], camera.matrixWorld.elements[5], camera.matrixWorld.elements[6]), -3), to, p: 0, t: 0, dur: G.missile, rush: false, puff: 0, fx, dmg, laser: w.id === 'hf' });
+      if (G.missile) { if (this.pod && this.pod.id === w.id) this.pod.n++; this.missiles.push({ w, G, tgt: G.spread < 2 && !A ? t : null, from: this.muzzle(new V3(), rand(-1, 1) > 0 ? rand(8, 14) : rand(-14, -8)).addScaledVector(_bt.set(camera.matrixWorld.elements[4], camera.matrixWorld.elements[5], camera.matrixWorld.elements[6]), -3), to, p: 0, t: 0, dur: G.missile, rush: false, puff: 0, fx, dmg, laser: w.id === 'hf' });
         if (w.id === 'hf') { this.lase = { tgt: t, p: t.pos.clone(), m: this.missiles[this.missiles.length - 1] }; this.stat.lased++; }   // (the designator holds the spot on it until the hit)
         return; }
       this.muzzle(_bm); _bt.subVectors(to, _bm); const d = _bt.length();
