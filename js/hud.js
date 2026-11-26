@@ -14,7 +14,7 @@ function fmtMoney(v) {
   return '$' + s + U[i];
 }
 const HUD = {
-  on: false, cv: null, g: null, W: 0, H: 0, u: 1, ui: null, armsEl: null, boxes: [], domT: 0, cache: {}, spentShown: 0, spentRT: 0,
+  on: false, cv: null, g: null, W: 0, H: 0, u: 1, ui: null, armsEl: null, boxes: [], domT: 0, cache: {}, spentShown: 0, spentRT: 0, spentDrop: 0,
   build() {
     this.on = QS.get('hud') !== '0';
     const modes = document.getElementById('modes');
@@ -141,7 +141,10 @@ const HUD = {
   },
   /* the money spent as shown, dt real seconds on: it rolls up to BATTLE.spent over a couple of seconds (a missile's price counts up,
      it does not jump; 99 % of a sum there in 2 s) */
-  spentAt(dt) { const s = BATTLE.spent, d = s - this.spentShown; this.spentShown = d < 1 ? s : this.spentShown + d * (1 - Math.exp(-dt * 2.3)); return this.spentShown; },
+  spentAt(dt) {   // (eased both ways; back to 0 after a mission: down the same way, the last 1 % of the drop at once, so it is there in 2 s)
+    const s = BATTLE.spent, d = s - this.spentShown; this.spentDrop = d < 0 ? this.spentDrop || -d : 0;
+    const v = this.spentShown + d * (1 - Math.exp(-dt * 2.3)); this.spentShown = Math.abs(s - v) < Math.max(1, this.spentDrop * 0.01) ? s : v; return this.spentShown;
+  },
   /* a lock (BATTLE.lock: the AIM-9X's, the Hellfire's): a box on the target and a diamond round it, only their corners while the
      seeker locks on, the diamond shrinking from far out down onto the box; once it has it both drawn whole with a dot in the middle,
      then SHOOT boxed and blinking low in the middle (under the reticle, over the weapon selector) until the launch */

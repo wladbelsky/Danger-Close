@@ -584,7 +584,7 @@ test('the Hellfire locks on the laser spot first and flies to it, the sensor hol
   for (const d of r.hits) expect(d, 'where it hit, from the target (it moved 12 m in flight: the missile followed the spot)').toBeLessThan(4);
 });
 
-test('the mission cost: every round at its weapon\'s price, in three figures at the HUD\'s top right, off with its setting, back to 0 after two minutes of silence', async ({ wp }) => {
+test('the mission cost: every round at its weapon\'s price, in three figures at the HUD\'s top right, off with its setting, back to 0 after a minute of silence', async ({ wp }) => {
   await wp.boot({ query: '?hour=12&seed=11&transit=0&weapons=g25,h105&auto=0' });
   await wp.sim(10, { audio: true, bpm: 140 });
   const r = await wp.run(() => {
@@ -597,7 +597,7 @@ test('the mission cost: every round at its weapon\'s price, in three figures at 
     HUD.spentShown = BATTLE.spent; HUD.draw(); const on = seen.find(s => s.startsWith('MISSION COST ')); seen.length = 0; CFG.cost = false; HUD.draw(); const off = seen.some(s => s.startsWith('MISSION COST')); HUD.text = o; CFG.cost = true;
     const s0 = HUD.spentShown = BATTLE.spent, roll = []; BATTLE.spent += 470000; for (let i = 1; i <= 30; i++) { const v = HUD.spentAt(0.1); if (i === 1 || i === 10 || i === 20 || i === 30) roll.push((v - s0) / 470000); }   // (an AIM-9X's price: 0.1, 1, 2, 3 s on)
     const want = fmtMoney(BATTLE.spent - 470000), cost = BATTLE.spent;
-    __t.sim(60); const kept = BATTLE.spent; __t.sim(61); const reset = [BATTLE.spent, HUD.spentShown];   // (the music stopped: a minute on, the same; two, a new mission)
+    HUD.spentShown = BATTLE.spent; __t.sim(30); const kept = BATTLE.spent; __t.sim(31); const top = HUD.spentShown, reset = [BATTLE.spent]; for (let i = 1; i <= 21; i++) { const v = HUD.spentAt(0.1); if (i === 1 || i === 10 || i === 21) reset.push(v / top); }   // (the music stopped: half a minute on, the same; a minute, a new mission, the HUD rolling down to it: 0.1, 1, 2.1 s on)
     return { fmt, fought, shots, p, g25, n25, on, off, want, roll, cost, kept, reset };
   });
   console.log(JSON.stringify(r));
@@ -607,7 +607,7 @@ test('the mission cost: every round at its weapon\'s price, in three figures at 
   expect(r.on, 'on the HUD').toBe('MISSION COST ' + r.want); expect(r.off, 'not with the setting off').toBe(false);
   expect(r.roll[0], 'a new sum: not there at once').toBeLessThan(0.4); expect(r.roll[1], 'most of it in a second').toBeGreaterThan(0.8);
   expect(r.roll[2], 'nearly all in two').toBeGreaterThan(0.98); expect(r.roll[3]).toBeLessThanOrEqual(1);
-  expect(r.kept, 'a minute of silence: kept (the last shots as the fight stands down added)').toBeGreaterThanOrEqual(r.cost); expect(r.reset, 'two minutes: back to 0').toEqual([0, 0]);
+  expect(r.kept, 'half a minute of silence: kept (the last shots as the fight stands down added)').toBeGreaterThanOrEqual(r.cost); expect(r.reset[0], 'a minute: back to 0').toBe(0); expect(r.reset[1], 'the HUD rolls down: not at once').toBeGreaterThan(0.6); expect(r.reset[2], 'most of the way in a second').toBeLessThan(0.2); expect(r.reset[3], 'at 0 in two').toBe(0);
 });
 
 test('a missile on its way to a target it will kill: no other weapon wasted on it, the sensor on to the next', async ({ wp }) => {

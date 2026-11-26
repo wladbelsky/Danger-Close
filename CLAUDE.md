@@ -274,8 +274,8 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 - The money spent rolls up to a new sum over a couple of seconds instead of jumping (`HUD.spentAt(dt)`: eased at 2.3 a second
   in real time, 99 % there in 2 s; `spentShown`).
 - The money spent is the **MISSION COST** now (the HUD's label; the property **Mission cost on the HUD**, still `cost`), and a
-  mission ends with the music: after `COST_RESET` 120 s of silence (`RT() - AUD.lastActive`, real time) `BATTLE.spent` and
-  `HUD.spentShown` go back to 0 at once (`BATTLE.update`). The line is like those above it (14, 22u under ELEV; was 16, 30u under).
+  mission ends with the music: after `COST_RESET` 60 s of silence (`RT() - AUD.lastActive`, real time) `BATTLE.spent` goes
+  back to 0 (`BATTLE.update`) and the HUD rolls down to it as it rolls up, the last 1 % of the drop at once (`spentDrop`): 0 in 2 s. The line is like those above it (14, 22u under ELEV; was 16, 30u under).
 - More of the allies in the frame, so that it shows what the enemy fires at. Measured (6 maps x 4 min of fighting): an ally in
   the frame 33 % -> 46 % of the time, 1.3 -> 2.4 of them on average; an enemy's shot at one in the frame 10 % -> 19 % (shooter and
   target both 6 % -> 14 %). The frame's ground reaches only 40–70 m from its centre; the allies stood or ran 100–150 m off it.
@@ -387,7 +387,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=98`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=99`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

@@ -29,7 +29,7 @@ const ROCKET = { n: 8, step: 0.07, v: 220, spread: 7, r: 6, dmg: 2.2, fx: 1.1, a
    ALLY_DPS × the enemy's, so the fight looks busier without the allies clearing it before the gunship gets a word in */
 const ALLY_RATE = { inf: 1.6, car: 1.6, apc: 1.6, tank: 1.3, heli: 2.8 }, ALLY_DPS = 1.2;
 /* the enemy's fire does this much to the allies (from cover, outnumbered as they are): they live to be seen in the fight */
-const COST_RESET = 120;   // seconds of silence (no music) after which the mission cost on the HUD starts again from 0: a new mission
+const COST_RESET = 60;   // seconds of silence (no music) after which the mission cost on the HUD starts again from 0: a new mission
 const ALLY_TOUGH = 0.25, ALLY_TOUGH_K = u => u.side === 'ally' ? ALLY_TOUGH : 1;
 /* the fight is where the camera looks: a column halts for a fight only within COL_ZONE m past the frame (VIEW.near), further off it
    fires on the move and drives on, and the allies' fire does an enemy vehicle out there no harm, so it comes into the frame. Nobody
@@ -1016,7 +1016,7 @@ const BATTLE = {
     if (war && !this.was) this.start();
     if (!war && this.was) this.standDown();
     this.was = war;
-    if (this.spent && RT() - AUD.lastActive > COST_RESET) { this.spent = 0; HUD.spentShown = 0; }   // (the mission is over: the next one's cost from 0, at once, not rolled down)
+    if (this.spent && RT() - AUD.lastActive > COST_RESET) this.spent = 0;   // (the mission is over: the next one's cost from 0; the HUD rolls it down, HUD.spentAt)
     for (let i = this.pend.length - 1; i >= 0; i--) if (T >= this.pend[i].t) { const p = this.pend[i]; this.pend.splice(i, 1); p.fn(); }
     this.ricoN = 0; this.puffN = 0; this.flyMissiles(dt); this.flyRockets(dt); this.laser(dt); this.subBeat(); this.cookUpdate(dt);
     for (let i = UNITS.length - 1; i >= 0; i--) this.think(UNITS[i], dt, fight);
