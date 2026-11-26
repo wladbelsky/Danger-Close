@@ -319,11 +319,17 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   moves aside are checked (seed 3's traffic test: 70 overlaps in sight, now 3–5).
 - A second auto vision: **Auto: TV by day, night vision at night** (`CFG.vision` `autonv`, `?mode=autonv`). `SENSOR.auto()` is the
   mode either auto wants now (null when not auto); `initial()` and the live switch in the main loop (through `SENSOR.set`) use it.
-- The GBU-39 has a reticle of its own (`bomb`: the fall line down from the top with three release ticks onto a pipper, the blast's
-  ring broken at the diagonals; it had the Hellfire's and the APKWS's `circle`), and it brings a building down: x3 on a structure
+- The GBU-39 has a reticle of its own (`bomb`; it had the Hellfire's and the APKWS's `circle`), and it brings a building down: x3 on a structure
   (`ARMOR.gbu.struct`: 66, the HQ's 60 at one bomb, was 3), a structure within 8 m of its pad flattened too (`STRUCT_REACH`,
   `structReach`; the rest still only what lands on it, 4 m), its blast 18 m on the ground (`SPLASH`, was 14) and bigger (`fx`
   4.6, was 3.6). Test: battle.spec.js.
+- The GBU-39's and the APKWS's reticles are drawn in the world (`HUD.onGround(dx, dy, dz)`: a point that far off `CAM_TGT`, in
+  pixels from the screen's centre). The bomb's: the blast's ring on the ground (`SPLASH.gbu` 18 m, broken at the diagonals), a
+  pipper, and the line it falls down onto it ticked at `BOMB_TICKS` 10 / 20 / 30 m over the point, up to `BOMB_TOP` 40 m: under
+  the aircraft the line of sight is steep and the line short, further off it is flatter and the line longer (82 px for the top
+  tick at 256 m slant, 182 px at 454 m; `HUD.bombDraw`). The APKWS's (`salvo`, unguided rockets): the ground its salvo covers
+  (`SALVO_R` 12 m: its spread and a rocket's blast) as a ring of 16 dashes, a cross, and the pod's four rockets under it, filling
+  up again as it reloads. The Hellfire keeps `circle`. Sheet: none (test-results/reticles-near-far.png was made by hand).
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -394,7 +400,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=102`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=103`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

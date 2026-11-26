@@ -11,7 +11,7 @@ const WEAPONS = [
   { id: 'h105', name: '105MM',   sub: 'M102',     zoom: 0.85, rounds: 100,  mag: 1,   reload: 2.6, use: 1,  reticle: 'frame',  band: 'low',    hits: 'inf car apc tank struct',        cost: 1200, def: true },
   { id: 'b40',  name: '40MM',    sub: 'L/60',     zoom: 1.05, rounds: 256,  mag: 4,   reload: 1.5, use: 4,  reticle: 'box',    band: 'mid',    hits: 'inf car apc struct',             cost: 180, def: false },
   { id: 'hf',   name: 'HELLFIRE', sub: 'AGM-114', zoom: 0.9,  rounds: 4,    mag: 1,   reload: 6,   use: 1,  reticle: 'circle', band: 'strong', hits: 'car apc tank struct',            cost: 150000, def: false },
-  { id: 'apk',  name: 'APKWS',   sub: 'HYDRA 70', zoom: 0.9,  rounds: 16,   mag: 4,   reload: 6,   use: 4,  reticle: 'circle', band: 'strong', hits: 'inf car apc struct',             cost: 25000, def: false },
+  { id: 'apk',  name: 'APKWS',   sub: 'HYDRA 70', zoom: 0.9,  rounds: 16,   mag: 4,   reload: 6,   use: 4,  reticle: 'salvo',  band: 'strong', hits: 'inf car apc struct',             cost: 25000, def: false },
   { id: 'gbu',  name: 'GBU-39',  sub: 'SDB',      zoom: 0.72, rounds: 4,    mag: 1,   reload: 8,   use: 1,  reticle: 'bomb',   band: 'strong', hits: 'inf car apc tank struct',        cost: 40000, def: false },
   { id: 'aim',  name: 'AIM-9X',  sub: 'SIDEWNDR', zoom: 0.68, rounds: 2,    mag: 1,   reload: 10,  use: 1,  reticle: 'seeker', band: 'strong', hits: 'heli',                           cost: 470000, def: false },
   { id: 'las',  name: 'LASER',   sub: 'HEL 60KW', zoom: 1.2,  rounds: 0,    mag: 0,   reload: 0,   use: 0,  reticle: 'laser',  band: 'hold',   hits: 'inf car apc tank heli struct',   cost: 10, def: false },

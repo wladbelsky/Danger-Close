@@ -657,3 +657,21 @@ test('a GBU-39 brings a base building down at one bomb, and what stands next to 
   expect(r.shell, 'a 105 mm shell 9 m off a building: only what lands on it').toBe(true);
   expect(r.bomb, 'a bomb 9 m off: down').toBe(false);
 });
+
+test('the GBU-39\'s reticle is drawn in the world: its fall line\'s ticks spread as the sensor looks further off, its ring the blast on the ground', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=gbu,apk&auto=0&transit=0' });
+  const r = await wp.run(() => {
+    // (the sensor's point moved along the aircraft's bearing: under it, the line of sight steep; away from it, further and flatter)
+    ARMS.select('gbu'); const c = CAM_CTR.clone(), ax = camera.position.x - c.x, az = camera.position.z - c.z, an = Math.hypot(ax, az);
+    const at = (k) => { CAM_TGT.set(c.x + ax / an * k, 0, c.z + az / an * k); CAM_TGT.y = groundH(CAM_TGT.x, CAM_TGT.z); updateCamera(); HUD.draw(); return { d: camera.position.distanceTo(CAM_TGT), ...HUD.bombDraw, u: HUD.u }; };
+    const near = at(150), far = at(-150);
+    ARMS.select('apk'); let ok = true; try { HUD.draw(); } catch (e) { ok = false; }
+    return { near, far, ok };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.far.d - r.near.d, 'looking further off').toBeGreaterThan(150);
+  for (const s of [r.near, r.far]) { expect(s.ticks[0]).toBeLessThan(s.ticks[1]); expect(s.ticks[1]).toBeLessThan(s.ticks[2]); expect(s.ticks[2]).toBeLessThan(s.top); }
+  expect(r.far.ticks[2] / r.near.ticks[2], 'further off, the line of sight flatter: the ticks further apart').toBeGreaterThan(1.15);
+  expect(r.near.rx, 'the ring: the blast on the ground, on the screen').toBeGreaterThan(30 * r.near.u);
+  expect(r.ok, 'the APKWS\'s salvo reticle draws').toBe(true);
+});

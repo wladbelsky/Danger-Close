@@ -5,6 +5,9 @@
 const HUD_COL = '#e2ebe6', HUD_DARK = 'rgba(0,0,0,0.5)', ALLY_COL = '#4da6ff', ENEMY_COL = '#ffffff';
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const _hp = new V3();
+/* the GBU-39's reticle: heights (m) over the point it falls on, ticked on its fall line, and the line's top; the APKWS's: the ground its salvo
+   covers (its spread and a rocket's blast, m) */
+const BOMB_TICKS = [10, 20, 30], BOMB_TOP = 40, SALVO_R = 12;
 /* dollars in three figures: $750, $12.4K, $1.25M, $3.40B, $1.00T */
 function fmtMoney(v) {
   const U = ['', 'K', 'M', 'B', 'T']; let i = 0;
@@ -126,10 +129,21 @@ const HUD = {
       case 'box': cross(26, 60); corners(22, 22, 9); break;
       case 'frame': cross(14, 40); corners(110, 70, 26); line(-110, 0, -96, 0); line(96, 0, 110, 0); line(0, -70, 0, -58); line(0, 58, 0, 70); break;
       case 'circle': g.moveTo(cx + 54 * u, cy); g.arc(cx, cy, 54 * u, 0, TAU); line(0, -10, 10, 0); line(10, 0, 0, 10); line(0, 10, -10, 0); line(-10, 0, 0, -10); cross(54, 72); break;
-      case 'bomb': {   // (a bomb's: the fall line down from the top with its release ticks onto a pipper, the blast's ring broken at the diagonals)
-        for (let k = 0; k < 4; k++) { const a = k * TAU / 4 - 0.55; g.moveTo(cx + Math.cos(a) * 64 * u, cy + Math.sin(a) * 64 * u); g.arc(cx, cy, 64 * u, a, a + 1.1); }
+      case 'bomb': {   // (a bomb's, drawn in the world: the blast's ring on the ground round the point (SPLASH, broken at the diagonals) and the line it falls
+        // down onto the pipper, ticked at BOMB_TICKS m over the point: the further off the sensor looks, the flatter its line of sight, the longer the line)
+        const R = SPLASH.gbu, d = this.bombDraw = { ticks: [], top: 0, rx: 0 };
+        for (let k = 0; k < 4; k++) for (let j = 0; j <= 10; j++) { const a = k * TAU / 4 + 0.28 + j * (TAU / 4 - 0.56) / 10, [x, y] = this.onGround(R * Math.cos(a), 0, R * Math.sin(a)); if (j) g.lineTo(cx + x, cy + y); else g.moveTo(cx + x, cy + y); if (!k && !j) d.rx = Math.hypot(x, y); }
         g.moveTo(cx + 8 * u, cy); g.arc(cx, cy, 8 * u, 0, TAU); line(-1.5, 0, 1.5, 0);
-        line(0, -150, 0, -12); for (const y of [-150, -118, -86]) line(-7, y, 7, y); line(-84, 0, -70, 0); line(70, 0, 84, 0); line(0, 70, 0, 84); break;
+        const [tx, ty] = this.onGround(0, BOMB_TOP, 0), n = Math.hypot(tx, ty) || 1, ex = tx / n, ey = ty / n; d.top = n;
+        g.moveTo(cx + ex * 12 * u, cy + ey * 12 * u); g.lineTo(cx + tx, cy + ty);
+        for (const h of BOMB_TICKS) { const [x, y] = this.onGround(0, h, 0), s = 7 * u; d.ticks.push(Math.hypot(x, y)); g.moveTo(cx + x - ey * s, cy + y + ex * s); g.lineTo(cx + x + ey * s, cy + y - ex * s); }
+        break;
+      }
+      case 'salvo': {   // (unguided rockets: the ground the salvo covers (SALVO_R) as a ring of dashes, a cross in the middle, the pod's four rockets under it)
+        for (let k = 0; k < 16; k++) { const a0 = k * TAU / 16, a1 = a0 + TAU / 32, [x0, y0] = this.onGround(SALVO_R * Math.cos(a0), 0, SALVO_R * Math.sin(a0)), [x1, y1] = this.onGround(SALVO_R * Math.cos(a1), 0, SALVO_R * Math.sin(a1)); g.moveTo(cx + x0, cy + y0); g.lineTo(cx + x1, cy + y1); }
+        cross(6, 20); const s = ARMS.st[w.id], n = s.reload > 0 ? Math.floor(4 * (1 - s.reload / w.reload)) : 4;   // (reloading: the pod fills up again)
+        for (let i = 0; i < 4; i++) { const x = cx + (i - 1.5) * 14 * u, y = cy + 96 * u; g.moveTo(x + 3.5 * u, y); g.arc(x, y, 3.5 * u, 0, TAU); if (i < n) { g.moveTo(x + 1.2 * u, y); g.arc(x, y, 1.2 * u, 0, TAU); } }
+        break;
       }
       case 'seeker': g.moveTo(cx + 80 * u, cy); g.arc(cx, cy, 80 * u, 0, TAU); g.moveTo(cx + 16 * u, cy); g.arc(cx, cy, 16 * u, 0, TAU); cross(80, 96); break;
       case 'laser': g.moveTo(cx + 30 * u, cy); g.arc(cx, cy, 30 * u, 0, TAU); g.moveTo(cx + 6 * u, cy); g.arc(cx, cy, 6 * u, 0, TAU); cross(30, 120); break;
@@ -137,6 +151,8 @@ const HUD = {
     }
     this.stroke(1.6 * u);
   },
+  /* where a point dx, dy, dz metres off the frame's centre point (CAM_TGT) shows, in pixels from the screen's centre */
+  onGround(dx, dy, dz) { _hp.set(CAM_TGT.x + dx, CAM_TGT.y + dy, CAM_TGT.z + dz).project(camera); const x0 = _hp.x, y0 = _hp.y; _hp.copy(CAM_TGT).project(camera); return [(x0 - _hp.x) / 2 * this.W, -(y0 - _hp.y) / 2 * this.H]; },
   /* a diamond on what the gunship is firing at */
   designate() {
     const f = BATTLE.focus; if (!f || !f.alive || GUNSHIP.state !== 'orbit' || (BATTLE.lock && BATTLE.lock.t === f)) return;   // (a lock on it draws its own diamond)

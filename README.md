@@ -70,8 +70,9 @@ fullscreen apps by default.
 | Railgun | + | + | + | + | + | strong, through a column |
 
   The light guns cut down infantry and cars but only wear down armour: an APC takes a long hammering from the 25 mm (the
-  rounds glance off in sparks), a tank shrugs it off. A GBU-39 (a reticle of its own, with the bomb's fall line) brings a
-  base building down at one bomb, and what stands next to it. The guns open up as a target comes onto the reticle, their rounds
+  rounds glance off in sparks), a tank shrugs it off. A GBU-39 brings a base building down at one bomb, and what stands
+  next to it. Its reticle is drawn on the ground: the blast's ring and the line the bomb falls down, ticked at heights over
+  the point (the further off the sensor looks, the longer); the APKWS's shows the ground its salvo covers. The guns open up as a target comes onto the reticle, their rounds
   walking onto it, and now and then a shot lands wide.
   The first three are on by default; each is a property. Automatic switching picks one for the targets and the music,
   and while the one in hand reloads it fires another;
