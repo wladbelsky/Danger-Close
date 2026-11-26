@@ -823,19 +823,24 @@ test('a tank\'s or an APC\'s turret keeps to its target: not swung back and fort
   expect(win).toBeGreaterThan(40); expect(sw / win, 'share of 6 s windows a turret by the frame swings back and forth').toBeLessThan(0.25);
 });
 
-test('a tracer that dies is zeroed on the GPU too: its slot stays in the upload until a frame is drawn (no glowing streak left behind)', async ({ wp }) => {
+test('a tracer that dies is zeroed on the GPU too: its slot goes up with the frame, also from an earlier step or while hidden (no glowing streak left behind)', async ({ wp }) => {
   await wp.boot();
   const r = await wp.run(() => {
-    const P = FX.tracers, M = P.mesh.instanceMatrix, n0 = P.next, V = new THREE.Vector3(0, -50, 0), at = new THREE.Vector3(CAM_TGT.x, 20, CAM_TGT.z);
-    renderFrame(); M.clearUpdateRanges();
-    const a = n0; P.spawn(at, V, { life: 0.03, len: 7, glow: 6 });   // (a skeet's slug: dies in the first step)
-    for (let i = 0; i < 4; i++) P.spawn(at, V, { life: 0.01 });
-    const b = P.next; P.spawn(at, V, { life: 1 });   // (one in a later slot lives on)
-    for (let i = 0; i < 5; i++) P.items[(n0 + 1 + i) % P.n].on = i === 4;
-    P.update(0.05); P.update(0.05);   // (two steps in one frame: the second's range alone used to be uploaded)
-    const cover = s => M.updateRanges.some(q => q.start <= s * 16 && q.start + q.count >= (s + 1) * 16);
-    return { dead: !P.items[a].on, zero: M.array[a * 16] === 0 && M.array[a * 16 + 5] === 0, covered: cover(a), live: cover(b) };
+    const P = FX.tracers, M = P.mesh.instanceMatrix, C = P.mesh.instanceColor, V = new THREE.Vector3(0, -50, 0), at = new THREE.Vector3(CAM_TGT.x, 20, CAM_TGT.z);
+    const cover = (A, s, k) => A.updateRanges.some(q => q.start <= s * k && q.start + q.count >= (s + 1) * k);
+    const quiet = () => { for (const it of P.items) it.life = Math.min(it.life, 0.01); P.update(0.05); frameFx(); renderFrame(); P.next = 0; };   // (the pool alone: no other tracer's span to hide behind)
+    quiet();
+    const a = P.next; P.spawn(at, V, { life: 0.03, len: 7, glow: 6 });   // (a skeet's slug: dies in the first step)
+    P.next += 4; const b = P.next; P.spawn(at, V, { life: 1 });           // (one in a later slot lives on)
+    P.update(0.05); P.update(0.05); frameFx();                            // (two steps in one frame: the second's range alone used to be sent)
+    const two = { dead: !P.items[a].on, zero: M.array[a * 16] === 0 && M.array[a * 16 + 5] === 0, covered: cover(M, a, 16), live: cover(M, b, 16), col: cover(C, a, 3) && cover(C, b, 3), spans: M.updateRanges.length };
+    renderFrame(); quiet();
+    const c = P.next; P.spawn(at, V, { life: 0.03 }); P.update(0.05); frameFx(); const hidden = !P.mesh.visible;   // (it dies, the pool is hidden: no frame draws it)
+    renderFrame(); P.next = c + 6; const d = P.next; P.spawn(at, V, { life: 1 }); P.update(0.05); frameFx();
+    return { two, hidden, waited: cover(M, c, 16), live2: cover(M, d, 16) };
   });
-  expect(r.dead).toBe(true); expect(r.zero).toBe(true);
-  expect(r.covered, 'the dead one\'s zeroed matrix goes up with the frame').toBe(true); expect(r.live).toBe(true);
+  expect(r.two.dead).toBe(true); expect(r.two.zero).toBe(true);
+  expect(r.two.covered, 'the dead one\'s zeroed matrix goes up with the frame').toBe(true); expect(r.two.live).toBe(true);
+  expect(r.two.col, 'the colours of the slots spawned, not the whole pool').toBe(true); expect(r.two.spans).toBe(1);
+  expect(r.hidden).toBe(true); expect(r.waited, 'zeroed while hidden: goes up once the pool is drawn again').toBe(true); expect(r.live2).toBe(true);
 });

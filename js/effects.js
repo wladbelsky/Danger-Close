@@ -16,20 +16,21 @@ class Tracers {
       this.items.push({ on: false, p: new V3(), v: new V3(), life: 0, max: 1, len: 1, w: 0.1, col: new THREE.Color(), grav: 0, q: new THREE.Quaternion(), qd: false, fw: -1 });
     }
     this.next = 0; this.mesh.visible = false; scene.add(this.mesh);
+    this.mLo = n; this.mHi = -1; this.cLo = n; this.cHi = -1;   // (the slots changed since the last upload: matrices, colours)
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new V3(); this._d = new V3(); this._x = new V3(1, 0, 0);
   }
   spawn(p, v, o) {
     const i = this.next, it = this.items[i]; this.next = (this.next + 1) % this.n;
     it.on = true; it.p.copy(p); it.v.copy(v); it.life = it.max = o.life || 1; it.len = o.len || 1; it.w = o.w || 0.1;
     it.col.setHex(o.color || 0xffaa55).multiplyScalar(o.glow || 1); it.grav = o.grav || 0; it.qd = false; it.fw = -1;   // (glow: brighter than white, so that it blooms: SENSOR's over())
-    this.mesh.setColorAt(i, it.col); this.mesh.instanceColor.needsUpdate = true; this.mesh.visible = true;
+    this.mesh.setColorAt(i, it.col); if (i < this.cLo) this.cLo = i; if (i > this.cHi) this.cHi = i; this.mesh.visible = true;
     return it;
   }
   /* idle (no tracers in flight, i.e. most of the time) costs neither a buffer upload nor a draw call */
   /* one that flies straight (no gravity: rain, snow, most rounds) keeps its turn (q, worked out once); at full width (fw 1) only its
-     place in its matrix is written; only the slots that changed are uploaded */
+     place in its matrix is written; the slots changed are gathered over the steps (mLo..mHi) for flush() */
   update(dt) {
-    let active = 0, lo = this.n, hi = -1; const M = this.mesh.instanceMatrix, A = M.array;
+    let active = 0, lo = this.n, hi = -1; const A = this.mesh.instanceMatrix.array;
     for (let i = 0; i < this.n; i++) {
       const it = this.items[i]; if (!it.on) continue;
       if (i < lo) lo = i; hi = i;
@@ -41,15 +42,20 @@ class Tracers {
       if (it.grav || !it.qd) { this._d.copy(it.v).normalize(); it.q.setFromUnitVectors(this._x, this._d); it.qd = !it.grav; }
       this._s.set(it.len, it.w * fw, it.w * fw); this._m.compose(it.p, it.q, this._s); this.mesh.setMatrixAt(i, this._m); it.fw = fw;
     }
-    if (hi >= 0) {   // (added to the ranges not yet uploaded, never in their place: three merges them at the upload, then clears them; cleared here, a slot zeroed a step before in the same frame, or while the pool was hidden, kept its old matrix on the GPU and showed up again)
-      const R = M.updateRanges;
-      if (R.length > 15) { let a = lo * 16, b = (hi + 1) * 16; for (const r of R) { a = Math.min(a, r.start); b = Math.max(b, r.start + r.count); } M.clearUpdateRanges(); M.addUpdateRange(a, b - a); }   // (no frame drawn for a while: one span)
-      else M.addUpdateRange(lo * 16, (hi - lo + 1) * 16);
-      M.needsUpdate = true;
-    }
+    if (lo < this.mLo) this.mLo = lo; if (hi > this.mHi) this.mHi = hi;
     this.mesh.visible = active > 0;
   }
+  /* once a frame (frameFx): the slots changed since the last upload, every step's, as one span each for the matrices and colours.
+     Only when the pool is drawn (three uploads then): hidden, they wait; a slot zeroed in an earlier step, or while hidden, kept
+     its old matrix on the GPU and came back as a streak when only the last step's were sent */
+  flush() {
+    if (!this.mesh.visible) return;
+    if (this.mHi >= 0) { tracerSpan(this.mesh.instanceMatrix, this.mLo * 16, (this.mHi + 1) * 16); this.mLo = this.n; this.mHi = -1; }
+    if (this.cHi >= 0) { tracerSpan(this.mesh.instanceColor, this.cLo * 3, (this.cHi + 1) * 3); this.cLo = this.n; this.cHi = -1; }
+  }
 }
+/* attribute A to upload a..b (floats) next, with what it still has waiting (a frame not drawn: three clears them as it uploads) */
+function tracerSpan(A, a, b) { for (const r of A.updateRanges) { a = Math.min(a, r.start); b = Math.max(b, r.start + r.count); } A.clearUpdateRanges(); A.addUpdateRange(a, b - a); A.needsUpdate = true; }
 
 /* Camera-facing particles (flashes / smoke): the whole pool is one instanced draw call instead of a
    THREE.Sprite per particle. Same look as SpriteMaterial (quad of `scale` world units rotated in screen

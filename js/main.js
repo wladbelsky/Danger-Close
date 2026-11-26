@@ -316,7 +316,7 @@ function renderFrame() { frameFx(); INF.update(); if (CFG.shadows) fitShadow(); 
 function frameFx() {
   for (const f of FX_FLUSH || (FX_FLUSH = [FX.flash, FX.fire, FX.smoke, FX.dust, FX.puff, FX.flare, WEATHER.fx])) f.flush(camera);   // (the sprite pools)
   for (const f of GUNS_FLUSH || (GUNS_FLUSH = [GUNS.flash, GUNS.plasma, GUNS.gas])) f.flush(GUNS.cam);   // (the guns' own: their scene, their lens)
-  FX.bodies.flush(); FX.plumes.flush(); LAMPS.build();
+  FX.tracers.flush(); WEATHER.drops.flush(); FX.bodies.flush(); FX.plumes.flush(); LAMPS.build();
 }
 let FX_FLUSH = null, GUNS_FLUSH = null;
 const TIME_SCALE = Math.max(1, Math.round(parseFloat(QS.get('ts') || '1')));
