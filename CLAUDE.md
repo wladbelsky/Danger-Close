@@ -401,6 +401,40 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   again. Now the steps gather the slots changed (`mLo` / `mHi`; the colours too, `cLo` / `cHi`: a spawn sent the whole pool's)
   and `Tracers.flush()` (frameFx, for `FX.tracers` and `WEATHER.drops`) sets one span each once a frame, only while the pool is
   drawn (hidden, they wait), with whatever three has not uploaded yet (`tracerSpan`). Test: battle.spec.js.
+- The helicopters fly two ways and fire forward only (`HELI_ATK`, units.js): they fired their gun all round (behind them too) and made
+  rocket runs that were hard to see (a set-up leg 450 m out first, a dive at 55 m/s, a break away). Now, in a fight: **fast**
+  (`fast` 34 m/s, the nose where it flies) on its round, or in to a target it has picked every `every` 6-14 s (by the frame first,
+  `HELI_FIGHT`; `fightStep`, `atk`, `stat.heliAtk`), down to `low` + 10 m; **slow** within `ring` + `brake` m of it: round it at
+  `ring` 70-130 m, at `slow` 8-12 m/s (never hovering), sliding sideways with the nose turned onto it (`yawRate`; `slowStep`, the
+  course `cv` apart from the nose `yaw`, banked into the slide: `bankTo`, nose down only as it flies forward), for `hold` 10-16 s, then
+  away fast on its round (`endAtk`). Either way the gun only within `cone` 0.8 rad of the nose (`BATTLE.heliTarget`: its target
+  first; turned off it since, it holds fire and picks again, `stat.heliHeld`), the rockets only at what is within `line` 0.14 rad
+  dead ahead and `rk` 70-420 m off (`Heli.rockets`: `arm`, the salvo on the next beat or 1.5 s on; `BATTLE.salvo` checks again,
+  `lined()`: killed or turned off since, the pods keep their rockets; `reload` 9-15 s, `rkT`): on the way in they make a rocket run
+  of it. A salvo holds fire beyond `FIRE_NEAR` as the units' guns, and the allies' rockets do no harm out of play (`spared`, as
+  their other fire). The enemy's go only for what the sensor can bring under the reticle as they circle it (`BATTLE.reach`, as
+  their rounds; circling out of it 1 s, or off the map, it leaves). Out of a slow slide it gets up to speed only as its course
+  comes round onto its nose. A helicopter held by the cone takes no place in a beat's volley. `velOf` leads a helicopter along its
+  course, `agl` looks ahead along it; on the pad, going up and down its course is its nose. Measured (seed 11, 240 s): 36 slow
+  attacks, the nose on the target 99 % of the time, every salvo within 0.11 rad, the gun within 0.79; an enemy helicopter in the
+  frame 12-20 % of the time (offroad.spec.js; was ~10 %). Test: battle.spec.js.
+- A vehicle going round another (its aside `po`) where its path doubles back jumped 4 m across in a step: the aside is laid off
+  across the path's direction (`dirAt`), which flips at once there. Now along `pd`, that direction eased (`PD_RATE`: so fast the
+  aside moves `v` 3 m/s round it, never slower than `min` 2 rad/s, so a bend at speed is never held back: at 0.6 the in-sight
+  overlaps of the traffic test doubled; `Vehicle.pose`). The traffic's measures where it stands (`blocker`, `shove`) and the way on
+  (`ahead`, `clear`: eased from `pd` onto the path's over the first 6 m) go by it too (`asideAt`); a refused move puts it back
+  with the rest (`step`), and its swinging round is checked as a move. A new path takes the aside's direction at once (`setPath`:
+  `pd` null), as `reroute` measures `po` across it; a column turning round (`follow`) turns the aside with the lane (`po`, `pov`
+  negated: the right of travel is the other side now; it jumped across by twice its aside). The weave test's 2.5 m jump (seed 11)
+  is 0.04 m.
+- A vehicle's nose no longer twitches as it goes round something: its turn off the path (into a swerve, aside) followed the
+  speed and the rate aside, which go up and down by the step at a crawl round a wreck or another vehicle (braking for what is
+  ahead every 0.15 s, pushed aside, a standing one edging out), and the nose with them, several times a second. Now those two
+  are eased over `NOSE_EASE` 1 s for the nose (`vE`, `pvE`; `Vehicle.pose`); the swerve (`lv`) is smooth already and is not (the
+  nose lagging it, the hull turned late: more moves refused, the weave test's track went over). The jitter measure (the nose one
+  way and back three times in 3 s, vehicles by the frame, 6 maps): 15.9 % of the windows with the new helicopters' salvos (more
+  wrecks to go round), 10.2 % before them, 4.5 % now.
+- The safeguard (`RESTAGE`, `BATTLE.emptyCheck` / `restage`, above) is taken out again at the user's request: not needed.
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -457,7 +491,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `js/structures.js` | `STRUCT`: water (lakes, river), road / rail ribbons draped on the carved ground (decal materials: no depth write, polygon offset, renderOrder), bridges, the station, buildings (`BUILDERS`) merged per town / farm |
 | `js/effects.js` | `Tracers`, `SpriteFX`, `Scorch`, `blast`, missiles in flight (`StepPool`, `Bodies`, `Plumes`, `missileFx`, `MISSILE_LOOK`) |
 | `js/infantry.js` | `INF`: every soldier in two InstancedMeshes (bodies; legs swinging), instance colour = side; a soldier is its own HUD track |
-| `js/units.js` | `UNIT_TYPES`, `ROADNET` (a node per road sample, ends joined to other roads, A*), `Path` (lane to the right; the line averaged over `PATH_SMOOTH`), `Vehicle` (`bend()` slows it for its own bend; `coast` rolls a wreck on; `traffic` / `blocker` / `bumps`: keeps out of other vehicles and wrecks), `Column` (leader + gap; `follow` turns round on a reversed path), `Heli` (pad → up → fly a round → home → down), `Squad` (file along the leader's trail; `flee`), `walkable` / `patrolLoop`, `ALLIES` (a garrison per outpost; sorties to the enemy base in a fight, losses replaced out of sight); combatants: `UNITS`, `enlist` / `delist` / `hurt`, `unitModel` (a prototype per model, cloned: no geometry per spawn), `Column.reroute` (from where it stands; the rear leads if the way goes back) |
+| `js/units.js` | `UNIT_TYPES`, `ROADNET` (a node per road sample, ends joined to other roads, A*), `Path` (lane to the right; the line averaged over `PATH_SMOOTH`), `Vehicle` (`bend()` slows it for its own bend; `coast` rolls a wreck on; `traffic` / `blocker` / `bumps`: keeps out of other vehicles and wrecks), `Column` (leader + gap; `follow` turns round on a reversed path), `Heli` (pad → up → fly a round → home → down; in a fight fast, or slow round a target nose on it, firing forward only: `HELI_ATK`), `Squad` (file along the leader's trail; `flee`), `walkable` / `patrolLoop`, `ALLIES` (a garrison per outpost; sorties to the enemy base in a fight, losses replaced out of sight); combatants: `UNITS`, `enlist` / `delist` / `hurt`, `unitModel` (a prototype per model, cloned: no geometry per spawn), `Column.reroute` (from where it stands; the rear leads if the way goes back) |
 | `js/weapons.js` | `WEAPONS` (name, zoom factor, reticle, `hits` = the kinds it may hit, `band` = the beat that fires it, `use`, cosmetic rounds / magazine / reload), `ARMS` (the selected weapon, ammunition state) |
 | `js/lights.js` | `LAMPS`: the lamps are additive sprites (one pool refilled every frame); their light is a **map** drawn from above into one 2048² texture round `CAM_TGT` (`LAMP_HALF` m each way, `LAMPS.draw()` from `SENSOR.render`), which every Phong material adds as albedo × map at its world position (`sensorHook`: `uLampMap`, `uLampRect`, `uCamW`). Headlights (a cone, cut at the vehicle ahead), helicopter navigation lights, searchlights on the outposts' towers and the enemy base's bunkers / mast, yard lamps (`OP_LAMPS`, a lamp over each enemy tent / dump), street lamps along paved roads (`LAYOUT.lamps`, poles built in `structures.js`). On from dusk (the laser's red glow at `BATTLE.lasHit`: day and night); nothing on the thermal sensor |
 | `js/guns.js` | `GUNS`: the barrels of the 105 mm and the railgun (each while enabled; two sit side by side along the fuselage, `GUN_MOUNTS`) at the bottom right. A scene of its own with a 40° lens, drawn into `SENSOR.rt` after the world over a cleared depth (`GUNS.render` from `SENSOR.render`), so the post pass treats it like the rest. Its world is fixed to the aircraft (the view at the orbit's centre `CAM_CTR`); its lens turns as the sensor slews off the centre, so looking down lifts the barrels, far off they leave the frame. Lit by the sun / moon and sky turned into that frame; its materials skip the lamps' map (`userData.noLamp`, `customProgramCacheKey 'gun'`). On every shot (`BATTLE.fire` → `GUNS.shot`) recoil, a flash with a point light, gases from the brake; the railgun's slot flashes and glows as it recharges; barrels heat up per shot (thermal). `GUNS.muzzleAt` puts a shot's start on the line of sight through the muzzle on the screen (`BATTLE.muzzle`), so tracers leave the barrel; the guns with no barrel drawn start theirs through a mount just outside the frame's right edge (`GUN_SIDE`, `GUNS.sideAt`, 32 m out: `GUN_SIDE_D`). Programs compiled at start (`GUNS.warm`) |
@@ -472,7 +506,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=113`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=116`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

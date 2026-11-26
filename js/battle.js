@@ -192,14 +192,9 @@ const ZONE_FILL = 12;
    sensor's point that an enabled weapon may hit are kept up to want (× the enemies' share), a group at most every `every` s, both
    from the music's pace (slow → fast); music slower than `slow` bpm has a break of brk s once the ground round the point is clear.
    cap: no feeding past that many enemies on the ground */
-/* the safeguard: in a fight, `few` units or fewer of both sides together on the ground within `r` m of the sensor's point for `wait` s
-   (a couple of soldiers left; the feed stuck: columns queued in the fields on their way to it) - everybody of both sides out of sight is taken away (not the base, nor the outposts'
-   garrisons), a fight is set up ready at another place (`far` m off at least: a squad or two of each side round it, a column of each
-   from `col` m down the roads) and the gunship goes there (BATTLE.restage) */
 /* a turret's next target (a tank's, an APC's, a car's gun): by its distance times 1 + `turn` × the turn to it over 180° (one the gun
    points at first); the one it has kept unless another scores under `keep` × its; with none, the turret holds `hold` s where it was */
 const TURRET_PICK = { turn: 1.5, keep: 0.65, hold: 3 };
-const RESTAGE = { r: 220, few: 4, wait: 25, far: 450, col: [70, 160], every: 30 };
 const FEED = { r: 220, want: [5, 14], every: [6, 2], slow: 92, brk: [8, 14], cap: 90, sq: 0.6 };
 /* the allies in the sensor's frame: when fewer than `min` of theirs have been in it for ALLY_FEED.gap s, a fireteam of theirs runs in from its
    edge (every `every` s at most, while fewer than near + k × the enemies are round the point, FEED.r);
@@ -562,40 +557,6 @@ const BATTLE = {
     }
   },
   /* a fight out in the country, away from the base: enemies at a district (a squad or two, a column driving in) and allies coming for them */
-  /* the sector the sensor works all but empty of both sides (RESTAGE.few) for RESTAGE.wait s (not while the gunship flies, nor in slow
-     music's break): restage */
-  emptyCheck(dt) {
-    if ((this.emptyTick = (this.emptyTick || 0) - dt) > 0) return; this.emptyTick = 1;
-    const L = GUNSHIP.look; let any = GUNSHIP.state !== 'orbit' || T < this.breakUntil || T < (this.restageT || 0) + RESTAGE.every;
-    if (!any) { let n = 0; for (const u of UNITS) if (u.alive && u.kind !== 'struct' && u.kind !== 'heli' && Math.hypot(u.pos.x - L.x, u.pos.z - L.z) < RESTAGE.r && ++n > RESTAGE.few) { any = true; break; } }
-    if (any) { this.emptyT = 0; return; }
-    if ((this.emptyT = (this.emptyT || 0) + 1) >= RESTAGE.wait) { this.emptyT = 0; this.restage(); }
-  },
-  /* everybody of both sides out of sight taken away, a fight set up ready at another place, and the gunship off to it */
-  restage() {
-    const L = GUNSHIP.look, B = this.base;
-    const c = GUNSHIP.list.filter(d => d.n !== 'outpost' && Math.hypot(d.x - L.x, d.z - L.z) > RESTAGE.far && VIEW.fits(d, 0) && ROADNET.nearest(d.x, d.z, 160) >= 0 && (!B || Math.hypot(d.x - B.x, d.z - B.z) > 250));
-    if (!c.length) return false;
-    const off = p => !VIEW.onScreen(p, 0.1);
-    for (const E of this.cols) for (const v of E.col.u.slice()) if (off(v.pos)) { this.seen('out', v.pos); v.remove(); }
-    for (let i = this.squads.length - 1; i >= 0; i--) { const q = this.squads[i]; for (const s of q.m.slice()) if (off(s.position)) { this.seen('out', s.position); s.remove(); } if (!q.m.length) this.squads.splice(i, 1); }
-    for (const h of this.helis.slice()) if (h.alive && off(h.pos)) h.remove();
-    this.spots.length = 0; this.focus = this.chase = null; this.lock = null; this.pod = null;
-    const d = pick(c), node = ROADNET.nearest(d.x, d.z, 160), N = ROADNET; this.spots.push({ x: d.x, z: d.z });
-    const sides = CFG.allies > 0 ? ['enemy', 'ally'] : ['enemy'], used = [];
-    for (const side of sides) {   // a column of each side from a little way down a road into the place, from two ways (they meet there)
-      for (let t = 0; t < 60; t++) {
-        const k = randi(0, N.n - 1), x = N.X[k], z = N.Z[k], r = Math.hypot(x - N.X[node], z - N.Z[node]);
-        if (r < RESTAGE.col[0] || r > RESTAGE.col[1] || N.BR[k] || used.some(p => Math.hypot(p[0] - x, p[1] - z) < 80)) continue;
-        const nodes = N.route(k, node); if (!nodes || nodes.length < 12) continue;
-        if (this.columnOn(side, nodes, side === 'ally' ? pick(QRF_TYPES) : pick(WAVES))) { used.push([x, z]); break; }
-      }
-    }
-    this.squadAt('enemy', d.x, d.z, 20, 70, 15, 45); if (Math.random() < 0.6) this.squadAt('enemy', d.x, d.z, 20, 70, 15, 45);
-    if (CFG.allies > 0) this.squadAt('ally', d.x, d.z, 60, 110, ...ALLY_LOOP);
-    this.restageT = T; this.stat.restage = (this.stat.restage || 0) + 1; this.fedT = T;
-    GUNSHIP.goTo(VIEW.clampIn({ n: 'tgt', x: d.x, z: d.z })); return true;
-  },
   spawnField() {
     const L = GUNSHIP.look, zone = !this.spots.some(s => Math.hypot(L.x - s.x, L.z - s.z) < 300);   // (the first one in the camera's zone: its squads come in, running, from just out of sight)
     const B = this.base, c = zone ? [{ x: L.x, z: L.z }] : GUNSHIP.list.filter(d => d.n !== 'outpost' && this.hidden(d.x, d.z, 0.9) && (!B || Math.hypot(d.x - B.x, d.z - B.z) > 350) && !this.spots.some(s => Math.hypot(d.x - s.x, d.z - s.z) < 300));
@@ -672,6 +633,7 @@ const BATTLE = {
      does that much less, so the damage a second (and how long a fight lasts) stays the same */
   pace() { let r = (0.75 + 1.25 * AUD.drive) * (1 + 0.4 * AUD.tempo); if (AUD.calm) r /= 1.5; if (T < this.surgeUntil) r *= 2; return r; },
   unitShot(u) {
+    if (u.kind === 'heli' && u.off(u.tgt) > HELI_ATK.cone) { u.think = 0; this.stat.heliHeld = (this.stat.heliHeld || 0) + 1; return false; }   // (turned off it since: holds fire, still loaded, and picks again)
     const F = FIRE[u.kind], r = this.pace(); u.ready = 0;
     u.cool = rand(F.reload[0], F.reload[1]) / (u.side === 'ally' ? ALLY_RATE[u.kind] : 1) / r;
     if (!VIEW.near(u.pos, FIRE_NEAR) && !VIEW.near(u.tgt.pos, FIRE_NEAR)) { this.stat.quiet++; return; }   // (FIRE_NEAR: it holds fire, reloaded again)
@@ -683,21 +645,29 @@ const BATTLE = {
      every unit in the frame that has reloaded */
   unitsOnBeat(band, st, volley) {
     const all = volley || st > 1.6; let n = 0;
-    for (const h of UNITS) if (h.kind === 'heli' && h.run && h.run.ph === 'in' && h.run.armed && (band !== 'high' || st > 1.4)) { this.stat.salvoBeat++; this.salvo(h, h.run.tgt); }   // (a helicopter lined up on its run: the salvo on this beat)
+    for (const h of UNITS) if (h.kind === 'heli' && h.arm && (band !== 'high' || st > 1.4) && this.salvo(h, h.arm.tgt)) this.stat.salvoBeat++;   // (a helicopter lined up on a target dead ahead: the salvo on this beat)
     for (let i = 0; i < UNITS.length && n < UNIT_BEAT_MAX; i++) {
       const u = UNITS[i]; if (!u.ready || !u.tgt || !u.tgt.alive) continue;
       const mine = FIRE[u.kind].band === band;
-      if (mine || T - u.ready > 1.2 || (all && this.inFrame(u.pos))) { this.stat.uBeat++; if (mine) this.stat.uBand++; this.unitShot(u); n++; }
+      if ((mine || T - u.ready > 1.2 || (all && this.inFrame(u.pos))) && this.unitShot(u) !== false) { this.stat.uBeat++; if (mine) this.stat.uBand++; n++; }   // (false: held, a helicopter turned off its target: no shot, no place in the volley)
     }
     if (all && n > 2) this.stat.volleys++;
   },
   pickTarget(u, F) {
+    if (u.kind === 'heli') return this.heliTarget(u, F);
     if (u.at && T > (u.rpgT || 0)) { let a = null, ad = RPG.range; for (const o of UNITS) { if (o.side === u.side || !o.alive || !RPG.dmg[o.kind]) continue; const d = Math.hypot(o.pos.x - u.pos.x, o.pos.z - u.pos.z); if (d > RPG.min && d < ad) { ad = d; a = o; } } if (a) return a; }   // (a rocket ready: at the nearest vehicle in reach first)
     const V = VS[u.kind], tr = u.turret, b = tr ? u.yaw - tr.rotation.y : 0;   // (b: where its gun points now)
     const score = (o, d) => tr ? d * (1 + TURRET_PICK.turn * Math.abs(angleWrap(Math.atan2(o.pos.z - u.pos.z, o.pos.x - u.pos.x) - b)) / Math.PI) : d;
     let best = null, bs = Infinity;
     for (const o of UNITS) { if (o.side === u.side || !V[o.kind]) continue; const d = Math.hypot(o.pos.x - u.pos.x, o.pos.z - u.pos.z); if (d >= F.range) continue; const s = score(o, d); if (s < bs) { bs = s; best = o; } }
     const c = u.tgt; if (tr && c && c !== best && c.alive && V[c.kind]) { const d = Math.hypot(c.pos.x - u.pos.x, c.pos.z - u.pos.z); if (d < F.range && score(c, d) * TURRET_PICK.keep <= bs) return c; }   // (the one it has, unless another is much the better)
+    return best;
+  },
+  /* a helicopter's gun: only within HELI_ATK.cone of its nose; the target it goes for first, else the nearest there */
+  heliTarget(u, F) {
+    const V = VS.heli, c = HELI_ATK.cone, a = u.atk && u.atk.tgt, ok = (o, d) => o.alive && o.side !== u.side && V[o.kind] && d < F.range && u.off(o) < c;
+    if (a && ok(a, Math.hypot(a.pos.x - u.pos.x, a.pos.z - u.pos.z))) return a;
+    let best = null, bd = F.range; for (const o of UNITS) { const d = Math.hypot(o.pos.x - u.pos.x, o.pos.z - u.pos.z); if (d < bd && ok(o, d)) { bd = d; best = o; } }   // (the distance first: the angle only for what is in range)
     return best;
   },
   unitFire(u, t, F, pace) {
@@ -857,7 +827,7 @@ const BATTLE = {
   },
   velOf(u, out) {
     if (u.kind === 'inf') { const S = u.scatter; if (!S || T >= S.until) return out.set(0, 0, 0); const dx = S.x - u.pos.x, dz = S.z - u.pos.z, d = Math.hypot(dx, dz); return d < 0.3 ? out.set(0, 0, 0) : out.set(dx / d * SCATTER.v, 0, dz / d * SCATTER.v); }   // (a soldier running from a hit: the sensor leads him)
-    const v = u.v || 0, a = u.yaw || 0; return out.set(Math.cos(a) * v, 0, Math.sin(a) * v);
+    const v = u.v || 0, a = u.cv != null ? u.cv : u.yaw || 0; return out.set(Math.cos(a) * v, 0, Math.sin(a) * v);   // (cv: a helicopter's course, sliding sideways)
   },
   /* a trigger pull at t; the beat's strength st sets how many rounds (BURST) and how big the blasts look (not their damage); at: a point
      to put them on instead (a miss, or the ground under the reticle: no lead) */
@@ -1013,10 +983,13 @@ const BATTLE = {
     }
     this.scare(p, r, side === 'ally' ? 'enemy' : 'ally');
   },
-  /* a helicopter's salvo at t (js/units.js, Heli.runStep): rockets from its pods, one side then the other */
+  /* a helicopter's salvo at t (js/units.js, Heli.rockets): rockets from its pods, one side then the other, then `reload` s */
   salvo(h, t) {
-    const R = h.run; if (!R || R.ph !== 'in') return;
-    R.ph = 'out'; R.until = T + 3; this.stat.salvos++;
+    if (!h.arm) return false; h.arm = null;
+    if (!h.lined(t)) return false;   // (killed, or turned off it, since it lined up: the pods keep their rockets)
+    h.rkT = T + rand(...HELI_ATK.reload);
+    if (!VIEW.near(h.pos, FIRE_NEAR) && !VIEW.near(t.pos, FIRE_NEAR)) { this.stat.quiet++; return false; }   // (FIRE_NEAR: out there nobody fires, as the units' guns)
+    this.stat.salvos++;
     const dmg = ROCKET.dmg * (h.side === 'ally' ? ROCKET.ally : 1), side = h.side, tx = t.pos.x, tz = t.pos.z;
     for (let i = 0; i < ROCKET.n; i++) this.after(i * ROCKET.step, () => {
       if (!h.alive) return;
@@ -1026,6 +999,7 @@ const BATTLE = {
       FX.tracers.spawn(from, _bd.subVectors(to, from).multiplyScalar(1 / dur), { life: dur, len: 7, w: 0.32, color: 0xffe0a0 });   // (the motor's glare, flying itself)
       FX.flash.spawn(from, { s0: 2.2, s1: 4.5, life: 0.09 }); FX.smoke.spawn(from, { s0: 1.5, s1: 5, life: 1.2, a0: 0.35, color: 0xd8d8d8 });
     });
+    return true;
   },
   /* a soldier's rocket at a vehicle (RPG): led at where it will be, a hit or a miss decided as it leaves */
   rpg(u, t) {
@@ -1046,7 +1020,7 @@ const BATTLE = {
           this.scare(m.to, 3, m.side === 'ally' ? 'enemy' : 'ally'); continue; }
         _bp.lerpVectors(m.from, m.to, q); missileFx(m, _bp, _bd.subVectors(m.to, m.from).normalize(), { s: RPG.s }); continue;
       }
-      if (q >= 1) { this.rockets.splice(i, 1); hitFx(m.to.x, m.to.y, m.to.z, ROCKET.fx); this.splashAt(m.to, ROCKET.r, m.dmg, m.side); continue; }
+      if (q >= 1) { this.rockets.splice(i, 1); hitFx(m.to.x, m.to.y, m.to.z, ROCKET.fx); if (m.side === 'ally' && !this.inPlay(m.to)) this.stat.spared++; else this.splashAt(m.to, ROCKET.r, m.dmg, m.side); continue; }   // (COL_ZONE: the allies' fire does no harm out there)
       for (; m.trail < m.len * q; m.trail += ROCKET.puff) { _bp.lerpVectors(m.from, m.to, m.trail / m.len); FX.smoke.spawn(_bp, { s0: 1.2, s1: 4, life: rand(1, 1.6), a0: 0.34, color: 0xd8d8d8 }); }   // (a trail of puffs every few metres, whatever the frame rate)
     }
   },
@@ -1165,7 +1139,7 @@ const BATTLE = {
     for (let i = this.squads.length - 1; i >= 0; i--) { const s = this.squads[i]; s.update(dt); if (!s.m.length) this.squads.splice(i, 1); }
     for (let i = this.helis.length - 1; i >= 0; i--) { const h = this.helis[i]; h.update(dt); if (h.out) this.helis.splice(i, 1); }
     WRECKS.update(dt);
-    if (fight) { this.waves(); this.aimCamera(dt); this.autoArm(); this.lockStep(dt); this.emptyCheck(dt); } else { this.focus = this.chase = null; this.lock = null; }
+    if (fight) { this.waves(); this.aimCamera(dt); this.autoArm(); this.lockStep(dt); } else { this.focus = this.chase = null; this.lock = null; }
     // the base: wrecked, it is left as a ruin and another is built elsewhere; a ruin, or the base after the fight, goes once out of sight
     const B = this.base;
     if (B && war && !B.parts.some(p => p.alive)) { this.ruins.push(B); this.base = null; this.nextBase = T + rand(12, 20); B.site.restUntil = T + 300; }   // (no base on that site again for five minutes)

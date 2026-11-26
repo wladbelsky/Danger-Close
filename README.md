@@ -88,8 +88,8 @@ lamps and memory. Run it once in silence and once in a fight with music.
   the tanks on the kick, and a strong beat is a volley; denser music, faster fire (at the same damage); the gunship's bursts
   grow with the beat. The faster the tempo, the faster the guns: the 25 mm, 30 mm and Bofors fire between the beats too, in
   time with the kick (eighths, sixteenths for the 25 mm), the 105 mm reloads sooner, the ground units fire more often. A quiet part calms the fight, the drop after it sets everything off at once. The AA fires on the beat,
-  the flares go on the strong ones. The helicopters of both sides make rocket runs: they dive in fast and low and loose
-  a salvo of rockets on a beat.
+  the flares go on the strong ones. The helicopters of both sides fly fast on their rounds or slow round a target they
+  have picked, nose on it, and loose a salvo of rockets on a beat at what is dead ahead.
 - **APCs carry infantry**: halted near the enemy (or at their own base) they let a squad out by the rear door, one by one,
   and the column waits for them; the soldiers run out in file and spread round. A knocked-out APC lets one to three bail out.
 - **Blasts hurt everything round them**: a 105 mm shell, a bomb or a rocket hits every enemy within its radius, not only
@@ -103,8 +103,6 @@ lamps and memory. Run it once in silence and once in a fight with music.
   and then.
 - **Turrets keep to their target**: a tank or an APC sticks with what it is firing at and turns to the nearest one it is already
   pointing at, instead of swinging back and forth.
-- **No dead sector**: if the fight where the aircraft looks runs dry (a soldier or two left for half a minute), the units still
-  on their way are cleared, a fresh fight is set up elsewhere and the aircraft flies to it.
 - **Smooth driving**: vehicles steer round the corners of a road instead of turning on the spot, each slows for its own bend,
   and a swerve eases in and out. They keep out of each other: they brake for what is ahead, pull aside for one coming the other
   way and drive round a wreck or a halted column.
@@ -113,7 +111,9 @@ lamps and memory. Run it once in silence and once in a fight with music.
   and the vehicles drive as they like; near it they keep out of each other without jittering.
 - **Off the road**: enemy armour leaves the road to assault the allies' infantry in the fields, a column halted for a fight
   takes positions beside the road, and one the gunship hits scatters off it in every direction (round the wrecks of its own), holds, and goes again if it is hit there, then goes on alone.
-- **Helicopters over the fight**: the enemy's circle over the frame and make their rocket runs at what is in it.
+- **Helicopters over the fight**: the enemy's circle over the frame and go for what is in it. A helicopter flies fast, firing its
+  gun only at what is in front of it and its rockets only dead ahead (a rocket run comes of it on the way in), or slow round its
+  target, sliding sideways with its nose on it, gun and rockets as it bears; never shooting behind itself.
 - **Detailed helicopters**: cockpits with flat panes set in their frames, tapering blades on a full rotor head, sensors, guns,
   rockets and missiles on their pylons, wheels, hot exhausts on the thermal sensor.
 - **The reticle is where the guns fire**: always in the frame's centre; at the map's edge the sensor stops where the frame can

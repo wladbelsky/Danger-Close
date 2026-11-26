@@ -129,7 +129,7 @@ test('the helicopters fight over the frame: in it, and rocket runs at what is in
     await wp.boot({ query: `?hour=12&seed=${seed}&transit=0` });
     out.push(await wp.run(() => {
       let n = 0, inF = 0, runsF = 0, runs = 0; const s0 = BATTLE.salvo.bind(BATTLE);
-      BATTLE.salvo = (h, t) => { if (h.run && h.run.ph === 'in') { runs++; if (VIEW.near(t.pos, 40)) runsF++; } return s0(h, t); };
+      BATTLE.salvo = (h, t) => { const ok = s0(h, t); if (ok) { runs++; if (VIEW.near(t.pos, 40)) runsF++; } return ok; };
       for (let i = 0; i < 12000; i++) { __t.sim(0.05, { audio: true }); if (i % 10 || i < 200) continue; n++; if (BATTLE.helis.some(h => h.alive && BATTLE.inFrame(h.pos))) inF++; }
       BATTLE.salvo = s0;
       return { share: inF / n, runs, runsF };

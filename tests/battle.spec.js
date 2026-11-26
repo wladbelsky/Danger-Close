@@ -131,10 +131,10 @@ test('helicopters make rocket runs: the salvo mostly on a beat, low but never in
   await wp.boot({ query: '?hour=12&seed=11' });
   const r = await wp.run(() => {
     let minAgl = 1e9; const sides = new Set(), s0 = BATTLE.stat.salvos;
-    const salvo0 = BATTLE.salvo.bind(BATTLE); BATTLE.salvo = (h, t) => { if (h.run && h.run.ph === 'in') sides.add(h.side); salvo0(h, t); };
+    const salvo0 = BATTLE.salvo.bind(BATTLE); BATTLE.salvo = (h, t) => { const ok = salvo0(h, t); if (ok) sides.add(h.side); return ok; };
     for (let i = 0; i < 3600; i++) {
       __t.sim(0.05, { audio: true });
-      for (const u of UNITS) if (u.kind === 'heli' && u.run && u.run.ph !== 'setup') minAgl = Math.min(minAgl, u.pos.y - groundH(u.pos.x, u.pos.z));
+      for (const u of UNITS) if (u.kind === 'heli' && u.atk) minAgl = Math.min(minAgl, u.pos.y - groundH(u.pos.x, u.pos.z));
     }
     const { salvos, salvoBeat, salvoLate, splash } = BATTLE.stat;
     return { salvos: salvos - s0, salvoBeat, salvoLate, splash, minAgl, sides: [...sides] };
@@ -147,6 +147,36 @@ test('helicopters make rocket runs: the salvo mostly on a beat, low but never in
   expect(r.splash).toBeGreaterThan(0);
   await wp.sim(12); await wp.sim(3);
   expect(await wp.run(() => BATTLE.rockets.length)).toBe(0);
+});
+
+test('helicopters fire forward only (the gun in a cone off the nose, rockets dead ahead); slow round their target, the nose on it, never hovering', async ({ wp }) => {
+  test.setTimeout(180000);
+  await wp.boot({ query: '?hour=12&seed=11&transit=0' });
+  const r = await wp.run(() => {
+    const gun = [], rk = [], f0 = BATTLE.unitFire.bind(BATTLE), s0 = BATTLE.salvo.bind(BATTLE);
+    BATTLE.unitFire = (u, t, F, p) => { if (u.kind === 'heli') gun.push(u.off(t)); return f0(u, t, F, p); };
+    BATTLE.salvo = (h, t) => { const o = h.off(t), ok = s0(h, t); if (ok) rk.push(o); return ok; };
+    const slowAt = new Map(); let slow = 0, nose = 0, vMin = 1e9, fast = 0, vFast = 0;
+    for (let i = 0; i < 4800; i++) {
+      __t.sim(0.05, { audio: true });
+      for (const h of UNITS) {
+        if (h.kind !== 'heli' || h.state !== 'fly') continue; const a = h.atk;
+        if (a && a.slow) { if (!slowAt.has(a)) slowAt.set(a, T); if (T - slowAt.get(a) < 3) continue; slow++; if (h.off(a.tgt) < 0.3) nose++; vMin = Math.min(vMin, h.v); }
+        else if (AUD.fighting && !a) { fast++; vFast += h.v; }
+      }
+    }
+    BATTLE.unitFire = f0; BATTLE.salvo = s0;
+    return { cone: HELI_ATK.cone, line: HELI_ATK.line, gun: gun.length, gunMax: Math.max(...gun), rk: rk.length, rkMax: Math.max(...rk), slow, nose: nose / Math.max(1, slow), vMin, vFast: vFast / Math.max(1, fast), atks: slowAt.size, held: BATTLE.stat.heliHeld || 0 };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.gun, 'the helicopters\' guns fire').toBeGreaterThan(20);
+  expect(r.gunMax, 'never behind it: within the cone off the nose').toBeLessThanOrEqual(r.cone);
+  expect(r.rk, 'salvos').toBeGreaterThan(2);
+  expect(r.rkMax, 'rockets only dead ahead').toBeLessThanOrEqual(r.line * 1.5);
+  expect(r.atks, 'slow attacks round a target').toBeGreaterThan(2);
+  expect(r.nose, 'slow: the nose on the target').toBeGreaterThan(0.8);
+  expect(r.vMin, 'slow but never hovering').toBeGreaterThan(5);
+  expect(r.vFast, 'fast on its round (turns and take-offs in the mean)').toBeGreaterThan(18);
 });
 
 test('APCs let their infantry out by the rear door near the enemy; a knocked-out one lets some bail out', async ({ wp }) => {
@@ -481,7 +511,7 @@ test('the AIM-9X locks on first: the corners of a diamond close in on the box on
   await wp.sim(8, { audio: true });
   const r = await wp.run(() => {
     BATTLE.nextHeli = 1e9; for (const u of BATTLE.helis.slice()) u.remove();   // (only the one put here: the others fly over the frame now, the lock would go from one to another)
-    const put = () => { const p = new V3(CAM_TGT.x + 30, 0, CAM_TGT.z); p.y = groundH(p.x, p.z) + 60; const h = new Heli(0, 'enemy', null, p); h.runNext = 1e9; BATTLE.helis.push(h);   /* (no rocket runs: diving at 55 m/s it slips the lock, and runs are at the frame now) */ const c = CAM_TGT.clone().multiplyScalar(0.75);   /* (its round a little in from the frame's centre: this map starts 320 m off its edge, where its line of sight on one side runs past what the frame can be centred on) */ h.round = () => [0, 1, 2, 3, 4, 5].map(i => [c.x + Math.cos(i) * 50, c.z + Math.sin(i) * 50]); h.wps = h.round(); return h; };
+    const put = () => { const p = new V3(CAM_TGT.x + 30, 0, CAM_TGT.z); p.y = groundH(p.x, p.z) + 60; const h = new Heli(0, 'enemy', null, p); h.atkNext = 1e9; h.rkT = 1e9; BATTLE.helis.push(h);   /* (no rocket runs: diving at 55 m/s it slips the lock, and runs are at the frame now) */ const c = CAM_TGT.clone().multiplyScalar(0.75);   /* (its round a little in from the frame's centre: this map starts 320 m off its edge, where its line of sight on one side runs past what the frame can be centred on) */ h.round = () => [0, 1, 2, 3, 4, 5].map(i => [c.x + Math.cos(i) * 50, c.z + Math.sin(i) * 50]); h.wps = h.round(); return h; };
     const f0 = BATTLE.fire.bind(BATTLE), fired = []; BATTLE.fire = (w, ...a) => { fired.push(w.id); return f0(w, ...a); };
     let h = put(), drawn = 0, arrows = 0, shoot = 0, k0 = 1, kUp = false;
     for (let i = 0; i < 1200; i++) {
@@ -772,29 +802,6 @@ test('infantry keeps off the other side\'s armour (STANDOFF), and its rocket lau
   expect(r.lead, 'its leader no closer to the tank than STANDOFF_IN of its 45 m (some slack for a step)').toBeGreaterThan(45 * 0.85 - 3);
   expect(r.all, 'nor any of them').toBeGreaterThan(30);
   expect(r.rpg, 'rockets fired at the vehicles').toBeGreaterThanOrEqual(3); expect(r.hits, 'some hit').toBeGreaterThan(0); expect(r.hits, 'not all').toBeLessThan(r.rpg + 1); expect(r.inFlight, 'seen in flight').toBeGreaterThan(0);
-});
-
-test('the safeguard: the sector empty of both sides for a while, everybody out of sight goes, a fight is set up ready elsewhere and the gunship flies there', async ({ wp }) => {
-  await wp.boot({ query: '?hour=12&seed=11&weapons=g25,h105' });
-  await wp.sim(30, { audio: true });
-  const r = await wp.run(() => {
-    const stub = { B: ['feed', 'rush', 'columnTo', 'spawnColumn', 'spawnField', 'spawnHeli', 'edgeSquad'].map(k => [BATTLE, k]), A: [[ALLIES, 'update'], [GUNSHIP, 'mayLeave']] }, saved = [...stub.B, ...stub.A].map(([o, k]) => [o, k, o[k]]);
-    for (const [o, k] of [...stub.B, ...stub.A]) o[k] = () => false;   // (the feed stuck: nobody gets there; nor does the gunship leave by itself)
-    BATTLE.nextWave = BATTLE.nextSquad = BATTLE.nextField = BATTLE.nextQrf = BATTLE.nextAsq = BATTLE.nextHeli = 1e9;
-    const L0 = GUNSHIP.look.clone(); let keep = 2; for (const u of UNITS.slice()) if (u.kind !== 'struct' && u.kind !== 'heli' && u.remove && Math.hypot(u.pos.x - L0.x, u.pos.z - L0.z) < 400) { if (u.kind === 'inf' && keep > 0) { keep--; u.hp = 1e9; continue; } u.remove(); }   // (a couple of soldiers left: all but empty)
-    for (let i = BATTLE.squads.length - 1; i >= 0; i--) if (!BATTLE.squads[i].m.length) BATTLE.squads.splice(i, 1);
-    const veh0 = UNITS.filter(u => u instanceof Vehicle && u.alive).length;
-    let t = 0; for (; t < 40 && !BATTLE.stat.restage; t++) __t.sim(1, { audio: true }); for (const [o, k, f] of saved) o[k] = f;
-    const after = UNITS.filter(u => u instanceof Vehicle && u.alive).length, state = GUNSHIP.state;
-    for (let i = 0; i < 40 && GUNSHIP.state === 'transit'; i++) __t.sim(0.5, { audio: true }); __t.sim(6, { audio: true });
-    const L = GUNSHIP.look, near = s => UNITS.filter(u => u.side === s && u.alive && u.kind !== 'struct' && u.kind !== 'heli' && Math.hypot(u.pos.x - L.x, u.pos.z - L.z) < 200).length;
-    return { t, restage: BATTLE.stat.restage || 0, state, moved: Math.hypot(L.x - L0.x, L.z - L0.z), enemy: near('enemy'), ally: near('ally'), veh0, after };
-  });
-  console.log(JSON.stringify(r));
-  expect(r.restage, 'restaged once').toBe(1); expect(r.t, 'after RESTAGE.wait s of a sector all but empty').toBeGreaterThanOrEqual(24);
-  expect(r.state, 'the gunship on its way').toBe('transit'); expect(r.moved, 'to another place').toBeGreaterThan(400);
-  expect(r.after, 'the vehicles out on the map taken away (a column of each side set up)').toBeLessThan(r.veh0 + 1);
-  expect(r.enemy, 'enemies there').toBeGreaterThan(2); expect(r.ally, 'and allies').toBeGreaterThan(2);
 });
 
 test('a tank\'s or an APC\'s turret keeps to its target: not swung back and forth between two (TURRET_PICK)', async ({ wp }) => {

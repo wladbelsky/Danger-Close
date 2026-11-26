@@ -122,6 +122,11 @@ const BEND_ACC = 3, BEND_LOOK = 16;
    nobody sees them, they drive as they like (columns queued for minutes 1–1.5 km off kept the armour from ever reaching the
    fight). Two that come in inside each other (one drove through the other out there, or a wreck rolled into it) push apart
    sideways at `shove` m/s, up to 3 m further than `side`: apart before they are in the frame */
+/* the nose's turn off its path (into a swerve, aside) eased over this many seconds (Vehicle.pose) */
+const NOSE_EASE = 1.0;
+/* the direction its aside (po) is laid off in (pd) turns towards its path's at most so fast that the aside moves `v` m/s round, never
+   slower than `min` rad/s (a bend at speed turns it no faster: never held back there; a wide aside swings round faster than `v`); dirAt flips at once where a path doubles back: the aside jumped across */
+const PD_RATE = { v: 3, min: 2 };
 const TRAFFIC = { look: 35, every: 0.15, gap: 2, brake: 4, side: 5, rate: 1.6, wait: 1.5, head: 4, ghost: 8, near: 80, shove: 2 };
 /* do two boxes { x, z (centre), c, s (cos, sin of the heading), l, w (half length, half width) } overlap? (separating axes) */
 function obbOverlap(A, B) {
@@ -152,11 +157,11 @@ class Vehicle {
     const L = clamp(this.v * this.v / 4 + 2, 3, 25), via = [], tL = L / Math.max(this.v, 1);
     for (let d = 1.5; ; d = Math.min(d + 4, L)) {   // (the first a step on: the way's first stretch leaves the way it is going)
       const s = Math.min(this.path.L, this.s + d), t = d / Math.max(this.v, 1), e = t * (1 - t / (2 * tL)), k = clamp(this.laneK + this.lv * e, -2.2, 2.2), po = this.po + this.pov * e;   // (a swerve or a move aside under way carries on, easing out: the way on leaves where it is going, not a kink)
-      const hd = this.dirAt(s, k); this.path.at(s, k, _va); via.push({ x: _va.x - Math.sin(hd) * po, z: _va.z + Math.cos(hd) * po, y: NaN, hw: 0 }); if (d >= L || s >= this.path.L) break;
+      const hd = this.asideAt(s - this.s, this.dirAt(s, k)); this.path.at(s, k, _va); via.push({ x: _va.x - Math.sin(hd) * po, z: _va.z + Math.cos(hd) * po, y: NaN, hw: 0 }); if (d >= L || s >= this.path.L) break;
     }
     const e = via[via.length - 1]; return { x: e.x, z: e.z, via };
   }
-  setPath(path, s, snap) { this.path = path; this.s = s; if (snap) { this.pose(0, true); } }
+  setPath(path, s, snap) { this.path = path; this.s = s; this.pd = null; if (snap) { this.pose(0, true); } }   // (pd: the aside laid off across the new path at once: reroute measures po across it)
   /* towards the target speed (a gentle start, firmer brakes), then along the path */
   drive(dt, vt, smax, va) {   // (smax: no further than this along the path, va: then no faster than this; it never goes back)
     const turn = Math.abs(angleWrap(this.dirAt(this.s + 1) - this.yaw));
@@ -172,10 +177,10 @@ class Vehicle {
   }
   /* on to s; a move that would take its hull further into another's (a vehicle or a wreck) is not made: it stands */
   step(dt, s, po0 = this.po) {   // (po0: its aside before this step's move: one standing and pushed aside went through a wreck unchecked)
-    const s0 = this.s, po = po0, k = this.laneK, lv = this.lv, yaw = this.yaw, x0 = this.pos.x, z0 = this.pos.z;
+    const s0 = this.s, po = po0, k = this.laneK, lv = this.lv, yaw = this.yaw, x0 = this.pos.x, z0 = this.pos.z, pd = this.pd, vE = this.vE, pvE = this.pvE;
     this.s = s; this.pose(dt, false);
-    if ((s !== s0 || this.po !== po) && this.near && this.bumps(x0, z0)) {
-      const pn = this.po; this.s = s0; this.po = po; this.laneK = k; this.lv = lv; this.yaw = yaw; this.v = 0; this.pose(0, false); this.bumpT = T; this.bumpO = this._bo; BATTLE.stat.bump++;
+    if ((s !== s0 || this.po !== po || (this.po && this.pd !== pd)) && this.near && this.bumps(x0, z0)) {   // (pd: its aside swinging round moves it too)
+      const pn = this.po; this.s = s0; this.po = po; this.laneK = k; this.lv = lv; this.yaw = yaw; this.pd = pd; this.vE = vE; this.pvE = pvE; this.v = 0; this.pose(0, false);   // (all of the refused move's pose undone: where it stood) this.bumpT = T; this.bumpO = this._bo; BATTLE.stat.bump++;
       if (pn !== po) { this.po = pn; this.pose(0, false); if (this.bumps(x0, z0)) { this.po = po; this.pov = 0; this.yaw = yaw; this.pose(0, false); } }   // (only aside, then: away from what it touches; nose to nose they would stand for good)
       else this.pov = 0;
     }
@@ -184,7 +189,7 @@ class Vehicle {
      offset while it touches (traffic() does not pull it back, and bumps() refuses a move back into it) */
   shove(dt) {   // (sets shoveD: -1 / 1 to its left / right, 0 touching nothing)
     const H = this.hull, c = Math.cos(this.yaw), sn = Math.sin(this.yaw), A = { x: this.pos.x + c * H.c, z: this.pos.z + sn * H.c, c, s: sn, l: H.l, w: H.w + 0.3 };
-    const hd = this.dirAt(this.s, this.laneK), hc = Math.cos(hd), hs = Math.sin(hd);   // (sideways measured across its path, not its nose: the nose turns as it moves aside)
+    const hd = this.asideAt(0, this.dirAt(this.s, this.laneK)), hc = Math.cos(hd), hs = Math.sin(hd);   // (sideways measured across its path, not its nose: the nose turns as it moves aside; as its aside is laid off, pd)
     const push = (u, p, still) => {
       const h = u.hull, dx = p.x - this.pos.x, dz = p.z - this.pos.z; if (dx * dx + dz * dz > (H.l + h.l + 1) ** 2) return false;
       const oc = Math.cos(u.yaw), os = Math.sin(u.yaw), B = { x: p.x + oc * h.c, z: p.z + os * h.c, c: oc, s: os, l: h.l, w: h.w + 0.3 }; if (!obbOverlap(A, B)) return false;
@@ -213,7 +218,7 @@ class Vehicle {
      need: the sideways clearance, hl: its half length, still, head: oncoming } or null. Measured along its path, not its nose:
      the nose turns as it pulls aside, and a lat that turned with it sent the aside's target back and forth (the jitter) */
   blocker() {
-    const H = this.hull, hd = this.dirAt(this.s, this.laneK), c = Math.cos(hd), s = Math.sin(hd); this.path.at(this.s, this.laneK, _va);
+    const H = this.hull, hd = this.asideAt(0, this.dirAt(this.s, this.laneK)), c = Math.cos(hd), s = Math.sin(hd); this.path.at(this.s, this.laneK, _va);   // (across the way its aside is laid off, pd: its po and the others' lat on one measure)
     const x0 = _va.x + c * H.c, z0 = _va.z + s * H.c, po = this.po; let best = null;
     const look = (o, ox, oz, oyaw, h, still) => {
       const dx = ox - x0, dz = oz - z0, al = dx * c + dz * s; if (al <= 0 || al > TRAFFIC.look) return;
@@ -265,7 +270,7 @@ class Vehicle {
   clear(po, d) {
     const P = this.path; if (this.pos.y > groundH(this.pos.x, this.pos.z) + 0.3) return Math.abs(po) < 0.8;
     for (let k = 0; k <= d; k += 3) {
-      if (this.s + k > P.L) break; P.at(this.s + k, this.laneK, _va); const h = this.dirAt(this.s + k, this.laneK), x = _va.x - Math.sin(h) * po, z = _va.z + Math.cos(h) * po;
+      if (this.s + k > P.L) break; P.at(this.s + k, this.laneK, _va); const h = this.asideAt(k, this.dirAt(this.s + k, this.laneK)), x = _va.x - Math.sin(h) * po, z = _va.z + Math.cos(h) * po;
       for (const e of [-1, 1]) { const ex = x - Math.sin(h) * e * this.hull.w, ez = z + Math.cos(h) * e * this.hull.w; if ((occAt(ex, ez) & (OCC_BUILD | OCC_WATER)) || waterAt(ex, ez) || Math.abs(ex) > MAP_HALF - 8 || Math.abs(ez) > MAP_HALF - 8) return false; }
     }
     return true;
@@ -276,6 +281,8 @@ class Vehicle {
     for (let d = from + 4; d <= BEND_LOOK; d += 4) { const g = this.dirAt(this.s + d, k); m = Math.max(m, Math.abs(angleWrap(g - h)) / 4); h = g; }
     return m;
   }
+  /* the direction its aside is laid off in d m on (pose: pd where it is, eased onto the path's own over the first 6 m) */
+  asideAt(d, h) { return this.pd == null ? h : this.pd + angleWrap(h - this.pd) * Math.min(1, Math.max(0, d) / 6); }
   dirAt(s, laneK = 0) { this.path.at(s - 3, laneK, _va); this.path.at(s + 3, laneK, _vb); return Math.atan2(_vb.z - _va.z, _vb.x - _va.x); }
   /* the lane factor towards tgt: its rate eased up and down (never a jump, never a sharp turn) */
   lane(dt, tgt, cap) {
@@ -289,10 +296,13 @@ class Vehicle {
     else if (weave) { const st = clamp((0.12 - this.bend(this.laneK, -8)) / 0.06, 0, 1); this.lane(dt, 1 + (this.laneT - 1) * st, WEAVE_RATE); }   // (swerving across the road; not round a sharp corner just behind or ahead: the lane's sideways turns fast there)
     else this.lane(dt, 1, 0.7);   // (back into its lane)
     if (snap) { this.po = this.pov = 0; }
-    const hd = this.dirAt(this.s, this.laneK); let yt = hd; if (!snap) yt += Math.atan2(this.lv * P.wAt(this.s) + this.pov, Math.max(this.v, 2)) * clamp(this.v / 2, 0.3, 1);   // (the nose along its own track: into the swerve, or aside; standing, it edges aside without swinging its nose)
+    const hd = this.dirAt(this.s, this.laneK), ke = Math.min(1, dt / NOSE_EASE);
+    if (snap || this.vE == null) { this.vE = this.v; this.pvE = this.pov; } else { this.vE += (this.v - this.vE) * ke; this.pvE += (this.pov - this.pvE) * ke; }   // (the speed and the rate aside go up and down by the step round what it goes round, and the nose swung with them: eased; the swerve, lv, is smooth already)
+    const yt = snap ? hd : hd + Math.atan2(this.lv * P.wAt(this.s) + this.pvE, Math.max(this.vE, 2)) * clamp(this.vE / 2, 0.3, 1);   // (the nose along its own track: into the swerve, or aside; standing, it edges aside without swinging its nose)
     this.yaw = snap ? yt : approachAngle(this.yaw, yt, dt * (weave ? 2.5 : 1.8));
     P.at(this.s, this.laneK, _vc);
-    if (this.po) { const deck = _vc.y > groundH(_vc.x, _vc.z) + 0.3; _vc.x -= Math.sin(hd) * this.po; _vc.z += Math.cos(hd) * this.po; if (!deck) _vc.y = groundH(_vc.x, _vc.z); }
+    this.pd = snap || this.pd == null ? hd : approachAngle(this.pd, hd, dt * Math.max(PD_RATE.min, PD_RATE.v / Math.max(0.1, Math.abs(this.po))));   // (where its path doubles back hd flips at once: the aside swings round at PD_RATE.v m/s, a wide one at PD_RATE.min rad/s)
+    if (this.po) { const deck = _vc.y > groundH(_vc.x, _vc.z) + 0.3; _vc.x -= Math.sin(this.pd) * this.po; _vc.z += Math.cos(this.pd) * this.po; if (!deck) _vc.y = groundH(_vc.x, _vc.z); }
     this.obj.position.copy(_vc);
     const c = Math.cos(this.yaw), s = Math.sin(this.yaw), f = groundH(_vc.x + c * 2.5, _vc.z + s * 2.5), b = groundH(_vc.x - c * 2.5, _vc.z - s * 2.5);
     const pitch = _vc.y > groundH(_vc.x, _vc.z) + 0.3 ? 0 : Math.atan2(f - b, 5);   // (on a bridge deck: level)
@@ -381,7 +391,7 @@ class Column {
      the order turns round and the lane swaps sides gently) */
   follow(path) {
     const o = this.path, q = path.p[0], back = Math.hypot(q.x - o.p[0].x, q.z - o.p[0].z) > Math.hypot(q.x - o.p[o.p.length - 1].x, q.z - o.p[o.p.length - 1].z);
-    for (const v of this.u) { v.setPath(path, clamp(back ? o.L - v.s : v.s, 0, path.L)); if (back) { v.laneK = -v.laneK; v.lv = -v.lv; } }
+    for (const v of this.u) { v.setPath(path, clamp(back ? o.L - v.s : v.s, 0, path.L)); if (back) { v.laneK = -v.laneK; v.lv = -v.lv; v.po = -v.po; v.pov = -v.pov; if (v.pvE != null) v.pvE = -v.pvE; v.byp = null; } }   // (the right of travel is the other side now: the lane and the aside keep where they are)
     this.path = path; this.sort();
   }
   get done() { return !this.u.length || (this.u[0].s >= this.path.L - 0.5 && this.u.every(v => v.v < 0.3)); }
@@ -402,8 +412,16 @@ class Column {
 
 /* ---- a helicopter: sits on its pad, takes off, flies a round of waypoints, comes back and lands ---- */
 const _hv = new V3();
-/* helicopters in a fight: their rounds `r` m round the sensor's point, the enemy's rocket runs at a target within `near` m past the frame up to `reach` m away first */
+/* helicopters in a fight: their rounds `r` m round the sensor's point; the target they go for (Heli.fightStep): within `near` m past the frame, up to `reach` m away, first */
 const HELI_FIGHT = { r: [60, 180], near: 40, reach: 900 }, _hrU = { pos: new V3() };   // (_hrU: a waypoint tried by BATTLE.reach)
+/* a helicopter in a fight flies one of two ways:
+   fast (`fast` m/s), its nose where it goes: on its round, or in to a target it has picked (every `every` s; by the frame first,
+   HELI_FIGHT), down to `low` + 10 m;
+   slow (`slow` m/s: never hovering), within `ring[1]` + `brake` m of that target: round it `ring` m off, sliding sideways, its nose
+   turned onto it (`yawRate` rad/s), for `hold` s; then away fast on its round.
+   Either way its gun fires only within `cone` rad of its nose (BATTLE.heliTarget), its rockets only at what is within `line` rad dead
+   ahead, `rk` m off (Heli.rockets: a salvo on the next beat, `reload` s for the next) */
+const HELI_ATK = { fast: 34, slow: [8, 12], cone: 0.8, line: 0.14, rk: [70, 420], ring: [70, 130], brake: 80, hold: [10, 16], every: [6, 14], low: 35, yawRate: 0.8, course: 0.9, reload: [9, 15] };
 class Heli {
   /* pad: where it lives (the allies'); without one it starts in the air at `start` and never lands (the enemies') */
   constructor(variant, side, pad, start) {
@@ -411,12 +429,13 @@ class Heli {
     this.rotors = []; this.obj.traverse(o => { if (o.name === 'rotor' || o.name === 'rotor2' || o.name === 'trotor') this.rotors.push(o); });
     this.pos = pad ? new V3(pad.x, pad.y, pad.z) : start.clone(); this.yaw = pad ? pad.a : Math.atan2(-start.z, -start.x); this.v = pad ? 0 : 30; this.bank = 0; this.spin = pad ? 0 : 26; this.state = pad ? 'pad' : 'fly'; this.timer = rand(15, 60);
     this.out = false;   // (crashed or flown away: its owner drops it)
-    this.run = null; this.runNext = T + rand(5, 20);   // (rocket runs: runStep)
+    this.atk = null; this.atkNext = T + rand(3, 10); this.arm = null; this.rkT = T + rand(2, 6); this.rkLook = 0;   // (atk: the target it goes for, fightStep; arm: a salvo lined up, rockets)
+    this.cv = this.yaw;   // (its course: where it flies; the nose (yaw) may point elsewhere when slow)
     enlist(this, side, 'heli', this.pos, 1.5); this.wps = pad ? [] : this.round();
     TRACKS.push({ obj: this.obj, side, inf: false, h: 2.5 });
     this.pose(0);
   }
-  agl(x, z) { let h = groundH(x, z); const c = Math.cos(this.yaw), s = Math.sin(this.yaw); for (const d of [40, 90]) h = Math.max(h, groundH(x + c * d, z + s * d)); return h; }
+  agl(x, z) { let h = groundH(x, z); const c = Math.cos(this.cv), s = Math.sin(this.cv);   /* (ahead along its course: sliding sideways, not where its nose points) */ for (const d of [40, 90]) h = Math.max(h, groundH(x + c * d, z + s * d)); return h; }
   update(dt) {
     const p = this.pos;
     if (this.state === 'crash') {                                      // shot down: spinning into the ground
@@ -435,16 +454,20 @@ class Heli {
       if (this.spin > 20) p.y += Math.min(4, 1 + (p.y - this.pad.y)) * dt;
       if (p.y > this.pad.y + 30) { this.state = 'fly'; this.wps = this.round(); }
     } else if (this.state === 'fly' || this.state === 'home' || this.state === 'leave') {
-      const R = this.state === 'fly' ? this.runStep() : null;            // (a rocket run steers instead of the round: [x, z, speed, height])
+      const R = this.state === 'fly' ? this.fightStep() : null;          // (a target to go for: [x, z, speed, height, slow])
+      if (R && R[4]) this.slowStep(dt, R); else {
       const w = R || this.wps[0], dx = w[0] - p.x, dz = w[1] - p.z, d = Math.hypot(dx, dz);
-      const last = this.state === 'home', vt = R ? R[2] : last ? Math.min(30, Math.max(2, d * 0.18)) : this.tgt ? 8 : 30;   // (slow over what it is shooting at)
+      const last = this.state === 'home', vt = R ? R[2] : last ? Math.min(30, Math.max(2, d * 0.18)) : AUD.fighting ? HELI_ATK.fast : 30;
       const want = Math.atan2(dz, dx), tr = R ? 0.6 : 0.45, turn = clamp(angleWrap(want - this.yaw), -tr * dt, tr * dt); this.yaw += turn;
-      this.v += clamp(vt * clamp(1.2 - Math.abs(angleWrap(want - this.yaw)), 0.3, 1) - this.v, -4 * dt, (R ? 7 : 3) * dt);
-      this.bank += (clamp(turn / dt * 1.4, -0.45, 0.45) - this.bank) * Math.min(1, dt * 2);
-      p.x += Math.cos(this.yaw) * this.v * dt; p.z += Math.sin(this.yaw) * this.v * dt;
+      this.cv = approachAngle(this.cv, this.yaw, HELI_ATK.course * dt);   // (fast: it flies where its nose is; out of a slow slide, eased onto it)
+      this.v += clamp(vt * clamp(1.2 - Math.abs(angleWrap(want - this.yaw)), 0.3, 1) * clamp(Math.cos(this.cv - this.yaw), 0.3, 1) - this.v, -(R ? 8 : 4) * dt, (R ? 5 : 3) * dt);   // (out of a slow slide: up to speed only as its course comes round onto its nose)
+      this.bankTo(turn / dt, dt);
+      p.x += Math.cos(this.cv) * this.v * dt; p.z += Math.sin(this.cv) * this.v * dt;
       const yt = (last ? this.pad.y + 30 : this.agl(p.x, p.z) + (R ? R[3] : 60)); p.y += clamp(yt - p.y, -(R ? 8 : 4) * dt, 5 * dt);
-      if (this.state === 'fly' && !this.pad && this.retreat) { this.state = 'leave'; this.wps = []; this.run = null; }
+      if (this.state === 'fly' && !this.pad && this.retreat) { this.state = 'leave'; this.wps = []; this.atk = this.arm = null; }
       else if (!R && this.state !== 'leave' && d < (last ? 3 : 60)) { this.wps.shift(); if (!this.wps.length) { if (last) this.state = 'down'; else if (!this.pad || AUD.combat) this.wps = this.round(); else { this.state = 'home'; this.wps = [[this.pad.x, this.pad.z]]; } } }
+      }
+      if (this.state === 'fly') this.rockets(dt);
     } else if (this.state === 'down') {
       this.v = Math.max(0, this.v - 4 * dt); this.bank *= 1 - Math.min(1, dt * 2); this.yaw = approachAngle(this.yaw, this.pad.a, dt * 0.4);
       p.x += (this.pad.x - p.x) * Math.min(1, dt); p.z += (this.pad.z - p.z) * Math.min(1, dt);
@@ -452,37 +475,61 @@ class Heli {
       if (p.y <= this.pad.y + 0.01) { this.state = 'pad'; this.timer = rand(60, 150); }
     }
     if (this.state === 'pad' || this.state === 'down') this.bank *= 1 - Math.min(1, dt * 2);
+    if (this.state === 'pad' || this.state === 'up' || this.state === 'down') this.cv = this.yaw;   // (its course with its nose: it takes off forward)
+    if (this.state !== 'fly') this.arm = null;
     this.pose(dt);
   }
-  /* a rocket run in a fight: at the nearest enemy on the ground within 600 m (from farther out: one too near is first flown away
-     from to 450 m), diving in fast and low; lined up within 240 m it fires a salvo on the next beat (BATTLE.unitsOnBeat; 1.5 s
-     without one, or at 110 m: anyway), breaks away for 3 s and goes back to its round. Every 14–28 s; none in a quiet part */
-  runStep() {
-    const p = this.pos; let R = this.run;
-    if (!R) {
-      if (!AUD.fighting || AUD.calm || this.retreat || T < this.runNext) return null;
-      this.runNext = T + 3;   // (nothing to run at: looked for again in 3 s)
-      let t = null, bd = this.side === 'enemy' ? HELI_FIGHT.reach : 0; for (const u of UNITS) { if (u.side === this.side || u.kind === 'heli' || !u.alive || !VIEW.near(u.pos, HELI_FIGHT.near)) continue; const d = Math.hypot(u.pos.x - p.x, u.pos.z - p.z); if (d < bd) { bd = d; t = u; } }   // (what is in the frame first)
-      if (!t) { bd = 600; for (const u of UNITS) { if (u.side === this.side || u.kind === 'heli' || !u.alive) continue; const d = Math.hypot(u.pos.x - p.x, u.pos.z - p.z); if (d < bd) { bd = d; t = u; } } }
+  /* in a fight, the target it goes for (HELI_ATK; every `every` s, none in a quiet part): the nearest of the other side on the ground by
+     the frame within HELI_FIGHT.reach (the enemy's), else within 600 m. Fast in to it; once near, slow round it (slowStep) for `hold` s */
+  fightStep() {
+    const p = this.pos, H = HELI_ATK; let a = this.atk;
+    if (!a) {
+      if (!AUD.fighting || AUD.calm || this.retreat || T < this.atkNext) return null;
+      this.atkNext = T + 3;   // (nothing to go for: looked for again in 3 s)
+      const en = this.side === 'enemy', reach = u => !en || (_hrU.pos.set(u.pos.x, groundH(u.pos.x, u.pos.z) + H.low, u.pos.z), BATTLE.reach(_hrU));   // (the enemy's only where the sensor can bring it under the reticle as it circles there, as its rounds)
+      let t = null, bd = en ? HELI_FIGHT.reach : 0; for (const u of UNITS) { if (u.side === this.side || u.kind === 'heli' || !u.alive || !VIEW.near(u.pos, HELI_FIGHT.near)) continue; const d = Math.hypot(u.pos.x - p.x, u.pos.z - p.z); if (d < bd && reach(u)) { bd = d; t = u; } }   // (what is in the frame first)
+      if (!t) { bd = 600; for (const u of UNITS) { if (u.side === this.side || u.kind === 'heli' || !u.alive) continue; const d = Math.hypot(u.pos.x - p.x, u.pos.z - p.z); if (d < bd && reach(u)) { bd = d; t = u; } } }
       if (!t) return null;
-      R = this.run = { tgt: t, ph: 'in', armed: 0, until: 0, sx: 0, sz: 0 };
-      if (bd < 320) { const k = 450 / Math.max(bd, 1); R.ph = 'setup'; R.sx = clamp(t.pos.x + (p.x - t.pos.x) * k, -900, 900); R.sz = clamp(t.pos.z + (p.z - t.pos.z) * k, -900, 900); }
+      a = this.atk = { tgt: t, slow: false, until: 0, r: rand(...H.ring), dir: Math.random() < 0.5 ? 1 : -1, v: rand(...H.slow) }; BATTLE.stat.heliAtk = (BATTLE.stat.heliAtk || 0) + 1;
     }
-    const o = this._r || (this._r = [0, 0, 0, 0]), t = R.tgt;
-    if (this.retreat || !AUD.fighting || (!t.alive && R.ph !== 'out')) { this.endRun(); return null; }
-    if (R.ph === 'setup') { if (Math.hypot(R.sx - p.x, R.sz - p.z) < 60) R.ph = 'in'; o[0] = R.sx; o[1] = R.sz; o[2] = 36; o[3] = 60; return o; }
-    if (R.ph === 'in') {
-      const dx = t.pos.x - p.x, dz = t.pos.z - p.z, d = Math.hypot(dx, dz), lined = Math.abs(angleWrap(Math.atan2(dz, dx) - this.yaw)) < 0.25;
-      if (!R.armed && lined && d < 240) R.armed = T;                     // (lined up: the salvo goes on the next beat)
-      if (R.armed && (d < 110 || T - R.armed > 1.5)) { BATTLE.stat.salvoLate++; BATTLE.salvo(this, t); }
-      else if (!R.armed && d < 90) { this.endRun(); return null; }       // (overshot without lining up)
-      o[0] = t.pos.x; o[1] = t.pos.z; o[2] = 55; o[3] = 32; return o;
-    }
-    if (T > R.until) { this.endRun(); return null; }
-    o[0] = p.x + Math.cos(this.yaw) * 300; o[1] = p.z + Math.sin(this.yaw) * 300; o[2] = 50; o[3] = 60; return o;   // (breaking away and climbing)
+    const t = a.tgt, o = this._r || (this._r = [0, 0, 0, 0, false]);
+    if (a.slow && this.side === 'enemy' && !BATTLE.reach(this)) a.out = (a.out || 0) + 1; else a.out = 0;   // (circled out of what the sensor can bring under the reticle: off it, as its rounds keep within)
+    if (this.retreat || !AUD.fighting || !t.alive || (a.slow && T > a.until) || a.out > 20) { this.endAtk(); return null; }
+    if (!a.slow && Math.hypot(t.pos.x - p.x, t.pos.z - p.z) < a.r + H.brake) { a.slow = true; a.until = T + rand(...H.hold); }
+    o[0] = t.pos.x; o[1] = t.pos.z; o[2] = a.slow ? a.v : H.fast; o[3] = a.slow ? H.low : H.low + 10; o[4] = a.slow; return o;
   }
-  endRun() { this.run = null; this.runNext = T + rand(14, 28); this.wps = this.round(); }
-  die() { delist(this); untrack(this.obj); this.state = 'crash'; this.dir = this.yaw; this.run = null; }
+  /* slow round its target: the course along the ring (`dir` the way round, in or out as it is off `r`), the nose onto the target */
+  slowStep(dt, R) {
+    const p = this.pos, a = this.atk, dx = R[0] - p.x, dz = R[1] - p.z, d = Math.hypot(dx, dz) || 1, to = Math.atan2(dz, dx);
+    const course = to + a.dir * Math.PI / 2 * (1 - clamp((d - a.r) / a.r * 1.5, -0.8, 0.8));   // (too far: in towards it; too near: out)
+    this.cv = approachAngle(this.cv, course, HELI_ATK.course * dt);
+    const turn = clamp(angleWrap(to - this.yaw), -HELI_ATK.yawRate * dt, HELI_ATK.yawRate * dt); this.yaw += turn;
+    this.v += clamp(R[2] - this.v, -8 * dt, 3 * dt);
+    this.bankTo(turn / dt, dt);
+    p.x = clamp(p.x + Math.cos(this.cv) * this.v * dt, -950, 950); p.z = clamp(p.z + Math.sin(this.cv) * this.v * dt, -950, 950);   // (on the map, as its rounds)
+    p.y += clamp(this.agl(p.x, p.z) + R[3] - p.y, -6 * dt, 5 * dt);
+    BATTLE.stat.heliSlow = (BATTLE.stat.heliSlow || 0) + dt;
+  }
+  /* banked into its turn and into a slide sideways (the course off the nose) */
+  bankTo(rate, dt) { this.bank += (clamp(rate * 1.4 + Math.sin(this.cv - this.yaw) * this.v * 0.04, -0.45, 0.45) - this.bank) * Math.min(1, dt * 2); }
+  endAtk() { this.atk = null; this.atkNext = T + rand(...HELI_ATK.every); this.wps = this.round(); }
+  /* u within its rockets' reach; and still lined up on it (alive, dead ahead, in reach: BATTLE.salvo checks again) */
+  inRk(u) { const d = Math.hypot(u.pos.x - this.pos.x, u.pos.z - this.pos.z); return d > HELI_ATK.rk[0] && d < HELI_ATK.rk[1]; }
+  lined(u) { return u.alive && this.state === 'fly' && this.off(u) <= HELI_ATK.line * 1.5 && this.inRk(u); }
+  /* the angle off its nose to u (rad) */
+  off(u) { return Math.abs(angleWrap(Math.atan2(u.pos.z - this.pos.z, u.pos.x - this.pos.x) - this.yaw)); }
+  /* its rockets: only at what is dead ahead (`line`) in reach (`rk`), its target first, else any of the other side on the ground; lined
+     up, the salvo goes on the next beat (BATTLE.unitsOnBeat; 1.5 s without one: anyway), unless it has turned off it meanwhile */
+  rockets(dt) {
+    const H = HELI_ATK, A = this.arm, inR = u => this.inRk(u);
+    if (!AUD.fighting || AUD.calm || this.retreat || T < this.rkT) { this.arm = null; return; }
+    if (A) { if (!this.lined(A.tgt)) this.arm = null; else if (T - A.t > 1.5 && BATTLE.salvo(this, A.tgt)) BATTLE.stat.salvoLate++; return; }
+    if ((this.rkLook -= dt) > 0) return; this.rkLook = 0.2;   // (looked for 5 times a second)
+    const a = this.atk; let t = a && a.tgt.alive && this.off(a.tgt) < H.line && inR(a.tgt) ? a.tgt : null;
+    if (!t) { let bo = H.line; for (const u of UNITS) { if (u.side === this.side || u.kind === 'heli' || !u.alive || !inR(u)) continue; const o = this.off(u); if (o < bo) { bo = o; t = u; } } }
+    if (t) this.arm = { tgt: t, t: T };
+  }
+  die() { delist(this); untrack(this.obj); this.state = 'crash'; this.dir = this.cv; this.atk = this.arm = null; }
   remove() { delist(this); untrack(this.obj); scene.remove(this.obj); this.out = true; }
   /* a round: 3–4 districts or outposts, not too near the edge; in a fight: round the enemies' base */
   /* a round of waypoints: in a fight the enemy's fly two rounds in three over where the camera looks (HELI_FIGHT: through the frame;
@@ -503,7 +550,7 @@ class Heli {
   }
   pose(dt) {
     for (const r of this.rotors) { if (r.name === 'trotor') r.rotation.z += this.spin * 2.2 * dt; else r.rotation.y += (r.name === 'rotor2' ? -1 : 1) * this.spin * dt; }
-    this.obj.position.copy(this.pos); this.obj.rotation.set(this.bank * 0.9, -this.yaw, -this.v / 30 * 0.12, 'YZX');
+    this.obj.position.copy(this.pos); this.obj.rotation.set(this.bank * 0.9, -this.yaw, -this.v * Math.cos(this.cv - this.yaw) / 30 * 0.12, 'YZX');   // (nose down as it flies forward: none sliding sideways)
   }
 }
 
