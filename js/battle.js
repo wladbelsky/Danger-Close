@@ -61,7 +61,7 @@ const GUN = {
   b40:  { n: 4, step: 0.25,  spread: 3,   dmg: 2.2,  r: 4,   fx: 0.9,  tw: 0.3,  tl: 8, gap: 0.3 },
   h105: { n: 1, step: 0,     spread: 1.5, dmg: 17,   r: 10,  fx: 3,    tw: 0.7,  tl: 9, gap: 0.5 },
   hf:   { n: 1, step: 0,     spread: 0.5, dmg: 18,   r: 5,   fx: 2.2,  missile: 1.5, gap: 0.5 },
-  apk:  { n: 4, step: 0.12,  spread: 6,   dmg: 5,    r: 5,   fx: 1.3,  missile: 1.0, gap: 0.5 },
+  apk:  { n: 4, step: 0.25,  spread: 6,   dmg: 5,    r: 5,   fx: 1.3,  missile: 1.0, gap: 0.5 },
   gbu:  { n: 1, step: 0,     spread: 1,   dmg: 22,   r: 12,  fx: 4.6,  missile: 2.2, gap: 0.5, bomb: true },
   aim:  { n: 1, step: 0,     spread: 0,   dmg: 8,    r: 7,   fx: 1.6,  missile: 1.3, gap: 0.5, air: true },
   las:  { dps: 7, gap: 0 },
