@@ -76,7 +76,7 @@ const HUD = {
     const e = Math.round((44000 + CAM_TGT.x + MAP_HALF) / 10) % 10000, n = Math.round((68000 - CAM_TGT.z + MAP_HALF) / 10) % 10000;
     this.text(`GRID 38T LN ${String(e).padStart(4, '0')} ${String(n).padStart(4, '0')}`, x, 122 * u, 14, 'right');
     this.text(`ELEV ${Math.round(CAM_TGT.y * 3.28 + 1460)} FT`, x, 144 * u, 14, 'right');
-    if (CFG.cost) { const now = RT(), dt = clamp(now - (this.spentRT || now), 0, 0.5); this.spentRT = now; this.text(`MISSION COST ${fmtMoney(this.spentAt(dt))}`, x, 174 * u, 16, 'right'); }   // (the money the gunship has fired off this mission: WEAPONS cost; BATTLE.spent, back to 0 after COST_RESET s of silence)
+    if (CFG.cost) { const now = RT(), dt = clamp(now - (this.spentRT || now), 0, 0.5); this.spentRT = now; this.text(`MISSION COST ${fmtMoney(this.spentAt(dt))}`, x, 166 * u, 14, 'right'); }   // (the money the gunship has fired off this mission: WEAPONS cost; BATTLE.spent, back to 0 after COST_RESET s of silence)
     else { this.spentShown = BATTLE.spent; this.spentRT = 0; }
     // the callsign and what the gunship is doing at the top left (under the mode buttons)
     this.text(CFG.callsign, 30 * u, 92 * u, 18);
