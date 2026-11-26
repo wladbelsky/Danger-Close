@@ -27,6 +27,11 @@ millisecond a frame and the picture a few hundred draw calls. To go lighter: low
 Engine (30 is plenty), set **Quality** to Medium or Low, turn **Shadows** off. Wallpaper Engine pauses it under
 fullscreen apps by default.
 
+To measure it on your machine: in Wallpaper Engine set **Settings → General → CEF devtools port** (e.g. 8080), open
+`http://localhost:8080` in Chrome, pick the wallpaper and run `perfReport(60)` in its console — after a minute it logs the
+frame rate and frame times, the CPU time split into the simulation and the drawing, draw calls and triangles, units, soldiers,
+lamps and memory. Run it once in silence and once in a fight with music.
+
 ## The sensor
 
 - **Four vision modes**: TV (a low-light daylight camera), thermal white-hot and black-hot, night vision. Thermal shows

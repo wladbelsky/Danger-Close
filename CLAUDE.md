@@ -372,6 +372,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   - an ally APC letting its infantry out counts the allies on foot only once it has a reason to (was a filtered copy of every unit,
     every step).
   Measured: the same HUD before and after (`test-results/hud-text-before-after.png`, the words a sub-pixel off at most).
+- `perfReport(sec)` (from CarrierWallpaper) in the console, for measuring on a real GPU in Wallpaper Engine: see "Running & testing".
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -443,7 +444,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=108`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=109`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
@@ -467,4 +468,10 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 - Tests: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 [file / -g pattern]` (Playwright in Docker, SwiftShader; `$env:SEED = N`). CI runs the same image on every push / PR (`.github/workflows/tests.yml`).
 - Review sheets: `powershell -ExecutionPolicy Bypass -File tools/test.ps1 -c tools/preview.config.js` → `test-results/*.png`, `terrain-metrics.json`. URL params also `?seed=N`, `?x=&z=` (view point), `?az=` (fixed camera azimuth, deg), `?spot=town` (start district by name), `?transit=N` (minutes between transits, 0 = never), `?weapons=all` or `g25,h105`, `?hud=0`, `?demo=124` (a synthetic beat: the fight in a browser; `&pause=0` without silent bars), `?auto=0` (no auto-switching), `?enemies=N` (%), `?weather=rain` (clear / rain / snow / fog / auto), `?clouds=N` (%), `?aa=0`.
 - Tests feed music with `wp.sim(sec, { audio: true })` (`pauses: true`: the demo's quiet part and silent bars; `spec: rt => array`: any spectrum, in-page only). `tests/music.spec.js`: units on the beat, pace vs damage, drops, AA on the beat, the tempo and the guns' rate. `tests/soak.spec.js`: five fights and silences with every weapon, weather, day and night and a new season; nothing may pile up.
+- **Performance on a real GPU** (Wallpaper Engine: Settings → General → CEF devtools port, e.g. 8080; open `http://localhost:8080`
+  in Chrome → the wallpaper's console): `perfReport(60)` (from CarrierWallpaper, `PERF` in main.js) logs and returns the frame rate
+  and frame times (avg / p95 / max, `hitches` over two vsyncs), CPU per frame split into `simMs` (the steps) and `drawMs`
+  (`renderFrame`), the whole frame's draw calls and triangles (`renderer.info.autoReset` off while a report runs: the shadow
+  pass and the post counted too), units, soldiers (drawn: `INF_NEAR`), lamps, programs / geometries / textures, the JS heap.
+  WebGL has no GPU time: `frameMs` well over `cpuMs` is waiting (vsync, the FPS limit or the GPU). Test: tests/perf.spec.js.
 - Workshop preview and README screenshots: `tools/test.ps1 -c tools/preview.config.js -g "gif|screens"` → `test-results/gif-*.gif`, `shot-*.jpg`; copy the chosen ones over `preview.gif` / `screenshots/`. `?cfg` shows the settings drawer under the tests.

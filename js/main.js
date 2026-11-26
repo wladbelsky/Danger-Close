@@ -269,8 +269,47 @@ function frame(ms) {
   const el = clamp((ms - lastMs) / 1000, 0, 0.25); lastMs = ms;
   const n = Math.max(1, Math.ceil(el / 0.05)), dt = el / n;
   if (DEMO.on && !FILE_AUDIO.playing) onAudio(demoSpectrum(RT(), DEMO.bpm, DEMO.pauses));   // (a file playing in the settings panel feeds onAudio itself)
+  const t0 = PERF.recs.length ? performance.now() : 0; if (t0) { renderer.info.autoReset = false; renderer.info.reset(); }   // (measured: the whole frame's draw calls, the shadow pass's and the post's too)
   for (let i = 0; i < n * TIME_SCALE; i++) step(dt);
+  const t1 = t0 ? performance.now() : 0;
   renderFrame();
+  if (t0) PERF.sample(ms, t1 - t0, performance.now() - t1);
+}
+/* ---- performance report on a real GPU (from CarrierWallpaper). In Wallpaper Engine: Settings → General → "CEF devtools port"
+   (e.g. 8080), open http://localhost:8080 in Chrome, pick the wallpaper, then in its console:
+     perfReport(60)   — measures 60 s and logs a summary (frame times; CPU: the simulation's steps and the frame's drawing;
+                        draw calls and triangles of the whole frame; units, soldiers, lamps; memory)
+   WebGL gives no GPU time: frameMs well over cpuMs is time spent waiting (vsync, the FPS limit or the GPU). ---- */
+const PERF = { recs: [],
+  sample(ms, sim, draw) {   // into every report running (each perfReport() call has its own record)
+    const I = renderer.info.render;
+    for (const r of this.recs) { if (r.last) r.frame.push(ms - r.last); r.last = ms; r.sim.push(sim); r.draw.push(draw); r.cpu.push(sim + draw); r.calls.push(I.calls); r.tris.push(I.triangles); r.lamps.push(LAMPS.n); }
+  }
+};
+function perfReport(sec = 30) {
+  const r = { frame: [], cpu: [], sim: [], draw: [], calls: [], tris: [], lamps: [], last: 0, T0: T, t0: performance.now() }; PERF.recs.push(r);
+  console.log(`perfReport: measuring ${sec} s…`);
+  return new Promise(res => setTimeout(() => {
+    PERF.recs.splice(PERF.recs.indexOf(r), 1); if (!PERF.recs.length) renderer.info.autoReset = true;
+    const avg = a => a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(2) : null;
+    const p95 = a => a.length ? +[...a].sort((x, y) => x - y)[Math.floor(a.length * 0.95)].toFixed(2) : null;
+    const max = a => a.length ? +Math.max(...a).toFixed(1) : null, M = performance.memory, mem = renderer.info.memory;
+    const out = {
+      backend: 'WebGL 2', size: `${renderer.domElement.width}x${renderer.domElement.height}`, pixelRatio: +renderer.getPixelRatio().toFixed(2), fpsLimit,
+      quality: CFG.quality, shadows: CFG.shadows, vision: SENSOR.mode, night: +ENV.night.toFixed(2), fight: AUD.fighting, weather: WEATHER.kind, weapon: ARMS.cur,
+      units: UNITS.length, soldiers: INF.list.length, soldiersDrawn: INF.body ? INF.body.count : 0, frames: r.cpu.length,
+      // simulated seconds per real second: 1 at any frame rate (below 1 only when frames take over 0.25 s, or paused)
+      simRate: +((T - r.T0) / Math.max(1e-3, (performance.now() - r.t0) / 1000)).toFixed(3), fps: r.frame.length ? +(1000 / avg(r.frame)).toFixed(1) : 0,
+      frameMs: avg(r.frame), frameMsP95: p95(r.frame), frameMsMax: max(r.frame),
+      hitches: r.frame.filter(t => t > 33.4).length,   // frames longer than two vsyncs: visible stutter
+      cpuMs: avg(r.cpu), cpuMsP95: p95(r.cpu), cpuMsMax: max(r.cpu),
+      simMs: avg(r.sim), simMsP95: p95(r.sim), drawMs: avg(r.draw), drawMsP95: p95(r.draw),   // (the steps: the fight, the units, the effects; drawing: the buffers, the passes' calls, the HUD)
+      drawCalls: avg(r.calls), drawCallsMax: r.calls.length ? Math.max(...r.calls) : 0, triangles: avg(r.tris), lamps: avg(r.lamps),
+      programs: mem.programs != null ? mem.programs : renderer.info.programs.length, geometries: mem.geometries, textures: mem.textures,
+      jsHeapMB: M ? +(M.usedJSHeapSize / 1048576).toFixed(1) : null
+    };
+    console.log('perfReport ' + JSON.stringify(out)); res(out);
+  }, sec * 1000));
 }
 function renderFrame() { frameFx(); INF.update(); if (CFG.shadows) fitShadow(); SENSOR.render(); HUD.draw(); }
 /* the effects' buffers from the state the steps left, once a frame (a slow frame runs several steps: built and sorted once, not each) */
