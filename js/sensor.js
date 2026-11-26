@@ -85,8 +85,10 @@ const SENSOR = {
     SU.uThermal.value = mode === 'wh' || mode === 'bh' ? 1 : 0;
     this.env();
   },
-  /* the default from the settings: 'auto' = TV by day, white-hot at night */
-  initial() { return CFG.vision === 'auto' ? (ENV.night > 0.5 ? 'wh' : 'tv') : CFG.vision; },
+  /* the mode the settings' auto wants now (null: not auto): 'auto' = TV by day, white-hot at night; 'autonv' = TV by day, night vision at night */
+  auto() { const v = CFG.vision; return v === 'auto' || v === 'autonv' ? (ENV.night > 0.5 ? (v === 'auto' ? 'wh' : 'nv') : 'tv') : null; },
+  /* the default from the settings */
+  initial() { return this.auto() || CFG.vision; },
   /* what depends on the mode and the time of day: gain, ambient heat, the fog's colour (or heat) */
   env() {
     const thermal = SU.uThermal.value > 0.5;

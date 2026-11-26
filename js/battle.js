@@ -22,14 +22,16 @@ const TRACER_GLOW = { unit: 6, gun: 3 };
 const UNIT_BEAT_MAX = 24;   // unit shots on one beat at most (a volley)
 /* ---- splash: the blast of a bomb, a rocket or a shell hurts every enemy round it, not only the kinds the weapon is aimed at (the
    table says what a weapon is fired at, not what its blast spares): the gunship's blast radii, metres ---- */
-const SPLASH = { h105: 10, hf: 8, apk: 6, gbu: 14 };
+const SPLASH = { h105: 10, hf: 8, apk: 6, gbu: 18 };
+/* how far off a structure a hit still counts (from its 3 m pad): only what lands on it, but a bomb flattens what stands next to it too */
+const STRUCT_REACH = { gbu: 8 }, structReach = (w, r) => Math.min(r, STRUCT_REACH[w.id] || 4);
 /* a helicopter's rocket run: it dives in, and on a beat looses a salvo of unguided rockets that burst on and round the target */
 const ROCKET = { n: 8, step: 0.07, v: 220, spread: 7, r: 6, dmg: 2.2, fx: 1.1, ally: 0.6, puff: 5 };   // (puff: metres between the trail's puffs)
 /* the allies fire this many times as often (their helicopters most of all), each round doing less: their damage a second is only
    ALLY_DPS × the enemy's, so the fight looks busier without the allies clearing it before the gunship gets a word in */
 const ALLY_RATE = { inf: 1.6, car: 1.6, apc: 1.6, tank: 1.3, heli: 2.8 }, ALLY_DPS = 1.2;
-/* the enemy's fire does this much to the allies (from cover, outnumbered as they are): they live to be seen in the fight */
 const COST_RESET = 60;   // seconds of silence (no music) after which the mission cost on the HUD starts again from 0: a new mission
+/* the enemy's fire does this much to the allies (from cover, outnumbered as they are): they live to be seen in the fight */
 const ALLY_TOUGH = 0.25, ALLY_TOUGH_K = u => u.side === 'ally' ? ALLY_TOUGH : 1;
 /* the fight is where the camera looks: a column halts for a fight only within COL_ZONE m past the frame (VIEW.near), further off it
    fires on the move and drives on, and the allies' fire does an enemy vehicle out there no harm, so it comes into the frame. Nobody
@@ -60,7 +62,7 @@ const GUN = {
   h105: { n: 1, step: 0,     spread: 1.5, dmg: 17,   r: 10,  fx: 3,    tw: 0.7,  tl: 9, gap: 0.5 },
   hf:   { n: 1, step: 0,     spread: 0.5, dmg: 18,   r: 5,   fx: 2.2,  missile: 1.5, gap: 0.5 },
   apk:  { n: 4, step: 0.12,  spread: 6,   dmg: 5,    r: 5,   fx: 1.3,  missile: 1.0, gap: 0.5 },
-  gbu:  { n: 1, step: 0,     spread: 1,   dmg: 22,   r: 12,  fx: 3.6,  missile: 2.2, gap: 0.5, bomb: true },
+  gbu:  { n: 1, step: 0,     spread: 1,   dmg: 22,   r: 12,  fx: 4.6,  missile: 2.2, gap: 0.5, bomb: true },
   aim:  { n: 1, step: 0,     spread: 0,   dmg: 8,    r: 7,   fx: 1.6,  missile: 1.3, gap: 0.5, air: true },
   las:  { dps: 7, gap: 0 },
   rail: { dmg: 30, r: 5, len: 64, gap: 0.5 }
@@ -72,7 +74,7 @@ const PREF = {
   gbu: { inf: 0.8, car: 1.2, apc: 2, tank: 4, struct: 4 }, aim: { heli: 8 }, las: { inf: 1.5, car: 1.5, apc: 1.5, tank: 1.5, heli: 3 }, rail: { inf: 1.2, car: 1.5, apc: 2, tank: 3, heli: 2 }
 };
 /* armour against the light guns: a factor on their damage to a vehicle (a 25 mm burst stops a car, an APC takes a long hammering) */
-const ARMOR = { g25: { car: 0.6, apc: 0.2 }, g30: { car: 0.8, apc: 0.4 } };
+const ARMOR = { g25: { car: 0.6, apc: 0.2 }, g30: { car: 0.8, apc: 0.4 }, gbu: { struct: 3 } };   // (the GBU-39 brings a building down: the HQ's 60 at one bomb)
 /* the missiles' and the bomb's bodies in flight, a scale on a 1.7 m missile (js/effects.js: missileFx) */
 const MISSILE_S = { hf: 1, apk: 1.1, gbu: 1.2, aim: 1.6 };
 /* the auto-switching changes weapon while the one in hand reloads longer than this (or two beats), seconds */
@@ -196,7 +198,7 @@ const SCATTER = { r0: 10, k: 3, d: [8, 16], t: [2.5, 4], v: 3.6, spread: 10, res
 const COOK = { tank: 3, apc: 2, car: 1, first: 0.6, gap: 0.5, late: 1.6, toss: 0.35 };
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0), _br = new V3(), _bd2 = new V3(), _wobs = [];
 const BATTLE = {
-  base: null, spent: 0, ruins: [], cols: [], squads: [], helis: [], focus: null, chase: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, feed: 0, breaks: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0, allyFeed: 0, scatter: 0, refocus: 0, yield: 0, bypass: 0, ghost: 0, bump: 0, locks: 0, lockShots: 0, spared: 0, steer: 0, shove: 0, quiet: 0, unjam: 0, assaults: 0, deploys: 0, scatterV: 0, rescat: 0, lased: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
+  base: null, spent: 0, silent: 0, silentRT: 0, ruins: [], cols: [], squads: [], helis: [], focus: null, chase: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, feed: 0, breaks: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0, allyFeed: 0, scatter: 0, refocus: 0, yield: 0, bypass: 0, ghost: 0, bump: 0, locks: 0, lockShots: 0, spared: 0, steer: 0, shove: 0, quiet: 0, unjam: 0, assaults: 0, deploys: 0, scatterV: 0, rescat: 0, lased: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
   pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], nextFeed: 0, nextAllyFeed: 0, nextAllyCol: 0, allyFrameT: 0, feedT: 0, breakUntil: 0, armT: -99, ricoN: 0, puffN: 0, lock: null, lase: null, lockLog: [], atP: new V3(),
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
@@ -673,7 +675,7 @@ const BATTLE = {
     let s = 0; const S0 = this.lase, fly = u.kind === 'heli' && u.pos.y > groundH(u.pos.x, u.pos.z) + 8;
     for (const m of this.missiles) {
       const G = m.G, w = m.w, S = G.air ? 0 : SPLASH[w.id] || 0, r = Math.max(G.r, S); if ((!w.hitSet.has(u.kind) && !S) || fly !== !!G.air) continue;
-      const on = m.tgt === u || (m.laser && S0 && S0.m === m && S0.tgt === u), d = on ? 0 : Math.max(0, Math.hypot(u.pos.x - m.to.x, u.pos.z - m.to.z) - (u.kind === 'struct' ? 3 : u.kind === 'inf' ? 0 : 1.5)); if (d >= (u.kind === 'struct' ? Math.min(r, 4) : r)) continue;
+      const on = m.tgt === u || (m.laser && S0 && S0.m === m && S0.tgt === u), d = on ? 0 : Math.max(0, Math.hypot(u.pos.x - m.to.x, u.pos.z - m.to.z) - (u.kind === 'struct' ? 3 : u.kind === 'inf' ? 0 : 1.5)); if (d >= (u.kind === 'struct' ? structReach(w, r) : r)) continue;
       const A = ARMOR[w.id]; s += m.dmg * (1 - d / r) * (u.kind === 'inf' ? 3 : 1) * (A && A[u.kind] || 1);
     }
     return s;
@@ -842,7 +844,7 @@ const BATTLE = {
     for (let i = UNITS.length - 1; i >= 0; i--) {
       const u = UNITS[i], aimed = w.hitSet.has(u.kind); if (u.side !== 'enemy' || (!aimed && !S)) continue;
       const fly = u.kind === 'heli' && u.pos.y > groundH(u.pos.x, u.pos.z) + 8; if (fly !== !!air) continue;
-      const d = Math.max(0, Math.hypot(u.pos.x - p.x, u.pos.z - p.z, air ? u.pos.y - p.y : 0) - (u.kind === 'struct' ? 3 : u.kind === 'inf' ? 0 : 1.5)); if (d >= (u.kind === 'struct' ? Math.min(r, 4) : r)) continue;   // (a structure: only what lands on it)
+      const d = Math.max(0, Math.hypot(u.pos.x - p.x, u.pos.z - p.z, air ? u.pos.y - p.y : 0) - (u.kind === 'struct' ? 3 : u.kind === 'inf' ? 0 : 1.5)); if (d >= (u.kind === 'struct' ? structReach(w, r) : r)) continue;   // (a structure: only what lands on it, STRUCT_REACH)
       if (aimed) this.note(w, u); else this.stat.splash++;   // (the weapon's log keeps to its table: what it was fired at)
       const A = ARMOR[w.id]; hurt(u, dmg * (1 - d / r) * (u.kind === 'inf' ? 3 : 1) * (A && A[u.kind] || 1));
       const ri = aimed && u.alive && RICO[w.id] && RICO[w.id][u.kind]; if (ri && Math.random() < ri) this.ricochet(u);
@@ -1016,7 +1018,8 @@ const BATTLE = {
     if (war && !this.was) this.start();
     if (!war && this.was) this.standDown();
     this.was = war;
-    if (this.spent && RT() - AUD.lastActive > COST_RESET) this.spent = 0;   // (the mission is over: the next one's cost from 0; the HUD rolls it down, HUD.spentAt)
+    const now = RT(); this.silent = AUD.active ? now - AUD.lastActive : this.silent + clamp(now - (this.silentRT || now), 0, 0.5); this.silentRT = now;   // (silence counted only while running: a paused wallpaper, music on, is no silence)
+    if (this.spent && this.silent > COST_RESET) this.spent = 0;   // (the mission is over: the next one's cost from 0; the HUD rolls it down, HUD.spentAt)
     for (let i = this.pend.length - 1; i >= 0; i--) if (T >= this.pend[i].t) { const p = this.pend[i]; this.pend.splice(i, 1); p.fn(); }
     this.ricoN = 0; this.puffN = 0; this.flyMissiles(dt); this.flyRockets(dt); this.laser(dt); this.subBeat(); this.cookUpdate(dt);
     for (let i = UNITS.length - 1; i >= 0; i--) this.think(UNITS[i], dt, fight);

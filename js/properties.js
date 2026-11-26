@@ -32,6 +32,10 @@ const WE_PROPERTIES = {
    {
     "label": "Auto: TV by day, thermal at night",
     "value": "auto"
+   },
+   {
+    "label": "Auto: TV by day, night vision at night",
+    "value": "autonv"
    }
   ]
  },

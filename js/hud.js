@@ -126,6 +126,11 @@ const HUD = {
       case 'box': cross(26, 60); corners(22, 22, 9); break;
       case 'frame': cross(14, 40); corners(110, 70, 26); line(-110, 0, -96, 0); line(96, 0, 110, 0); line(0, -70, 0, -58); line(0, 58, 0, 70); break;
       case 'circle': g.moveTo(cx + 54 * u, cy); g.arc(cx, cy, 54 * u, 0, TAU); line(0, -10, 10, 0); line(10, 0, 0, 10); line(0, 10, -10, 0); line(-10, 0, 0, -10); cross(54, 72); break;
+      case 'bomb': {   // (a bomb's: the fall line down from the top with its release ticks onto a pipper, the blast's ring broken at the diagonals)
+        for (let k = 0; k < 4; k++) { const a = k * TAU / 4 - 0.55; g.moveTo(cx + Math.cos(a) * 64 * u, cy + Math.sin(a) * 64 * u); g.arc(cx, cy, 64 * u, a, a + 1.1); }
+        g.moveTo(cx + 8 * u, cy); g.arc(cx, cy, 8 * u, 0, TAU); line(-1.5, 0, 1.5, 0);
+        line(0, -150, 0, -12); for (const y of [-150, -118, -86]) line(-7, y, 7, y); line(-84, 0, -70, 0); line(70, 0, 84, 0); line(0, 70, 0, 84); break;
+      }
       case 'seeker': g.moveTo(cx + 80 * u, cy); g.arc(cx, cy, 80 * u, 0, TAU); g.moveTo(cx + 16 * u, cy); g.arc(cx, cy, 16 * u, 0, TAU); cross(80, 96); break;
       case 'laser': g.moveTo(cx + 30 * u, cy); g.arc(cx, cy, 30 * u, 0, TAU); g.moveTo(cx + 6 * u, cy); g.arc(cx, cy, 6 * u, 0, TAU); cross(30, 120); break;
       case 'rail': line(-140, 0, -16, 0); line(16, 0, 140, 0); for (const s of [-1, 1]) for (const d of [40, 80, 120]) line(s * d, -6, s * d, 6); line(0, -24, 0, -10); line(0, 10, 0, 24); break;

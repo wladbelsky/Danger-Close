@@ -32,7 +32,7 @@ fullscreen apps by default.
 - **Four vision modes**: TV (a low-light daylight camera), thermal white-hot and black-hot, night vision. Thermal shows
   real heat: engines and gun barrels hot, wrecks cooling in stages, the ground warmer than the air at night, water the
   other way round, smoke cold. Click a mode on the HUD; the **Vision mode at start** property sets the default — *Auto*
-  out of the box: TV by day, thermal at night.
+  out of the box: TV by day, thermal at night; or *Auto* with night vision at night.
 - **The HUD**: mode, callsign, compass, altitude ladder, the PC clock, a reticle per weapon, corner brackets on what it
   tracks (allies blue, enemies white), the weapon selector with cosmetic ammunition and reloads. At the top right, the
   mission cost: the money the gunship has fired off, each weapon at its own price, counting up to each new sum, and back
@@ -70,7 +70,8 @@ fullscreen apps by default.
 | Railgun | + | + | + | + | + | strong, through a column |
 
   The light guns cut down infantry and cars but only wear down armour: an APC takes a long hammering from the 25 mm (the
-  rounds glance off in sparks), a tank shrugs it off. The guns open up as a target comes onto the reticle, their rounds
+  rounds glance off in sparks), a tank shrugs it off. A GBU-39 (a reticle of its own, with the bomb's fall line) brings a
+  base building down at one bomb, and what stands next to it. The guns open up as a target comes onto the reticle, their rounds
   walking onto it, and now and then a shot lands wide.
   The first three are on by default; each is a property. Automatic switching picks one for the targets and the music,
   and while the one in hand reloads it fires another;

@@ -54,4 +54,7 @@ test('the auto vision follows day and night until a mode is clicked; windows lig
   await wp.page.click('#modes button[data-m=nv]');
   const day = await wp.run(() => { CFG.fixedHour = 12; updateEnvironment(); __t.render(); return { mode: SENSOR.mode, win: WIN_MAT.emissive.r, progs: renderer.info.programs.length }; });
   expect(day.mode).toBe('nv'); expect(day.win).toBe(0); expect(day.progs).toBe(p0);
+  // the other auto: night vision at night
+  const nv = await wp.run(() => { SENSOR.manual = false; CFG.vision = 'autonv'; SENSOR.set(SENSOR.initial()); const a = SENSOR.mode; CFG.fixedHour = 0; updateEnvironment(); __t.render(); const n = SENSOR.mode; CFG.fixedHour = 12; updateEnvironment(); __t.render(); return { a, n, d: SENSOR.mode, progs: renderer.info.programs.length }; });
+  expect(nv).toEqual({ a: 'tv', n: 'nv', d: 'tv', progs: p0 });
 });

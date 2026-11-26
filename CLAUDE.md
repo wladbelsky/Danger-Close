@@ -274,7 +274,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 - The money spent rolls up to a new sum over a couple of seconds instead of jumping (`HUD.spentAt(dt)`: eased at 2.3 a second
   in real time, 99 % there in 2 s; `spentShown`).
 - The money spent is the **MISSION COST** now (the HUD's label; the property **Mission cost on the HUD**, still `cost`), and a
-  mission ends with the music: after `COST_RESET` 60 s of silence (`RT() - AUD.lastActive`, real time) `BATTLE.spent` goes
+  mission ends with the music: after `COST_RESET` 60 s of silence (`BATTLE.silent`: real time since `AUD.lastActive`, counted only while the wallpaper runs, so a pause in WE with the music on is no silence) `BATTLE.spent` goes
   back to 0 (`BATTLE.update`) and the HUD rolls down to it as it rolls up, the last 1 % of the drop at once (`spentDrop`): 0 in 2 s. The line is like those above it (14, 22u under ELEV; was 16, 30u under).
 - More of the allies in the frame, so that it shows what the enemy fires at. Measured (6 maps x 4 min of fighting): an ally in
   the frame 33 % -> 46 % of the time, 1.3 -> 2.4 of them on average; an enemy's shot at one in the frame 10 % -> 19 % (shooter and
@@ -317,11 +317,18 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 - A vehicle inside the hull of the one it goes round is pushed out of it (`shove`, to the side it goes round by, `byp.d`; dropping
   the bypass instead set the two against each other: 4–5x the bypasses, the jitter test over), no longer held there now that its
   moves aside are checked (seed 3's traffic test: 70 overlaps in sight, now 3–5).
+- A second auto vision: **Auto: TV by day, night vision at night** (`CFG.vision` `autonv`, `?mode=autonv`). `SENSOR.auto()` is the
+  mode either auto wants now (null when not auto); `initial()` and the live switch in the main loop (through `SENSOR.set`) use it.
+- The GBU-39 has a reticle of its own (`bomb`: the fall line down from the top with three release ticks onto a pipper, the blast's
+  ring broken at the diagonals; it had the Hellfire's and the APKWS's `circle`), and it brings a building down: x3 on a structure
+  (`ARMOR.gbu.struct`: 66, the HQ's 60 at one bomb, was 3), a structure within 8 m of its pad flattened too (`STRUCT_REACH`,
+  `structReach`; the rest still only what lands on it, 4 m), its blast 18 m on the ground (`SPLASH`, was 14) and bigger (`fx`
+  4.6, was 3.6). Test: battle.spec.js.
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
-- **Vision**: TV, WH, BH, NVG; a clickable switch on the HUD that is NOT persisted; a property for the default (auto = TV by day, WH at night — the default / tv / wh / bh /
-  nv).
+- **Vision**: TV, WH, BH, NVG; a clickable switch on the HUD that is NOT persisted; a property for the default (auto = TV by day, WH at night — the default / autonv = TV by
+  day, NVG at night / tv / wh / bh / nv).
 - **HUD**: mode label, callsign (property, default `GHOSTRIDER 31`), compass, altitude ladder, PC clock, the money spent (optional), crosshair per weapon;
   at the bottom a clickable selector of the enabled weapons with cosmetic ammo / reload, kept `CFG.hudBottom` (48 px) above the bottom edge for the Windows taskbar. Screen-fixed corner brackets: allies blue,
   enemies white.
@@ -387,7 +394,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=99`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=102`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
@@ -399,7 +406,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 - Never create geometry per spawn; pools and `disposeTree`. Anything in `mergeStatic` that moves must be listed as dynamic. Spawn by time accumulators.
 - Map generation uses its own `mulberry32`, never `Math.random`.
 - At start every program is compiled with `renderer.compileAsync` under the splash (a 20 s deadline), then one whole frame is drawn with nothing hidden and nothing culled (`finishInit`): compiling does not make the shadow pass's programs, and hidden effect pools would compile on first use. The splash hides itself after 45 s whatever happens (CSS).
-- Vision `auto` follows day and night live (TV / white-hot) until a mode is clicked (`SENSOR.manual`). Windows (`WIN_MAT`) are lit after dusk.
+- Vision `auto` / `autonv` follows day and night live (TV / white-hot or night vision) until a mode is clicked (`SENSOR.manual`). Windows (`WIN_MAT`) are lit after dusk.
 
 ## Notes for later
 - **Local files in Wallpaper Engine**: WE provides `window.wallpaperRequestRegisteredFile` to read a user's local file (e.g. a file

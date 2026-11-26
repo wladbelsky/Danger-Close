@@ -233,7 +233,7 @@ function updateEnvironment() {
   ENV.night = 1 - smoothstep(-10, 1, sp.elev);
   ENV.day = smoothstep(-6, 10, sp.elev);
   WIN_MAT.emissive.setHex(0xffc27a).multiplyScalar(GAMMA(0.8 * (1 - smoothstep(-3, 5, sp.elev))));   // lit windows after dusk
-  if (CFG.vision === 'auto' && !SENSOR.manual && ready) { const m = ENV.night > 0.5 ? 'wh' : 'tv'; if (m !== SENSOR.mode) { SENSOR.mode = m; SENSOR.post.uniforms.uMode.value = SENSOR_INDEX[m]; SU.uThermal.value = m === 'wh' ? 1 : 0; HUD.markModes(); } }   // (auto: TV by day, white-hot at night, until a mode is clicked)
+  const am = !SENSOR.manual && ready && SENSOR.auto(); if (am && am !== SENSOR.mode) { SENSOR.set(am); HUD.markModes(); }   // (auto: TV by day, white-hot or night vision at night, until a mode is clicked)
   WEATHER.light();
   const lum = c => c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722; SU.uLit.value = clamp((sunLight.intensity * lum(sunLight.color) * 0.7 + hemi.intensity * lum(hemi.color)) / Math.PI / 1.1, 0.01, 1.1);   // (1 at noon)
   WATER_HEAT.value = lerp(0.12, -0.1, ENV.day);   // water: cooler than the ground by day, warmer at night

@@ -638,3 +638,22 @@ test('a missile on its way to a target it will kill: no other weapon wasted on i
   expect(r.other, 'the 105 mm fired in the fight').toBeGreaterThan(5); expect(r.gbu, 'and the GBU-39').toBeGreaterThan(0);
   expect(r.wasted, 'never at what a missile in flight will kill').toBe(0);
 });
+
+test('a GBU-39 brings a base building down at one bomb, and what stands next to it; a 105 mm shell there does not', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=gbu,h105&auto=0&transit=0' });
+  await wp.sim(8, { audio: true });
+  const r = await wp.run(() => {
+    const S = () => UNITS.filter(u => u.kind === 'struct' && u.alive), hq = S().find(u => u.type === 'hq'), out = { base: !!hq };
+    if (!hq) return out;
+    BATTLE.strike(hq.pos.clone(), GUN.gbu.r, GUN.gbu.dmg, WEAPON.gbu, false); out.hq = hq.alive;
+    const off = (u, d) => { const p = u.pos.clone(); p.x += d; return p; };
+    const [a, b] = S().filter(u => u.type === 'tent' || u.type === 'bunker');
+    BATTLE.strike(off(a, 9), GUN.h105.r, GUN.h105.dmg, WEAPON.h105, false); out.shell = a.alive;
+    BATTLE.strike(off(b, 9), GUN.gbu.r, GUN.gbu.dmg, WEAPON.gbu, false); out.bomb = b.alive;
+    return out;
+  });
+  expect(r.base, 'a base').toBe(true);
+  expect(r.hq, 'the HQ (60) at one bomb on it').toBe(false);
+  expect(r.shell, 'a 105 mm shell 9 m off a building: only what lands on it').toBe(true);
+  expect(r.bomb, 'a bomb 9 m off: down').toBe(false);
+});
