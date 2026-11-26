@@ -153,7 +153,7 @@ function finishInit() {
     const s = document.getElementById('splash'); if (s) { s.classList.add('off'); setTimeout(() => s.remove(), 700); }
     requestAnimationFrame(frame);
   };
-  Promise.race([Promise.all([renderer.compileAsync(scene, camera), GUNS.warm()]), deadline]).then(go, go);
+  Promise.race([Promise.all([renderer.compileAsync(scene, camera), GUNS.warm(), renderer.compileAsync(LAMPS.mapScene, LAMPS.mapCam)]), deadline]).then(go, go);   // (the lamps' map too: its beams were first made at the first nightfall)
 }
 
 /* ---- camera: perspective with a narrow lens from far away; ~95 m of screen height at 100 % zoom ---- */
@@ -272,10 +272,17 @@ function frame(ms) {
   for (let i = 0; i < n * TIME_SCALE; i++) step(dt);
   renderFrame();
 }
-function renderFrame() { INF.update(); if (CFG.shadows) fitShadow(); SENSOR.render(); HUD.draw(); }
+function renderFrame() { frameFx(); INF.update(); if (CFG.shadows) fitShadow(); SENSOR.render(); HUD.draw(); }
+/* the effects' buffers from the state the steps left, once a frame (a slow frame runs several steps: built and sorted once, not each) */
+function frameFx() {
+  for (const f of FX_FLUSH || (FX_FLUSH = [FX.flash, FX.fire, FX.smoke, FX.dust, FX.puff, FX.flare, WEATHER.fx])) f.flush(camera);   // (the sprite pools)
+  for (const f of GUNS_FLUSH || (GUNS_FLUSH = [GUNS.flash, GUNS.plasma, GUNS.gas])) f.flush(GUNS.cam);   // (the guns' own: their scene, their lens)
+  FX.bodies.flush(); FX.plumes.flush(); LAMPS.build();
+}
+let FX_FLUSH = null, GUNS_FLUSH = null;
 const TIME_SCALE = Math.max(1, Math.round(parseFloat(QS.get('ts') || '1')));
 function step(dt) {
-  T += dt;
+  T += dt; FX.bodies.begin(); FX.plumes.begin();
   ALLIES.update(dt);
   BATTLE.update(dt);
   GUNSHIP.update(dt);
@@ -288,7 +295,7 @@ function step(dt) {
   FX.puff.update(dt, null, camera);
   FX.scorch.update(dt);
   FX.flare.update(dt);
-  WEATHER.update(dt); AA.update(dt); FX.bodies.flush(); FX.plumes.flush(); LAMPS.update(dt); GUNS.update(dt);
+  WEATHER.update(dt); AA.update(dt); LAMPS.update(dt); GUNS.update(dt);
   envTimer -= dt; if (envTimer <= 0) { envTimer = 2; updateEnvironment(); }
 }
 

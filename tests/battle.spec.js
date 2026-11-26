@@ -663,7 +663,7 @@ test('the GBU-39\'s reticle is drawn in the world: its fall line\'s ticks spread
   const r = await wp.run(() => {
     // (the sensor's point moved along the aircraft's bearing: under it, the line of sight steep; away from it, further and flatter)
     ARMS.select('gbu'); const c = CAM_CTR.clone(), ax = camera.position.x - c.x, az = camera.position.z - c.z, an = Math.hypot(ax, az);
-    const at = (k) => { CAM_TGT.set(c.x + ax / an * k, 0, c.z + az / an * k); CAM_TGT.y = groundH(CAM_TGT.x, CAM_TGT.z); updateCamera(); HUD.draw(); return { d: camera.position.distanceTo(CAM_TGT), ...HUD.bombDraw, u: HUD.u }; };
+    const at = (k) => { CAM_TGT.set(c.x + ax / an * k, 0, c.z + az / an * k); CAM_TGT.y = groundH(CAM_TGT.x, CAM_TGT.z); updateCamera(); HUD.draw(); return { d: camera.position.distanceTo(CAM_TGT), ...HUD.bombDraw, ticks: [...HUD.bombDraw.ticks], u: HUD.u }; };   // (its ticks: a copy, HUD keeps the array)
     const near = at(150), far = at(-150);
     ARMS.select('apk'); let ok = true; try { HUD.draw(); } catch (e) { ok = false; }
     // a salvo: the pod's rockets go off its four marks one by one as they leave, then it fills up again as it reloads
@@ -727,5 +727,25 @@ test('a CBU-97 opens over a column: its submunitions fire their skeets one a six
 test('the CBU-97\'s reticle: a ring on the ground where each submunition comes down', async ({ wp }) => {
   await wp.boot({ query: '?hour=12&seed=11&weapons=cbu&auto=0&transit=0' });
   const d = await wp.run(() => { ARMS.select('cbu'); HUD.draw(); const o = HUD.onGround; let n = 0; HUD.onGround = function (...a) { n++; return o.apply(this, a); }; HUD.draw(); HUD.onGround = o; return { ...HUD.clusterDraw, calls: n }; });
-  expect(d.subs).toBe(10); expect(d.r, 'the outer rings well out from the middle').toBeGreaterThan(40); expect(d.calls, 'three projections a ring').toBe(30);
+  expect(d.subs).toBe(10); expect(d.r, 'the outer rings well out from the middle').toBeGreaterThan(40); expect(d.calls, 'a projection a corner: 12 a ring').toBe(120);
+  // on a hillside, zoomed in: each ring as drawn against its 12 corners projected one by one on the ground; and as it was, flat
+  const e = await wp.run(() => {
+    let best = null, bg = 0;
+    for (let x = -700; x <= 700; x += 20) for (let z = -700; z <= 700; z += 20) { const g = Math.hypot(groundH(x + 4, z) - groundH(x - 4, z), groundH(x, z + 4) - groundH(x, z - 4)) / 8; if (g < 0.4 && g > bg && !waterAt(x, z)) { bg = g; best = [x, z]; } }
+    CFG.zoom = 160; CAM_TGT.set(best[0], 0, best[1]); CAM_TGT.y = groundH(best[0], best[1]); updateCamera(); ARMS.select('cbu'); HUD.draw();
+    const D = HUD.clusterDraw, m = CLUSTER.mark; let err = 0, flat = 0;
+    for (let i = 0; i < D.o.length; i += 2) {
+      const ox = D.o[i], oz = D.o[i + 1], R = Array.from(HUD.clusterRing(ox, oz)), h = groundH(CAM_TGT.x + ox, CAM_TGT.z + oz) - CAM_TGT.y;
+      const [fx, fy] = HUD.onGround(ox, h, oz), [fux, fuy] = HUD.onGround(ox + m, h, oz), [fvx, fvy] = HUD.onGround(ox, h, oz + m);   // (as it was: flat at the ground's height in the middle)
+      RING12.forEach(([c, s], j) => {
+        const [ex, ey] = HUD.onGround(ox + c * m, null, oz + s * m);
+        err = Math.max(err, Math.hypot(R[j * 2] - ex, R[j * 2 + 1] - ey));
+        flat = Math.max(flat, Math.hypot(fx + (fux - fx) * c + (fvx - fx) * s - ex, fy + (fuy - fy) * c + (fvy - fy) * s - ey));
+      });
+    }
+    const k = 2160 / HUD.H; return { bg, err: err * k, flat: flat * k };   // (in pixels of a 4K screen)
+  });
+  console.log(JSON.stringify(e));
+  expect(e.flat, 'a hillside: as it was (flat at its middle\'s height) pixels off the ground').toBeGreaterThan(5);
+  expect(e.err, 'each ring on the ground, 4K, zoomed in').toBeLessThan(0.5);
 });

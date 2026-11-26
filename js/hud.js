@@ -4,7 +4,11 @@
    height (1080 p = 1) times the HUD scale setting. ?hud=0 hides it all (review sheets).                                     */
 const HUD_COL = '#e2ebe6', HUD_DARK = 'rgba(0,0,0,0.5)', ALLY_COL = '#4da6ff', ENEMY_COL = '#ffffff';
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-const _hp = new V3(), _hc = new V3(), _og = [0, 0];
+const _hp = new V3(), _hc = new V3(), _og = [0, 0], _cr = new Float64Array(26);
+const RING12 = Array.from({ length: 12 }, (_, j) => [Math.cos(j * TAU / 12), Math.sin(j * TAU / 12)]);   // (a 12-gon's corners: the CBU-97's rings)
+/* the HUD's words, each drawn once into a little canvas of its own and stamped from there (stroked text is slow to draw): by the
+   string, size and colour; one not drawn for HUD_TXT_KEEP frames is let go, its canvas kept for the next new one */
+const HUD_TXT = new Map(), HUD_TXT_FREE = [], HUD_TXT_KEEP = 60, HUD_SIDES = ['ally', 'enemy'];
 /* the GBU-39's reticle: heights (m) over the point it falls on, ticked on its fall line, and the line's top; the APKWS's: the ground its salvo
    covers (its spread and a rocket's blast, m) */
 const BOMB_TICKS = [10, 20, 30], BOMB_TOP = 40, SALVO_R = GUN.apk.spread + SPLASH.apk;
@@ -17,7 +21,8 @@ function fmtMoney(v) {
   return '$' + s + U[i];
 }
 const HUD = {
-  on: false, cv: null, g: null, W: 0, H: 0, u: 1, ui: null, armsEl: null, boxes: [], domT: 0, cache: {}, spentShown: 0, spentRT: 0, spentDrop: 0,
+  on: false, cv: null, g: null, W: 0, H: 0, u: 1, ui: null, armsEl: null, boxes: [], domT: 0, cache: {}, spentShown: 0, spentRT: 0, spentDrop: 0, frame: 0,
+  _box: [], _bk: { ally: [], enemy: [] }, _ld: {}, _sd: {}, _bd: { ticks: [], top: 0, rx: 0 }, _cd: { r: 0, subs: 0, o: [] },   // (kept and refilled each frame: nothing new made per frame)
   build() {
     this.on = QS.get('hud') !== '0';
     const modes = document.getElementById('modes');
@@ -61,13 +66,28 @@ const HUD = {
   },
   /* a stroke with a dark edge under it (readable over white-hot snow as well as night) */
   stroke(lw, col) { const g = this.g; g.lineWidth = lw + 2 * this.u; g.strokeStyle = HUD_DARK; g.stroke(); g.lineWidth = lw; g.strokeStyle = col || HUD_COL; g.stroke(); },
-  text(s, x, y, size, align, col) { const g = this.g; g.font = `600 ${Math.round(size * this.u)}px Consolas, "Courier New", monospace`; g.textAlign = align || 'left'; g.lineWidth = 3 * this.u; g.strokeStyle = HUD_DARK; g.strokeText(s, x, y); g.fillStyle = col || HUD_COL; g.fillText(s, x, y); },
+  text(s, x, y, size, align, col) {
+    const key = s + '|' + size + '|' + (col || '') + '|' + this.u; let e = HUD_TXT.get(key);
+    if (!e) { e = this.word(s, size, col); HUD_TXT.set(key, e); }
+    e.f = this.frame; const dx = align === 'right' ? e.w : align === 'center' ? e.w / 2 : 0;
+    this.g.drawImage(e.cv, Math.round(x - dx - e.p), Math.round(y - e.h / 2));
+  },
+  /* a word drawn as text() used to draw it straight on the HUD: a dark edge (3u) under the fill, centred on its height (textBaseline middle) */
+  word(s, size, col) {
+    const cv = HUD_TXT_FREE.pop() || document.createElement('canvas'), g = cv.getContext('2d'), u = this.u, font = `600 ${Math.round(size * u)}px Consolas, "Courier New", monospace`;
+    g.font = font; const w = Math.ceil(g.measureText(s).width), p = Math.ceil(2 * u) + 1, h = 2 * Math.ceil(size * u * 0.8) + 2 * p;
+    cv.width = w + 2 * p; cv.height = h;   // (resets the context)
+    g.font = font; g.textBaseline = 'middle'; g.lineWidth = 3 * u; g.strokeStyle = HUD_DARK; g.strokeText(s, p, h / 2); g.fillStyle = col || HUD_COL; g.fillText(s, p, h / 2);
+    return { cv, w, h, p, f: this.frame };
+  },
+  /* the words not drawn for a while let go (now and then) */
+  sweepWords() { for (const [k, e] of HUD_TXT) if (this.frame - e.f > HUD_TXT_KEEP) { HUD_TXT.delete(k); if (HUD_TXT_FREE.length < 64) HUD_TXT_FREE.push(e.cv); } },
   heading() { return ((Math.atan2(CAM_TGT.x - camera.position.x, camera.position.z - CAM_TGT.z) / DEG) % 360 + 360) % 360; },   // (where the sensor looks: north is -z, east +x)
   altitude() { const t = GUNSHIP.tr; return 9400 + 180 * Math.sin(T * 0.031) + 90 * Math.sin(T * 0.11) + (GUNSHIP.state === 'transit' ? 400 * Math.sin(Math.PI * t.p) : 0); },
   draw() {
     if (!this.on) return;
     const g = this.g, W = this.W, H = this.H, u = this.u;
-    g.clearRect(0, 0, W, H); g.lineCap = 'butt'; g.textBaseline = 'middle';
+    g.clearRect(0, 0, W, H); g.lineCap = 'butt'; g.textBaseline = 'middle'; if (++this.frame % HUD_TXT_KEEP === 0) this.sweepWords();
     this.brackets(); this.designate(); this.lockOn(); this.laseOn(); this.compass(W / 2, 52 * u); this.ladder(W - 64 * u, (H - this.sb) / 2);
     this.reticle(W / 2, H / 2);
     // the clock and the sensor point at the top right
@@ -122,7 +142,7 @@ const HUD = {
     const g = this.g, u = this.u, w = ARMS.w; if (!w) return;
     const line = (x0, y0, x1, y1) => { g.moveTo(cx + x0 * u, cy + y0 * u); g.lineTo(cx + x1 * u, cy + y1 * u); };
     const cross = (a, b) => { line(-b, 0, -a, 0); line(a, 0, b, 0); line(0, -b, 0, -a); line(0, a, 0, b); };
-    const corners = (hw, hh, c) => { for (const sx of [-1, 1]) for (const sy of [-1, 1]) { line(sx * hw, sy * hh, sx * (hw - c), sy * hh); line(sx * hw, sy * hh, sx * hw, sy * (hh - c)); } };
+    const corners = (hw, hh, c) => { for (let sx = -1; sx <= 1; sx += 2) for (let sy = -1; sy <= 1; sy += 2) { line(sx * hw, sy * hh, sx * (hw - c), sy * hh); line(sx * hw, sy * hh, sx * hw, sy * (hh - c)); } };
     g.beginPath(); _hc.copy(CAM_TGT).project(camera);   // (the frame's centre point on the screen, for onGround)
     switch (w.reticle) {
       case 'cross': cross(9, 44); line(-2, 0, 2, 0); break;
@@ -131,7 +151,7 @@ const HUD = {
       case 'circle': g.moveTo(cx + 54 * u, cy); g.arc(cx, cy, 54 * u, 0, TAU); line(0, -10, 10, 0); line(10, 0, 0, 10); line(0, 10, -10, 0); line(-10, 0, 0, -10); cross(54, 72); break;
       case 'bomb': {   // (a bomb's, drawn in the world: the blast's ring on the ground round the point (SPLASH, broken at the diagonals) and the line it falls
         // down onto the pipper, ticked at BOMB_TICKS m over the point: the further off the sensor looks, the flatter its line of sight, the longer the line)
-        const R = SPLASH.gbu, d = this.bombDraw = { ticks: [], top: 0, rx: 0 };
+        const R = SPLASH.gbu, d = this.bombDraw = this._bd; d.ticks.length = 0; d.top = d.rx = 0;
         for (let k = 0; k < 4; k++) for (let j = 0; j <= 10; j++) { const a = k * TAU / 4 + 0.28 + j * (TAU / 4 - 0.56) / 10, [x, y] = this.onGround(R * Math.cos(a), null, R * Math.sin(a)); if (j) g.lineTo(cx + x, cy + y); else g.moveTo(cx + x, cy + y); if (!k && !j) d.rx = Math.hypot(x, y); }
         g.moveTo(cx + 8 * u, cy); g.arc(cx, cy, 8 * u, 0, TAU); line(-1.5, 0, 1.5, 0);
         const [tx, ty] = this.onGround(0, BOMB_TOP, 0), n = Math.hypot(tx, ty) || 1, ex = tx / n, ey = ty / n; d.top = n;
@@ -143,13 +163,11 @@ const HUD = {
       }
       case 'cluster': {   // (the CBU-97's: a small ring on the ground where each submunition comes down (CLUSTER_PAT: three in, seven round,
         // CLUSTER.r; turned with the line of sight, as they will fall), a cross in the middle)
-        const C = CLUSTER, a0x = CAM_TGT.x - camera.position.x, a0z = CAM_TGT.z - camera.position.z, an = Math.hypot(a0x, a0z) || 1, ax = a0x / an, az = a0z / an, d = this.clusterDraw = { r: 0, subs: 0 };
-        for (const [s, t] of CLUSTER_PAT) {   // (each ring from three points projected, its centre and two radii on the ground's height there: across
-          // 3 m the perspective is as good as flat, under a pixel off; 30 projections a frame, not 130)
-          const ox = (ax * s - az * t) * C.r, oz = (az * s + ax * t) * C.r, h = groundH(CAM_TGT.x + ox, CAM_TGT.z + oz) - CAM_TGT.y;
-          const [x, y] = this.onGround(ox, h, oz), [ux, uy] = this.onGround(ox + C.mark, h, oz), [vx, vy] = this.onGround(ox, h, oz + C.mark), px = cx + x, py = cy + y;
-          for (let j = 0; j <= 12; j++) { const c = Math.cos(j * TAU / 12), sn = Math.sin(j * TAU / 12), qx = px + (ux - x) * c + (vx - x) * sn, qy = py + (uy - y) * c + (vy - y) * sn; if (j) g.lineTo(qx, qy); else g.moveTo(qx, qy); }
-          d.r = Math.max(d.r, Math.hypot(x, y)); d.subs++;
+        const C = CLUSTER, a0x = CAM_TGT.x - camera.position.x, a0z = CAM_TGT.z - camera.position.z, an = Math.hypot(a0x, a0z) || 1, ax = a0x / an, az = a0z / an, d = this.clusterDraw = this._cd; d.r = d.subs = 0; d.o.length = 0;
+        for (const [s, t] of CLUSTER_PAT) {   // (each ring a 12-gon, its corners on the ground: clusterRing)
+          const ox = (ax * s - az * t) * C.r, oz = (az * s + ax * t) * C.r, R = this.clusterRing(ox, oz);
+          for (let j = 0; j < 12; j++) { if (j) g.lineTo(cx + R[j * 2], cy + R[j * 2 + 1]); else g.moveTo(cx + R[0], cy + R[1]); }
+          g.closePath(); d.r = Math.max(d.r, Math.hypot(R[24], R[25])); d.subs++; d.o.push(ox, oz);
         }
         cross(5, 16); break;
       }
@@ -162,9 +180,18 @@ const HUD = {
       }
       case 'seeker': g.moveTo(cx + 80 * u, cy); g.arc(cx, cy, 80 * u, 0, TAU); g.moveTo(cx + 16 * u, cy); g.arc(cx, cy, 16 * u, 0, TAU); cross(80, 96); break;
       case 'laser': g.moveTo(cx + 30 * u, cy); g.arc(cx, cy, 30 * u, 0, TAU); g.moveTo(cx + 6 * u, cy); g.arc(cx, cy, 6 * u, 0, TAU); cross(30, 120); break;
-      case 'rail': line(-140, 0, -16, 0); line(16, 0, 140, 0); for (const s of [-1, 1]) for (const d of [40, 80, 120]) line(s * d, -6, s * d, 6); line(0, -24, 0, -10); line(0, 10, 0, 24); break;
+      case 'rail': line(-140, 0, -16, 0); line(16, 0, 140, 0); for (let s = -1; s <= 1; s += 2) for (let d = 40; d <= 120; d += 40) line(s * d, -6, s * d, 6); line(0, -24, 0, -10); line(0, 10, 0, 24); break;
     }
     this.stroke(1.6 * u);
+  },
+  /* a CBU-97 ring CLUSTER.mark round (ox, oz) off CAM_TGT, on the screen: its 12 corners each on the ground there (the ground is
+     triangles on a 4 m grid: a 3 m ring laid out from a few points was 8 px off on a hillside, 4K, zoomed in, tested), 12 projections
+     a ring, 120 a frame (was 14 a ring with its centre and the corner it closed on, 140); into the scratch _cr: x, y of each corner,
+     then of their middle */
+  clusterRing(ox, oz) {
+    const m = CLUSTER.mark; let sx = 0, sy = 0;
+    for (let j = 0; j < 12; j++) { const [x, y] = this.onGround(ox + RING12[j][0] * m, null, oz + RING12[j][1] * m); _cr[j * 2] = x; _cr[j * 2 + 1] = y; sx += x; sy += y; }
+    _cr[24] = sx / 12; _cr[25] = sy / 12; return _cr;
   },
   /* where a point dx, dy, dz metres off the frame's centre point (CAM_TGT) shows, in pixels from the screen's centre (dy null: on the
      ground there); _hc: CAM_TGT on the screen, set by reticle(); the result is a scratch pair, read it at once */
@@ -201,7 +228,7 @@ const HUD = {
     this.stroke(2 * u);
     if (got) { g.beginPath(); g.arc(x, y, 2.4 * u, 0, TAU); this.stroke(1.2 * u); g.fillStyle = HUD_COL; g.fill(); }   // (the dot: locked)
     if (L.w === 'hf') this.spot(x, y);   // (the Hellfire's: the designator's spot on the target)
-    this.lockDraw = { k: L.k, shoot, d: d / s, x: x / this.W, y: y / this.H };
+    const D = this.lockDraw = this._ld; D.k = L.k; D.shoot = shoot; D.d = d / s; D.x = x / this.W; D.y = y / this.H;
   },
   /* a closed shape (its corners in order) into the path: whole (f 0.5), or only its corners, f of each side from each corner */
   corners(P, f) {
@@ -223,7 +250,7 @@ const HUD = {
     const m = S.m, tof = Math.max(0, (1 - m.p) * m.dur); this.cue(this.W / 2, this.H - this.sb - 112 * this.u, 'LASE ' + tof.toFixed(1));
     _hp.copy(S.p); _hp.y += 1; _hp.project(camera); if (_hp.z > 1 || Math.abs(_hp.x) > 1.05 || Math.abs(_hp.y) > 1.05) return;
     const x = (_hp.x + 1) / 2 * this.W, y = (1 - _hp.y) / 2 * this.H; this.spot(x, y);
-    this.laseDraw = { tof, x: x / this.W, y: y / this.H };
+    const D = this.laseDraw = this._sd; D.tof = tof; D.x = x / this.W; D.y = y / this.H;
   },
   /* SHOOT in a box, centred on (x, y) */
   shootCue(x, y) { this.cue(x, y, 'SHOOT'); },
@@ -234,18 +261,22 @@ const HUD = {
     g.beginPath(); g.rect(x - hw, y - hh, 2 * hw, 2 * hh); this.stroke(2 * u); this.text(s, x, y + u, 18, 'center');
   },
   /* corner brackets of a fixed screen size: allies blue, enemies white */
+  /* one pass over TRACKS (only what is near the frame is projected: one in the air further out, it may show), then a path a side */
   brackets() {
-    const g = this.g, u = this.u, W = this.W, H = this.H, lk = this.lockObj(); this.boxes.length = 0;
-    for (const side of ['ally', 'enemy']) {
-      g.beginPath();
-      for (const t of TRACKS) {
-        if (t.side !== side || !t.obj.visible || t.obj === lk) continue;   // (a lock's target: its box is the lock's, lockOn)
-        _hp.copy(t.obj.position); _hp.y += t.h; _hp.project(camera);
-        if (_hp.z > 1 || Math.abs(_hp.x) > 1.05 || Math.abs(_hp.y) > 1.05) continue;
-        const x = (_hp.x + 1) / 2 * W, y = (1 - _hp.y) / 2 * H, s = (t.inf ? 16 : 30) * u, c = s * 0.4;
-        for (const sx of [-1, 1]) for (const sy of [-1, 1]) { g.moveTo(x + sx * (s - c), y + sy * s); g.lineTo(x + sx * s, y + sy * s); g.lineTo(x + sx * s, y + sy * (s - c)); }
-        this.boxes.push({ x: x / W, y: y / H, s: s / H, side });
-      }
+    const g = this.g, u = this.u, W = this.W, H = this.H, lk = this.lockObj(), K = this._bk, P = this._box; let nb = 0;
+    K.ally.length = K.enemy.length = 0;
+    for (const t of TRACKS) {
+      const o = t.obj; if (!o.visible || o === lk) continue;   // (a lock's target: its box is the lock's, lockOn)
+      const p = o.position; if (!VIEW.near(p, 40 + Math.max(0, p.y - CAM_TGT.y))) continue;
+      _hp.copy(p); _hp.y += t.h; _hp.project(camera);
+      if (_hp.z > 1 || Math.abs(_hp.x) > 1.05 || Math.abs(_hp.y) > 1.05) continue;
+      const x = (_hp.x + 1) / 2 * W, y = (1 - _hp.y) / 2 * H, s = (t.inf ? 16 : 30) * u; K[t.side].push(x, y, s);
+      const b = P[nb] || (P[nb] = {}); b.x = x / W; b.y = y / H; b.s = s / H; b.side = t.side; this.boxes[nb++] = b;
+    }
+    this.boxes.length = nb;
+    for (const side of HUD_SIDES) {
+      const A = K[side]; if (!A.length) continue; g.beginPath();
+      for (let i = 0; i < A.length; i += 3) { const x = A[i], y = A[i + 1], s = A[i + 2], c = s * 0.4; for (let sx = -1; sx <= 1; sx += 2) for (let sy = -1; sy <= 1; sy += 2) { g.moveTo(x + sx * (s - c), y + sy * s); g.lineTo(x + sx * s, y + sy * s); g.lineTo(x + sx * s, y + sy * (s - c)); } }
       this.stroke(2 * u, side === 'ally' ? ALLY_COL : ENEMY_COL);
     }
   }

@@ -29,9 +29,10 @@ const INF_BODY_GEO = boxesGeo([
 const INF_LEG_GEO = boxesGeo([[0.15, 0.88, 0.16, 0, -0.44, 0, 0.85], [0.2, 0.1, 0.17, 0.04, -0.85, 0, 0.35]]);   // (hangs from the hip)
 const INF_MAT = sensorMat(new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: true, shininess: 6, specular: 0x111111 }), 0.6);
 INF_MAT.userData.shared = true;
-const _im = new THREE.Matrix4(), _iq = new THREE.Quaternion(), _ie = new THREE.Euler(0, 0, 0, 'YZX'), _is = new V3(1, 1, 1), _ip = new V3(), _io = new V3();
+const INF_NEAR = 30;   // metres past the frame a soldier is still drawn (his shadow may reach into it)
+const _im = new THREE.Matrix4(), _iq = new THREE.Quaternion(), _iql = new THREE.Quaternion(), _ie = new THREE.Euler(0, 0, 0, 'YZX'), _is = new V3(1, 1, 1), _ip = new V3(), _io = new V3();
 const INF = {
-  list: [], body: null, legs: null, dirty: true,   // (dirty: the list changed, the instances' colours are written again)
+  list: [], body: null, legs: null, slot: [],   // (slot: the side each instance's colour was last written for)
   build() {
     this.body = new THREE.InstancedMesh(INF_BODY_GEO, INF_MAT, INF_MAX); this.legs = new THREE.InstancedMesh(INF_LEG_GEO, INF_MAT, INF_MAX * 2);
     for (const m of [this.body, this.legs]) { m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); }
@@ -41,24 +42,25 @@ const INF = {
   add(side, x, z) {
     if (this.list.length >= INF_MAX) return null;
     const s = { position: new V3(x, groundH(x, z), z), a: 0, phase: Math.random() * TAU, stride: 0, side, visible: true };
-    this.list.push(s); this.dirty = true; TRACKS.push({ obj: s, side, inf: true, h: 1.1 }); return s;
+    this.list.push(s); TRACKS.push({ obj: s, side, inf: true, h: 1.1 }); return s;
   },
-  remove(s) { const i = this.list.indexOf(s); if (i >= 0) { this.list.splice(i, 1); this.dirty = true; } untrack(s); },
-  /* the instances from the soldiers, once a frame (their colours only when the list changed: a slot's side changes only then) */
+  remove(s) { const i = this.list.indexOf(s); if (i >= 0) this.list.splice(i, 1); untrack(s); },
+  /* the instances from the soldiers near the frame (INF_NEAR m past it: their shadows may fall into it), once a frame; an instance's
+     colour is written again only when the soldier in its slot is of the other side */
   update() {
-    let n = 0; const col = this.dirty; this.dirty = false;
+    let n = 0, col = false; const B = this.body, L = this.legs;
     for (const s of this.list) {
-      if (!s.visible) continue;
-      _ie.set(0, -s.a, 0); _iq.setFromEuler(_ie); _im.compose(s.position, _iq, _is); this.body.setMatrixAt(n, _im); if (col) this.body.setColorAt(n, INF_COL[s.side]);
+      if (!s.visible || !VIEW.near(s.position, INF_NEAR)) continue;
+      _ie.set(0, -s.a, 0); _iq.setFromEuler(_ie); _im.compose(s.position, _iq, _is); B.setMatrixAt(n, _im);
+      if (this.slot[n] !== s.side) { this.slot[n] = s.side; col = true; const c = INF_COL[s.side]; B.setColorAt(n, c); L.setColorAt(n * 2, c); L.setColorAt(n * 2 + 1, c); }
       const sw = Math.sin(s.phase) * 0.5 * s.stride;
       for (let j = 0; j < 2; j++) {
         const side = j ? 1 : -1; _io.set(0, 0.9, side * 0.1).applyQuaternion(_iq); _ip.copy(s.position).add(_io);
-        _ie.set(0, -s.a, sw * side); _iq.setFromEuler(_ie); _im.compose(_ip, _iq, _is); this.legs.setMatrixAt(n * 2 + j, _im); if (col) this.legs.setColorAt(n * 2 + j, INF_COL[s.side]);
-        _ie.set(0, -s.a, 0); _iq.setFromEuler(_ie);
+        _ie.set(0, -s.a, sw * side); _iql.setFromEuler(_ie); _im.compose(_ip, _iql, _is); L.setMatrixAt(n * 2 + j, _im);   // (the leg's own turn: the body's stays in _iq)
       }
       n++;
     }
-    this.body.count = n; this.legs.count = n * 2;
-    for (const m of [this.body, this.legs]) { m.instanceMatrix.needsUpdate = true; if (col && m.instanceColor) m.instanceColor.needsUpdate = true; }
+    B.count = n; L.count = n * 2;
+    for (const m of [B, L]) { m.instanceMatrix.needsUpdate = true; if (col && m.instanceColor) m.instanceColor.needsUpdate = true; }
   }
 };

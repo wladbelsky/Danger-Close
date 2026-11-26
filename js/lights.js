@@ -37,6 +37,7 @@ const BEAM_FS = `uniform sampler2D uHMap; uniform float uHK; varying vec2 vUv; v
     gl_FragColor = vec4(vCol.rgb * vCol.a * f * (1.0 - occ), 1.0);
   }`;
 const LAMPS = {
+  dt: 0, _v: [],
   fx: null, beams: null, rt: null, hmap: null, k: 0, n: 0, nb: 0, NB: 512, clean: false,
   init() {
     this.fx = new SpriteFX(scene, TEX.flash, THREE.AdditiveBlending, 500, false, 0); this.fx.mesh.renderOrder = 6;
@@ -88,15 +89,20 @@ const LAMPS = {
   pole(x, y, z, c, r, k) { if (!this.near(x, z, r)) return; this.put(x, y, z, 1.3, c, 2.4, k); this.light(1, x, z, 0, r * 2, r * 2, c, k, 1, x, z, y); },
   /* a searchlight on a tower at (x, z): the lamp and its spot on the ground, sweeping about the angle a */
   search(x, z, a, ph, k, h) {
+    if (!this.near(x, z, -64)) return;   // (its spot reaches 47 m out: one further off lights nothing on the map, and its lamp is far out of the frame)
     const d = a + Math.sin(T * 0.22 + ph) * 0.85;
     const y = groundH(x, z) + h; this.put(x, y, z, 1.6, LC_SEARCH, 2.8, k);
     this.light(0, x + Math.cos(d) * 4, z + Math.sin(d) * 4, d, 20, 9, LC_SEARCH, k * 1.2, 1, x, z, y);            // the beam grazing the ground on its way
     this.light(1, x + Math.cos(d) * 30, z + Math.sin(d) * 30, d, 34, 20, LC_SEARCH, k * 3.2, 1, x, z, y);         // the spot
   },
-  update(dt) {
+  /* a step: only the time is gathered (build() makes the frame's lamps once, however many steps the frame took) */
+  update(dt) { this.dt += dt; },
+  build() {
+    const dt = this.dt; this.dt = 0;
     const live = this.fx.live; live.length = 0; this.nb = 0;
     const k = this.k = smoothstep(0.35, 0.75, ENV.night);   // (they come on at dusk)
     if (k > 0.01) {
+      const V = this._v; V.length = 0; for (const o of UNITS) if (o.alive && LAMP_AT[o.kind]) V.push(o);   // (the vehicles with lamps: what a headlight may be cut at)
       for (const u of UNITS) {
         if (!u.alive) continue;
         const L = LAMP_AT[u.kind];
@@ -104,11 +110,11 @@ const LAMPS = {
           if (u.stopT == null) u.stopT = u.v > 0.3 ? 0 : 99;
           u.stopT = u.v > 0.3 ? 0 : u.stopT + dt;                                   // (lights out a minute after it stops: a parked column is dark, one halted in a fight is not)
           u.lampK = clamp((u.lampK || 0) + (u.stopT < 60 ? dt / 1.5 : -dt / 3), 0, 1);
-          const a = k * u.lampK; if (a < 0.02) continue;
+          const a = k * u.lampK; if (a < 0.02 || !this.near(u.pos.x, u.pos.z, -30)) continue;   // (off the map of light (its 22 m beam reaching in at most): its lamps are far out of the frame too)
           const c = Math.cos(u.yaw), s = Math.sin(u.yaw), y = u.pos.y, fx = u.pos.x + c * L[0], fz = u.pos.z + s * L[0];
           this.put(fx - s * L[1], y + L[2], fz + c * L[1], 1.1, LC_HEAD, 2.6, a); this.put(fx + s * L[1], y + L[2], fz - c * L[1], 1.1, LC_HEAD, 2.6, a);
           let len = 22, cut = 1;   // the light stops at whatever stands in front of it (it lights the back of the next vehicle of the column, not the road beyond)
-          for (const o of UNITS) { if (o === u || !o.alive || !LAMP_AT[o.kind]) continue; const dx = o.pos.x - fx, dz = o.pos.z - fz, al = dx * c + dz * s; if (al > 0 && al < len && Math.abs(dz * c - dx * s) < 3) cut = Math.min(cut, (al + 0.5) / len); }
+          for (const o of V) { if (o === u) continue; const dx = o.pos.x - fx, dz = o.pos.z - fz, al = dx * c + dz * s; if (al > 0 && al < len && Math.abs(dz * c - dx * s) < 3) cut = Math.min(cut, (al + 0.5) / len); }
           this.light(0, fx, fz, u.yaw, len, 15, LC_HEAD, a * 3.2, cut, fx, fz, y + L[2]);
         } else if (u.kind === 'heli') {
           if (u.state === 'pad' || u.state === 'crash') continue;

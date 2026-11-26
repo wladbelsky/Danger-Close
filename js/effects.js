@@ -13,7 +13,7 @@ class Tracers {
     const zero = new THREE.Matrix4().makeScale(0, 0, 0), c = new THREE.Color(0, 0, 0);
     for (let i = 0; i < n; i++) {
       this.mesh.setMatrixAt(i, zero); this.mesh.setColorAt(i, c);
-      this.items.push({ on: false, p: new V3(), v: new V3(), life: 0, max: 1, len: 1, w: 0.1, col: new THREE.Color(), grav: 0 });
+      this.items.push({ on: false, p: new V3(), v: new V3(), life: 0, max: 1, len: 1, w: 0.1, col: new THREE.Color(), grav: 0, q: new THREE.Quaternion(), qd: false, fw: -1 });
     }
     this.next = 0; this.mesh.visible = false; scene.add(this.mesh);
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new V3(); this._d = new V3(); this._x = new V3(1, 0, 0);
@@ -21,23 +21,27 @@ class Tracers {
   spawn(p, v, o) {
     const i = this.next, it = this.items[i]; this.next = (this.next + 1) % this.n;
     it.on = true; it.p.copy(p); it.v.copy(v); it.life = it.max = o.life || 1; it.len = o.len || 1; it.w = o.w || 0.1;
-    it.col.setHex(o.color || 0xffaa55).multiplyScalar(o.glow || 1); it.grav = o.grav || 0;   // (glow: brighter than white, so that it blooms: SENSOR's over())
+    it.col.setHex(o.color || 0xffaa55).multiplyScalar(o.glow || 1); it.grav = o.grav || 0; it.qd = false; it.fw = -1;   // (glow: brighter than white, so that it blooms: SENSOR's over())
     this.mesh.setColorAt(i, it.col); this.mesh.instanceColor.needsUpdate = true; this.mesh.visible = true;
     return it;
   }
   /* idle (no tracers in flight, i.e. most of the time) costs neither a buffer upload nor a draw call */
+  /* one that flies straight (no gravity: rain, snow, most rounds) keeps its turn (q, worked out once); at full width (fw 1) only its
+     place in its matrix is written; only the slots that changed are uploaded */
   update(dt) {
-    let active = 0, changed = false;
+    let active = 0, lo = this.n, hi = -1; const M = this.mesh.instanceMatrix, A = M.array;
     for (let i = 0; i < this.n; i++) {
       const it = this.items[i]; if (!it.on) continue;
-      changed = true;
+      if (i < lo) lo = i; hi = i;
       it.v.y -= it.grav * dt; it.p.addScaledVector(it.v, dt); it.life -= dt;
       if (it.life <= 0) { it.on = false; this._m.makeScale(0, 0, 0); this.mesh.setMatrixAt(i, this._m); continue; }
       active++;
-      this._d.copy(it.v).normalize(); this._q.setFromUnitVectors(this._x, this._d);
-      const fw = Math.min(1, it.life / 0.2); this._s.set(it.len, it.w * fw, it.w * fw); this._m.compose(it.p, this._q, this._s); this.mesh.setMatrixAt(i, this._m);
+      const fw = Math.min(1, it.life / 0.2);
+      if (!it.grav && fw === 1 && it.fw === 1) { const o = i * 16; A[o + 12] = it.p.x; A[o + 13] = it.p.y; A[o + 14] = it.p.z; continue; }
+      if (it.grav || !it.qd) { this._d.copy(it.v).normalize(); it.q.setFromUnitVectors(this._x, this._d); it.qd = !it.grav; }
+      this._s.set(it.len, it.w * fw, it.w * fw); this._m.compose(it.p, it.q, this._s); this.mesh.setMatrixAt(i, this._m); it.fw = fw;
     }
-    if (changed) this.mesh.instanceMatrix.needsUpdate = true;
+    if (hi >= 0) { M.clearUpdateRanges(); M.addUpdateRange(lo * 16, (hi - lo + 1) * 16); M.needsUpdate = true; }
     this.mesh.visible = active > 0;
   }
 }
@@ -107,9 +111,9 @@ class SpriteFX {
       if (it.tintWithSmoke && smokeTint) it.col.copy(smokeTint);
       live.push(it);
     }
-    this.flush(cam);
   }
-  /* this.live into the instance buffers (sorted back to front for a normal-blended pool); weather.js fills live itself for the clouds */
+  /* this.live into the instance buffers (sorted back to front for a normal-blended pool), once a frame (frameFx); weather.js fills
+     live itself for the clouds */
   flush(cam) {
     const live = this.live;
     if (this.sorted && cam && live.length > 1) {
@@ -154,7 +158,7 @@ class Scorch {
     this.mesh = new THREE.InstancedMesh(geo, mat, n); this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.mesh.receiveShadow = true;
     this.mesh.frustumCulled = false; this.mesh.renderOrder = 1; this.mesh.count = n;
     this.items = []; const zero = new THREE.Matrix4().makeScale(0, 0, 0);
-    for (let i = 0; i < n; i++) { this.mesh.setMatrixAt(i, zero); this.items.push({ on: false, fade: false, k: 0, p: new V3(), n: new V3(0, 1, 0), r: 1, base: 1, t: 0, max: 1, rot: 0 }); }
+    for (let i = 0; i < n; i++) { this.mesh.setMatrixAt(i, zero); this.items.push({ on: false, fade: false, k: 0, p: new V3(), n: new V3(0, 1, 0), r: 1, base: 1, t: 0, max: 1, rot: 0, q: new THREE.Quaternion(), set: false }); }
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._qy = new THREE.Quaternion(); this._s = new V3(); this._y = new V3(0, 1, 0);
     scene.add(this.mesh);
   }
@@ -164,14 +168,14 @@ class Scorch {
     let it = this.items.find(o => o.on && !o.fade && Math.hypot(o.p.x - p.x, o.p.z - p.z) < Scorch.MERGE * (o.r + r));
     if (it) {                                        // on a live one: it grows (up to 1.4× the bigger of the two), its centre a little toward the hit
       const b = Math.max(it.base, r), w = 0.25 * r / (it.r + r);
-      it.r = Math.min(Math.max(it.r, r) * 1.12, 1.4 * b); it.base = b; it.p.x += (p.x - it.p.x) * w; it.p.z += (p.z - it.p.z) * w;
+      it.r = Math.min(Math.max(it.r, r) * 1.12, 1.4 * b); it.base = b; it.p.x += (p.x - it.p.x) * w; it.p.z += (p.z - it.p.z) * w; it.set = false;
       it.t = it.max = Math.max(it.t, life);
       this.absorb(it);
       return it;
     }
     // a free slot (crowding keeps some); with none at all this one isn't made — rather than cut a showing one short
     it = this.items.find(o => !o.on); if (!it) return null;
-    it.on = true; it.fade = false; it.k = 1; it.p.set(p.x, groundH(p.x, p.z) + Scorch.LIFT, p.z); it.r = it.base = r; it.t = it.max = life; it.rot = rand(0, TAU); groundN(p.x, p.z, it.n);
+    it.on = true; it.fade = false; it.k = 1; it.p.set(p.x, groundH(p.x, p.z) + Scorch.LIFT, p.z); it.r = it.base = r; it.t = it.max = life; it.rot = rand(0, TAU); groundN(p.x, p.z, it.n); it.q.setFromUnitVectors(this._y, it.n).multiply(this._qy.setFromAxisAngle(this._y, it.rot)); it.set = false;
     this.crowd();
     return it;
   }
@@ -186,15 +190,17 @@ class Scorch {
     const live = this.items.filter(o => o.on && !o.fade).sort((a, b) => a.t - b.t);
     for (let i = 0; i < Scorch.CROWD - free && i < live.length; i++) this.fadeOut(live[i]);
   }
+  /* its matrix only while it shrinks (the last quarter of its life), or once it has grown or moved (set false): the turn kept in q */
   update(dt) {
     let changed = false;
     for (let i = 0; i < this.items.length; i++) {
       const it = this.items[i]; if (!it.on) continue;
-      it.t -= dt; changed = true;
+      it.t -= dt;
       const k = it.k = it.t <= 0 ? 0 : Math.min(1, it.t / (it.max * 0.25));
       if (it.t <= 0) it.on = false;
-      this._q.setFromUnitVectors(this._y, it.n).multiply(this._qy.setFromAxisAngle(this._y, it.rot)); this._s.set(it.r * k, it.r * 0.8 * k * k, it.r * k * 0.85);   // flattens as it shrinks
-      this.mesh.setMatrixAt(i, this._m.compose(it.p, this._q, this._s));
+      if (k === 1 && it.set) continue; it.set = k === 1; changed = true;
+      this._s.set(it.r * k, it.r * 0.8 * k * k, it.r * k * 0.85);   // flattens as it shrinks
+      this.mesh.setMatrixAt(i, this._m.compose(it.p, it.q, this._s));
     }
     if (changed) this.mesh.instanceMatrix.needsUpdate = true;
   }
@@ -237,7 +243,8 @@ class StepPool {
     this.n = n; this.k = 0; this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new V3(); this._x = new V3(1, 0, 0);
   }
   put(p, dir, sx, sy, sz) { if (this.k >= this.n) return; this._q.setFromUnitVectors(this._x, dir); this.mesh.setMatrixAt(this.k++, this._m.compose(p, this._q, this._s.set(sx, sy, sz))); }
-  flush() { this.mesh.count = this.k; this.mesh.visible = this.k > 0; if (this.k) this.mesh.instanceMatrix.needsUpdate = true; this.k = 0; }
+  begin() { this.k = 0; }   // (each step: what shows is put again)
+  flush() { this.mesh.count = this.k; this.mesh.visible = this.k > 0; if (this.k) this.mesh.instanceMatrix.needsUpdate = true; }   // (once a frame, frameFx: the last step's)
 }
 class Bodies extends StepPool {
   constructor(scene, n) {

@@ -68,7 +68,7 @@ const WEATHER = {
       const edge = smoothstep(CLOUD_R, CLOUD_R - 70, Math.max(Math.abs(dx), Math.abs(dz))) * c.vis; if (edge <= 0.01) return;
       for (const p of c.puffs) { const it = p.it; it.p.set(c.x + p.ox, CAM_TGT.y + c.y + p.oy, c.z + p.oz); it.sc = p.s; it.a = p.a * edge; it.col.setRGB(lerp(tint.r, 1, 0.6) * lum, lerp(tint.g, 1, 0.6) * lum, lerp(tint.b, 1, 0.6) * lum); live.push(it); }
     });
-    this.cover = want; this.fx.flush(camera);
+    this.cover = want;   // (flushed once a frame: frameFx)
   }
 };
 const _wcol = new THREE.Color();

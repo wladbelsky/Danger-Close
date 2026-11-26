@@ -586,9 +586,9 @@ const BATTLE = {
      out in file and spread round it. If it moves off first, the rest stay aboard for the next halt ---- */
   dismount(u) {
     if (u.v > 0.5 || u.col && u.col.alarm > T) return;
-    if (u.side === 'ally' && UNITS.filter(s => s.side === 'ally' && s.kind === 'inf').length >= ALLY_FEED.inf * CFG.allies / 100) return;   // (enough of theirs on foot)
     const t = u.tgt, B = this.base;
     if (!(t && Math.hypot(t.pos.x - u.pos.x, t.pos.z - u.pos.z) < 200) && !(u.side === 'enemy' && B && Math.hypot(B.x - u.pos.x, B.z - u.pos.z) < 160)) return;
+    if (u.side === 'ally') { const cap = ALLY_FEED.inf * CFG.allies / 100; let n = 0; for (const s of UNITS) if (s.kind === 'inf' && s.side === 'ally' && ++n >= cap) return; }   // (enough of theirs on foot; counted, not filtered into a new array, and only once it has a reason to let them out)
     u.dropT = T + 3;
     const c = Math.cos(u.yaw), sn = Math.sin(u.yaw), x = u.pos.x - c * 3.4, z = u.pos.z - sn * 3.4;
     if (u.pos.y > groundH(u.pos.x, u.pos.z) + 0.3 || !walkable(x, z, x - c * 4, z - sn * 4)) return;   // (not off a bridge, not into a wall)
