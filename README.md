@@ -52,8 +52,8 @@ fullscreen apps by default.
   helicopters, and builds a base on a cleared site. The camera stays where it is and they come to it; it moves to the base or
   another fight only in a quiet part of the music. They keep coming: a wrecked base is soon rebuilt, and when nothing is left
   in view the next ones are called in at once.
-- **The allies** are always out: garrisons in walled outposts, patrols, helicopters; in a fight they drive to the base
-  and fight it out. Both sides shoot at each other.
+- **The allies** are always out: garrisons in walled outposts, patrols, helicopters; in a fight the garrisons sortie to the
+  enemy base, and their reinforcements come where the sensor looks. Both sides shoot at each other.
 - **The gunship fires on the beat**, only at what is under the reticle and only at what its weapon may hit:
 
 | Weapon | Infantry | Car | APC | Tank | Helicopter | Beat |
@@ -133,7 +133,7 @@ fullscreen apps by default.
 
 ## Properties
 
-Sensor & HUD (vision mode, zoom, orbit speed, transits, callsign, HUD scale and bottom space, the money spent), time & weather (PC clock or
+Sensor & HUD (vision mode, zoom, orbit speed, transits, callsign, HUD scale and bottom space, the mission cost), time & weather (PC clock or
 a fixed hour, season, weather, clouds), every weapon and the automatic switching, the fight (audio sensitivity, how often
 it fires, enemy forces, allied reinforcements, anti-aircraft fire), the map seed, shadows and quality.
 
