@@ -83,7 +83,7 @@ const WE_PROPERTIES = {
  },
  "cost": {
   "order": 8,
-  "text": "Money spent on the HUD",
+  "text": "Mission cost on the HUD",
   "type": "bool",
   "value": true
  },

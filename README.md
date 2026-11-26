@@ -35,8 +35,8 @@ fullscreen apps by default.
   out of the box: TV by day, thermal at night.
 - **The HUD**: mode, callsign, compass, altitude ladder, the PC clock, a reticle per weapon, corner brackets on what it
   tracks (allies blue, enemies white), the weapon selector with cosmetic ammunition and reloads. At the top right, the
-  money the gunship has fired off since the start, each weapon at its own price, counting up to each new sum
-  (**Money spent on the HUD** turns it off). It keeps clear of the
+  mission cost: the money the gunship has fired off, each weapon at its own price, counting up to each new sum, and back
+  to zero after two minutes of silence (**Mission cost on the HUD** turns it off). It keeps clear of the
   taskbar (**HUD space kept free at the bottom**) and scales with **HUD scale**.
 - **The camera**: a left orbit over one area, a transit to another every few minutes in silence; in a fight it slews
   onto the enemy, each weapon with its own zoom — lazily in a quiet part, fast and sharp when the music drives hard.
