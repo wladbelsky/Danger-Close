@@ -395,6 +395,10 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   it was (`tgtGoneT`) instead of swinging back and round again. A turret swinging one way and back twice in 6 s (over 0.25 rad
   each): 56 % of the windows by the frame before (4 maps), 14 % now; target switches and the turrets' turning about halved. Test:
   battle.spec.js.
+- A dead tracer no longer lingers as a glowing streak (the CBU-97's skeets most, any blast's sparks too): `Tracers.update` set
+  the slots to upload to its own step's only (`clearUpdateRanges`), so a slot zeroed a step earlier in the same frame (a slow
+  frame runs several), or while the pool was hidden, kept its old matrix on the GPU and came back whenever the pool was drawn
+  again. The ranges are added up until three uploads them (it merges and clears them; over 15: one span). Test: battle.spec.js.
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -466,7 +470,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=111`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=112`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

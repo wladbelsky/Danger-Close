@@ -822,3 +822,20 @@ test('a tank\'s or an APC\'s turret keeps to its target: not swung back and fort
   const win = out[0].win + out[1].win, sw = out[0].swing + out[1].swing;
   expect(win).toBeGreaterThan(40); expect(sw / win, 'share of 6 s windows a turret by the frame swings back and forth').toBeLessThan(0.25);
 });
+
+test('a tracer that dies is zeroed on the GPU too: its slot stays in the upload until a frame is drawn (no glowing streak left behind)', async ({ wp }) => {
+  await wp.boot();
+  const r = await wp.run(() => {
+    const P = FX.tracers, M = P.mesh.instanceMatrix, n0 = P.next, V = new THREE.Vector3(0, -50, 0), at = new THREE.Vector3(CAM_TGT.x, 20, CAM_TGT.z);
+    renderFrame(); M.clearUpdateRanges();
+    const a = n0; P.spawn(at, V, { life: 0.03, len: 7, glow: 6 });   // (a skeet's slug: dies in the first step)
+    for (let i = 0; i < 4; i++) P.spawn(at, V, { life: 0.01 });
+    const b = P.next; P.spawn(at, V, { life: 1 });   // (one in a later slot lives on)
+    for (let i = 0; i < 5; i++) P.items[(n0 + 1 + i) % P.n].on = i === 4;
+    P.update(0.05); P.update(0.05);   // (two steps in one frame: the second's range alone used to be uploaded)
+    const cover = s => M.updateRanges.some(q => q.start <= s * 16 && q.start + q.count >= (s + 1) * 16);
+    return { dead: !P.items[a].on, zero: M.array[a * 16] === 0 && M.array[a * 16 + 5] === 0, covered: cover(a), live: cover(b) };
+  });
+  expect(r.dead).toBe(true); expect(r.zero).toBe(true);
+  expect(r.covered, 'the dead one\'s zeroed matrix goes up with the frame').toBe(true); expect(r.live).toBe(true);
+});

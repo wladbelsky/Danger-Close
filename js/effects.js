@@ -41,7 +41,12 @@ class Tracers {
       if (it.grav || !it.qd) { this._d.copy(it.v).normalize(); it.q.setFromUnitVectors(this._x, this._d); it.qd = !it.grav; }
       this._s.set(it.len, it.w * fw, it.w * fw); this._m.compose(it.p, it.q, this._s); this.mesh.setMatrixAt(i, this._m); it.fw = fw;
     }
-    if (hi >= 0) { M.clearUpdateRanges(); M.addUpdateRange(lo * 16, (hi - lo + 1) * 16); M.needsUpdate = true; }
+    if (hi >= 0) {   // (added to the ranges not yet uploaded, never in their place: three merges them at the upload, then clears them; cleared here, a slot zeroed a step before in the same frame, or while the pool was hidden, kept its old matrix on the GPU and showed up again)
+      const R = M.updateRanges;
+      if (R.length > 15) { let a = lo * 16, b = (hi + 1) * 16; for (const r of R) { a = Math.min(a, r.start); b = Math.max(b, r.start + r.count); } M.clearUpdateRanges(); M.addUpdateRange(a, b - a); }   // (no frame drawn for a while: one span)
+      else M.addUpdateRange(lo * 16, (hi - lo + 1) * 16);
+      M.needsUpdate = true;
+    }
     this.mesh.visible = active > 0;
   }
 }
