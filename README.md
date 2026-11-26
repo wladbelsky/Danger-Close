@@ -34,7 +34,8 @@ fullscreen apps by default.
   other way round, smoke cold. Click a mode on the HUD; the **Vision mode at start** property sets the default — *Auto*
   out of the box: TV by day, thermal at night.
 - **The HUD**: mode, callsign, compass, altitude ladder, the PC clock, a reticle per weapon, corner brackets on what it
-  tracks (allies blue, enemies white), the weapon selector with cosmetic ammunition and reloads. It keeps clear of the
+  tracks (allies blue, enemies white), the weapon selector with cosmetic ammunition and reloads. At the top right, the
+  money the gunship has fired off since the start, each weapon at its own price (**Money spent on the HUD** turns it off). It keeps clear of the
   taskbar (**HUD space kept free at the bottom**) and scales with **HUD scale**.
 - **The camera**: a left orbit over one area, a transit to another every few minutes in silence; in a fight it slews
   onto the enemy, each weapon with its own zoom — lazily in a quiet part, fast and sharp when the music drives hard.
@@ -126,7 +127,7 @@ fullscreen apps by default.
 
 ## Properties
 
-Sensor & HUD (vision mode, zoom, orbit speed, transits, callsign, HUD scale and bottom space), time & weather (PC clock or
+Sensor & HUD (vision mode, zoom, orbit speed, transits, callsign, HUD scale and bottom space, the money spent), time & weather (PC clock or
 a fixed hour, season, weather, clouds), every weapon and the automatic switching, the fight (audio sensitivity, how often
 it fires, enemy forces, allied reinforcements, anti-aircraft fire), the map seed, shadows and quality.
 

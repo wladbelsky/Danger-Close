@@ -189,7 +189,7 @@ const SCATTER = { r0: 10, k: 3, d: [8, 16], t: [2.5, 4], v: 3.6, spread: 10, res
 const COOK = { tank: 3, apc: 2, car: 1, first: 0.6, gap: 0.5, late: 1.6, toss: 0.35 };
 const _bm = new V3(), _bla = new V3(), _bt = new V3(), _bd = new V3(), _bp = new V3(), _bx = new V3(1, 0, 0), _br = new V3(), _bd2 = new V3();
 const BATTLE = {
-  base: null, ruins: [], cols: [], squads: [], helis: [], focus: null, chase: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, feed: 0, breaks: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0, allyFeed: 0, scatter: 0, refocus: 0, yield: 0, bypass: 0, ghost: 0, bump: 0, locks: 0, lockShots: 0, spared: 0, steer: 0, shove: 0, quiet: 0, unjam: 0, assaults: 0, deploys: 0, scatterV: 0, lased: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
+  base: null, spent: 0, ruins: [], cols: [], squads: [], helis: [], focus: null, chase: null, log: [], stat: { in: 0, out: 0, seenIn: 0, seenOut: 0, shots: 0, uShots: 0, uBeat: 0, uBand: 0, uLate: 0, volleys: 0, drops: 0, uDmg: 0, splash: 0, salvos: 0, salvoBeat: 0, salvoLate: 0, subShots: 0, subOff: 0, rush: 0, hops: 0, near: 0, miss: 0, feed: 0, breaks: 0, cooks: 0, tosses: 0, ricochet: 0, dismounts: 0, outOf: 0, bailed: 0, doorMax: 0, allyFeed: 0, scatter: 0, refocus: 0, yield: 0, bypass: 0, ghost: 0, bump: 0, locks: 0, lockShots: 0, spared: 0, steer: 0, shove: 0, quiet: 0, unjam: 0, assaults: 0, deploys: 0, scatterV: 0, lased: 0 }, surgeUntil: 0, rockets: [], forceUntil: 0,
   pend: [], missiles: [], was: false, downT: -99, nextWave: 0, nextHeli: 0, nextSquad: 0, nextBase: 0, nextQrf: 0, nextAsq: 0, nextField: 0, spots: [], wantGo: null, waitT: 0, nextCall: 0, autoTick: 0, seekT: 0, fTick: 0, lastShot: -9, shotRT: -9, fedT: 0, rushT: 0, gridN: -1, manualUntil: 0, nextSwitch: 0, laserUntil: 0, lasTick: 0, beam: null, offT: 0, cooks: [], tosses: [], nextFeed: 0, nextAllyFeed: 0, nextAllyCol: 0, allyFrameT: 0, feedT: 0, breakUntil: 0, armT: -99, ricoN: 0, puffN: 0, lock: null, lase: null, lockLog: [], atP: new V3(),
   init() {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0.5, 0, 0);
@@ -647,8 +647,7 @@ const BATTLE = {
   /* the target in the frame nearest the reticle other than x (null: none) */
   nearestTo(w, x) {
     let best = null, bs = 1e9;
-    const R = VIEW.ret(), rx = R.x, ry = R.y;
-    for (const u of UNITS) { if (u === x || !this.canHit(w, u)) continue; const n = VIEW.ndc(u.pos), d = Math.hypot((n.x - rx) * camera.aspect, n.y - ry); if (d < bs) { bs = d; best = u; } }
+    for (const u of UNITS) { if (u === x || !this.canHit(w, u)) continue; const n = VIEW.ndc(u.pos), d = Math.hypot(n.x * camera.aspect, n.y); if (d < bs) { bs = d; best = u; } }
     return best;
   },
   onBeat(band, st) {
@@ -727,15 +726,11 @@ const BATTLE = {
   /* is the target under the reticle (RET_ON)? Never a shot off it: one the sensor cannot bring there in OFF_SWITCH s is given up
      for the one nearest the reticle (aimCamera) */
   onReticle(u) { return this.onAim(u); },
-  /* is it under the reticle (VIEW.ret: at the map's edge the frame stops short of the point the sensor is turned to, clampFrame,
-     and the reticle shows that point wherever it is in the frame; the frame's centre counted as well, and a target there was
-     fired on with the rounds going to the point instead) */
-  onAim(u, r = RET_ON) {
-    const R = VIEW.ret(); if (R.z) return false; const rx = R.x, ry = R.y, n = VIEW.ndc(u.pos); return Math.hypot((n.x - rx) * camera.aspect, n.y - ry) < r;
-  },
+  /* is it under the reticle: the frame's centre (at the map's edge the sensor's point stays there too, GUNSHIP.update) */
+  onAim(u, r = RET_ON) { const n = VIEW.ndc(u.pos); return Math.hypot(n.x * camera.aspect, n.y) < r; },
   /* near the reticle: a gun may already fire */
   near(u) { return this.onAim(u, RET_NEAR); },
-  /* the ground under the reticle: the sensor's point (the frame's centre, but where the frame is held off the map's edge) */
+  /* the ground under the reticle: the sensor's point, the frame's centre */
   aimPoint(out) { const L = GUNSHIP.look; return out.set(L.x, groundH(L.x, L.z), L.z); },
   /* where a trigger at t goes: 0 no shot, 1 the target, 2 off it (MISS), 3 under the reticle while the target is only near it;
      2 and 3 put the point in atP */
@@ -762,7 +757,7 @@ const BATTLE = {
      to put them on instead (a miss, or the ground under the reticle: no lead) */
   fire(w, t, st, dk = 1, at = null) {
     const G = GUN[w.id], A = at && at.clone(); GUNS.shot(w.id);
-    if (w.id === 'rail') { this.rail(w, G, t); return; }
+    if (w.id === 'rail') { this.spent += w.cost; this.rail(w, G, t); return; }
     const k = clamp(((st || 1.5) - 1) / 1.5, 0, 1), B = BURST[w.id], n = B ? Math.round(lerp(B[0], B[1], k)) : G.n, fx = G.fx * (0.85 + 0.35 * k), dmg = G.dmg * G.n / n * dk;   // (a trigger does the same damage, in more or fewer rounds)
     this.lastBurst = n;
     // a gun's burst goes where the sensor points: the point at the trigger (the target, led, or `at`) kept as an offset from the
@@ -773,6 +768,7 @@ const BATTLE = {
     const ox = px - GUNSHIP.look.x, oz = pz - GUNSHIP.look.z, lx = GUNSHIP.look.x, lz = GUNSHIP.look.z, tx = t.pos.x, tz = t.pos.z;
     for (let i = 0; i < n; i++) this.after(i * G.step, () => {
       if (i && !G.missile && GUNSHIP.state === 'orbit' && Math.hypot(GUNSHIP.look.x - lx - (t.pos.x - tx), GUNSHIP.look.z - lz - (t.pos.z - tz)) > BURST_LET_GO) return;   // (the sensor off to another target, not following this one: the trigger let go, not a line of hits across the ground between them)
+      this.spent += w.cost;   // (the money: every round of the burst fired, every rocket of the salvo; none the trigger let go of)
       const a = rand(0, TAU), r = Math.sqrt(Math.random()) * G.spread, c = Math.cos(a) * r, s = Math.sin(a) * r, L = GUNSHIP.state === 'orbit' ? GUNSHIP.look : null;
       const to = G.missile ? new V3(P0.x + c, 0, P0.z + s) : L ? new V3(L.x + ox + c, 0, L.z + oz + s) : new V3(px + c, 0, pz + s);
       to.y = G.air ? t.pos.y + t.ah : groundH(to.x, to.z);
@@ -897,7 +893,7 @@ const BATTLE = {
   /* the laser: a beam kept up by the beats, burning its target */
   laser(dt) {
     const w = ARMS.w; let t = w && w.band === 'hold' && T < this.laserUntil && AUD.fighting && GUNSHIP.state === 'orbit' ? this.target(w) : null; if (t && !this.onReticle(t)) t = null;
-    this.beam.visible = this.beamGlow.visible = !!t; if (!t) return;
+    this.beam.visible = this.beamGlow.visible = !!t; if (!t) return; this.spent += w.cost * dt;
     this.muzzle(_bm); _bt.set(t.pos.x, t.pos.y + t.ah * 0.7, t.pos.z); _bd.subVectors(_bt, _bm); const d = _bd.length(), k = rand(0.16, 0.26);
     this.beam.position.copy(_bm); this.beam.quaternion.setFromUnitVectors(_bx, _bd.multiplyScalar(1 / d)); this.beam.scale.set(d, k, k);
     this.beamGlow.position.copy(_bm); this.beamGlow.quaternion.copy(this.beam.quaternion); this.beamGlow.scale.set(d, k * 4, k * 4);

@@ -34,6 +34,7 @@ const CFG = {
   weapons: ['g25', 'g30', 'h105'],   // the enabled weapons (js/weapons.js)
   callsign: 'GHOSTRIDER 31',
   hudScale: 1,
+  cost: true,         // the money spent, at the HUD's top right
   hudBottom: 48,      // px kept free at the bottom for the Windows taskbar (a wallpaper lies under it)
   orbit: 100,         // orbit speed, %
   transitMin: 4,      // minutes between transits to another district (in silence)

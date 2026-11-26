@@ -18,6 +18,7 @@ if (QS.has('transit')) CFG.transitMin = parseFloat(QS.get('transit'));
 if (QS.has('weather')) CFG.weather = QS.get('weather');
 if (QS.has('clouds')) CFG.clouds = parseFloat(QS.get('clouds'));
 if (QS.has('aa')) CFG.aa = QS.get('aa') !== '0';
+if (QS.has('cost')) CFG.cost = QS.get('cost') !== '0';
 if (QS.has('auto')) CFG.autoArms = QS.get('auto') !== '0';
 if (QS.has('enemies')) CFG.enemies = parseFloat(QS.get('enemies'));
 
@@ -34,6 +35,7 @@ window.wallpaperPropertyListener = {
     if (has('callsign')) CFG.callsign = String(v('callsign') || '').trim().toUpperCase().slice(0, 20) || 'GHOSTRIDER 31';
     if (has('hudscale')) CFG.hudScale = v('hudscale') / 100;
     if (has('hudbottom')) CFG.hudBottom = v('hudbottom');
+    if (has('cost') && !url('cost')) CFG.cost = !!v('cost');
     if (has('timemode') && !url('hour')) CFG.timeMode = v('timemode');
     if (has('fixedhour') && !url('hour')) CFG.fixedHour = v('fixedhour');
     if (has('season') && !url('season')) CFG.season = v('season');
@@ -192,12 +194,9 @@ function clampFrame() {
   CAM_TGT.x -= dx; CAM_TGT.z -= dz; return true;
 }
 /* screen helpers (perspective camera) */
-const _nd = new V3(), _rd = new V3(), _rt = new V3();
+const _nd = new V3(), _rd = new V3();
 const VIEW = {
   ndc(p) { return _nd.copy(p).project(camera); },
-  /* where the reticle is (NDC; z 1 when the point is held in from out of the frame): the frame's centre, or, where the frame is held off the map's edge (clampFrame), the
-     sensor's point wherever it shows in it: the guns fire there, so the reticle is drawn there too */
-  ret() { if (Math.hypot(GUNSHIP.look.x - CAM_TGT.x, GUNSHIP.look.z - CAM_TGT.z) < 0.5) return _rt.set(0, 0, 0); const n = this.ndc(GUNSHIP.look), x = clamp(n.x, -0.92, 0.92), y = clamp(n.y, -0.88, 0.88); return _rt.set(x, y, x !== n.x || y !== n.y ? 1 : 0); },   // (z 1: the point is out of the frame, nothing is under the reticle)
   onScreen(p, m) { const n = this.ndc(p); return Math.abs(n.x) < 1 + (m || 0) && Math.abs(n.y) < 1 + (m || 0); },
   /* within m metres past the frame: frameR is the half diagonal of the ground it shows (the view's height × the aspect across,
      stretched by the slant down the view), measured from the frame's centre, so it grows with the zoom out */

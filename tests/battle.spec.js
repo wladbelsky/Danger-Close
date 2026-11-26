@@ -96,15 +96,15 @@ test('at the map edge the sensor stops where the frame can be centred: the retic
     const p = new THREE.Vector3(MAP_HALF - 25, 0, 0); p.y = groundH(p.x, p.z);
     GUNSHIP.nextWander = 1e9; GUNSHIP.ctr.set(MAP_HALF - 200, 0, 0); let off = 0;
     for (let i = 0; i < 80; i++) { GUNSHIP.track(p); __t.sim(0.1); off = Math.max(off, Math.hypot(GUNSHIP.look.x - CAM_TGT.x, GUNSHIP.look.z - CAM_TGT.z)); }   // (slewing at it, circling over it)
-    const R = VIEW.ret(), L = GUNSHIP.look.clone(); HUD.draw();
+    const L = GUNSHIP.look.clone(), R = VIEW.ndc(L);   // (where the sensor's point shows: the reticle is the frame's centre)
     const at = { pos: p.clone(), kind: 'inf', side: 'enemy', alive: true }, mid = { pos: CAM_TGT.clone() };
-    return { off, ret: Math.hypot(R.x, R.y), drawn: Math.hypot(HUD.retAt.x - 0.5, HUD.retAt.y - 0.5), short: MAP_HALF - L.x, reachEdge: BATTLE.reach({ pos: p }), reachMid: BATTLE.reach({ pos: L }),
+    return { off, ret: Math.hypot(R.x, R.y), short: MAP_HALF - L.x, reachEdge: BATTLE.reach({ pos: p }), reachMid: BATTLE.reach({ pos: L }),
       hitEdge: BATTLE.canHit(ARMS.w, at), middle: BATTLE.onAim(mid), under: (() => { const q = BATTLE.aimPoint(new THREE.Vector3()); return Math.hypot(q.x - CAM_TGT.x, q.z - CAM_TGT.z); })() };
   });
   console.log(JSON.stringify(r));
   expect(r.off, 'the sensor\'s point never left the frame\'s centre (m)').toBeLessThan(0.5);
   expect(r.short, 'it stopped short of the edge by the frame\'s reach').toBeGreaterThan(60);
-  expect(r.ret, 'the reticle in the middle').toBeLessThan(0.001); expect(r.drawn).toBeLessThan(0.001);
+  expect(r.ret, 'the point under the reticle, in the middle').toBeLessThan(0.01);
   expect(r.middle, 'a target in the middle is under it').toBe(true); expect(r.under, 'a shot under the reticle goes to the middle').toBeLessThan(0.5);
   expect({ reachEdge: r.reachEdge, hitEdge: r.hitEdge, reachMid: r.reachMid }, 'one 25 m off the edge out of its reach, not a target').toEqual({ reachEdge: false, hitEdge: false, reachMid: true });
 });
@@ -359,8 +359,8 @@ test('the guns fire only at what is under the reticle, and a burst follows the r
   await wp.sim(6, { audio: true, bpm: 140 });
   const r = await wp.run(() => {
     const off = [], hit = [], f0 = BATTLE.fire.bind(BATTLE), s0 = BATTLE.strike.bind(BATTLE); let led = 0;
-    // from the reticle as drawn and as BATTLE.onAim measures it (VIEW.ret: at the map's edge, the sensor's point)
-    const aimD = p => { const R = VIEW.ret(), rx = R.x, ry = R.y, n = VIEW.ndc(p); return Math.hypot((n.x - rx) * camera.aspect, n.y - ry); };
+    // from the reticle, the frame's centre, as BATTLE.onAim measures it
+    const aimD = p => { const n = VIEW.ndc(p); return Math.hypot(n.x * camera.aspect, n.y); };
     // (a round already in the air when the sensor jumps to another target, BURST_LET_GO m or more within 0.3 s, cannot follow it:
     // not counted; following a running target moves it a few metres in that time)
     const hist = []; let jumpT = -9;
@@ -581,4 +581,24 @@ test('the Hellfire locks on the laser spot first and flies to it, the sensor hol
   expect(r.moved, 'the target moved off under the laser').toBe(true);
   expect(r.hits.length).toBeGreaterThanOrEqual(2);
   for (const d of r.hits) expect(d, 'where it hit, from the target (it moved 12 m in flight: the missile followed the spot)').toBeLessThan(4);
+});
+
+test('the money spent: every round at its weapon\'s price, in three figures at the HUD\'s top right, off with its setting', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&transit=0&weapons=g25,h105&auto=0' });
+  await wp.sim(10, { audio: true, bpm: 140 });
+  const r = await wp.run(() => {
+    const fmt = [0, 750, 999.7, 12400, 1254000, 3.4e9, 2e12].map(fmtMoney), fought = BATTLE.spent, shots = BATTLE.stat.shots;
+    const t = UNITS.find(u => u.alive && u.side === 'enemy') || { pos: CAM_TGT.clone(), kind: 'car', side: 'enemy', alive: true, ah: 2, v: 0, yaw: 0 };
+    // (each round is paid for as it leaves: the trigger's queued rounds run at once here, the sensor still on the point)
+    const price = id => { const s = BATTLE.spent, k = BATTLE.pend.length; BATTLE.fire(WEAPON[id], t, 1.5); for (const q of BATTLE.pend.splice(k)) q.fn(); return BATTLE.spent - s; };
+    const p = { h105: price('h105'), gbu: price('gbu'), aim: price('aim'), rail: price('rail') }; BATTLE.lastBurst = 0; const g25 = price('g25'), n25 = BATTLE.lastBurst;
+    const seen = [], o = HUD.text; HUD.text = function (s, ...a) { seen.push(s); return o.call(this, s, ...a); };
+    HUD.draw(); const on = seen.find(s => s.startsWith('SPENT ')); seen.length = 0; CFG.cost = false; HUD.draw(); const off = seen.some(s => s.startsWith('SPENT')); HUD.text = o; CFG.cost = true;
+    return { fmt, fought, shots, p, g25, n25, on, off, want: fmtMoney(BATTLE.spent) };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.fmt).toEqual(['$0', '$750', '$1.00K', '$12.4K', '$1.25M', '$3.40B', '$2.00T']);
+  expect(r.shots, 'it fought').toBeGreaterThan(0); expect(r.fought, 'and that cost money').toBeGreaterThan(0);
+  expect(r.p).toEqual({ h105: 1200, gbu: 40000, aim: 470000, rail: 25000 }); expect(r.g25, 'a 25 mm burst: each round').toBe(35 * r.n25);
+  expect(r.on, 'on the HUD').toBe('SPENT ' + r.want); expect(r.off, 'not with the setting off').toBe(false);
 });

@@ -7,7 +7,7 @@ music plays, the guns firing on the beat. Built from the engines of `../Code 3` 
 Runs 24/7 inside Wallpaper Engine (CEF/Chromium); also previewable in a normal browser.
 
 Original work in the genre: reference screenshots are for mood only. No names, logos, HUD layouts or assets of existing
-games. No level, money, fuel, time limit, objectives, kill feed or radio subtitles. No civilians, no blood.
+games. No level, money (but the optional count of what the gunship has fired off), fuel, time limit, objectives, kill feed or radio subtitles. No civilians, no blood.
 
 ## Plan (stages) — keep this list, it is the source of truth
 **Stop rule: after each stage show the screenshots and STOP. Move to the next stage only when the user says so.**
@@ -252,13 +252,24 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   (`HUD.lockOn`, `HUD.corners`; `lockDraw.d`: the diamond's size over the box's). This replaces the arrows. Sheet: aim-lock.png.
 - A vehicle no longer bumps into one of its own column that is behind it (`bumps`). An assault's way that turned back past the
   tank following the APC held both for good.
+- The reticle is only ever the frame's centre: `VIEW.ret()` and `HUD.retAt` (the reticle drawn on the sensor's point where the
+  frame was held off the map's edge) are gone, since `GUNSHIP.update` now keeps the point on the frame's centre; `onAim`,
+  `nearestTo` and the tests measure from the centre. A vehicle still does not bump into its own column's one behind it: a
+  leader's hull over its follower's in the frame was measured at 2 steps of 0.1 s in 30 min over 6 maps, not worth more rules.
+- A lock's target shows one box, not two: its tracking bracket (`brackets`) is left out and the lock's box takes its place, at
+  its track's height and the same size and corners (was a 26u box at 2.5 m by the 30u bracket at the track's height).
+- **The money spent**: SPENT at the HUD's top right, under ELEV (`fmtMoney`: three figures, $750, $12.4K, $1.25M, $3.40B, $1.00T),
+  the sum of every round fired since the start (`BATTLE.spent`; `WEAPONS` `cost`: dollars a round, rough public figures: 25 mm
+  $35, 30 mm $70, 40 mm $180, 105 mm $1,200, APKWS $25K a rocket, GBU-39 $40K, Hellfire $150K, AIM-9X $470K, railgun $25K, the
+  laser $10 a second of beam). Every round of a burst counts, the sub-beat ones too (they take no cosmetic ammunition). The
+  property **Money spent on the HUD** (`cost`, on; `?cost=0`). Not kept across launches.
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
 - **Vision**: TV, WH, BH, NVG; a clickable switch on the HUD that is NOT persisted; a property for the default (auto = TV by day, WH at night — the default / tv / wh / bh /
   nv).
-- **HUD**: mode label, callsign (property, default `GHOSTRIDER 31`), compass, altitude ladder, PC clock, crosshair per weapon;
+- **HUD**: mode label, callsign (property, default `GHOSTRIDER 31`), compass, altitude ladder, PC clock, the money spent (optional), crosshair per weapon;
   at the bottom a clickable selector of the enabled weapons with cosmetic ammo / reload, kept `CFG.hudBottom` (48 px) above the bottom edge for the Windows taskbar. Screen-fixed corner brackets: allies blue,
   enemies white.
 - **Map**: ~2×2 km generated at start under the splash; seed property (0 = new each launch). Gentle hills, lakes, roads with
@@ -323,7 +334,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=86`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=89`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

@@ -3,18 +3,19 @@
    ammunition (js/battle.js does the firing) =====
    hits: the kinds of target it is used on (the rest are left to the allies); band: the beat that triggers it (high / mid / low,
    strong: a heavy hit in any band, hold: a beam kept up by any beat); use: rounds a trigger takes; zoom: a factor on the zoom
-   setting while it is selected; mag / reload: rounds between reloads and the reload's seconds (cosmetic).                    */
+   setting while it is selected; mag / reload: rounds between reloads and the reload's seconds (cosmetic); cost: dollars a round
+   fired (the laser's: a second of beam), rough public figures, for the HUD's count of the money spent (BATTLE.spent).          */
 const WEAPONS = [
-  { id: 'g25',  name: '25MM',    sub: 'GAU-12',   zoom: 1.25, rounds: 1800, mag: 300, reload: 4,   use: 25, reticle: 'cross',  band: 'high',   hits: 'inf car apc',                    def: true },
-  { id: 'g30',  name: '30MM',    sub: 'GAU-23',   zoom: 1.1,  rounds: 500,  mag: 100, reload: 5,   use: 1,  reticle: 'box',    band: 'mid',    hits: 'inf car apc struct',             def: true },
-  { id: 'h105', name: '105MM',   sub: 'M102',     zoom: 0.85, rounds: 100,  mag: 1,   reload: 2.6, use: 1,  reticle: 'frame',  band: 'low',    hits: 'inf car apc tank struct',        def: true },
-  { id: 'b40',  name: '40MM',    sub: 'L/60',     zoom: 1.05, rounds: 256,  mag: 4,   reload: 1.5, use: 4,  reticle: 'box',    band: 'mid',    hits: 'inf car apc struct',             def: false },
-  { id: 'hf',   name: 'HELLFIRE', sub: 'AGM-114', zoom: 0.9,  rounds: 4,    mag: 1,   reload: 6,   use: 1,  reticle: 'circle', band: 'strong', hits: 'car apc tank struct',            def: false },
-  { id: 'apk',  name: 'APKWS',   sub: 'HYDRA 70', zoom: 0.9,  rounds: 16,   mag: 4,   reload: 6,   use: 4,  reticle: 'circle', band: 'strong', hits: 'inf car apc struct',             def: false },
-  { id: 'gbu',  name: 'GBU-39',  sub: 'SDB',      zoom: 0.72, rounds: 4,    mag: 1,   reload: 8,   use: 1,  reticle: 'circle', band: 'strong', hits: 'inf car apc tank struct',        def: false },
-  { id: 'aim',  name: 'AIM-9X',  sub: 'SIDEWNDR', zoom: 0.68, rounds: 2,    mag: 1,   reload: 10,  use: 1,  reticle: 'seeker', band: 'strong', hits: 'heli',                           def: false },
-  { id: 'las',  name: 'LASER',   sub: 'HEL 60KW', zoom: 1.2,  rounds: 0,    mag: 0,   reload: 0,   use: 0,  reticle: 'laser',  band: 'hold',   hits: 'inf car apc tank heli struct',   def: false },
-  { id: 'rail', name: 'RAILGUN', sub: 'EMRG',     zoom: 0.9,  rounds: 40,   mag: 1,   reload: 3.5, use: 1,  reticle: 'rail',   band: 'strong', hits: 'inf car apc tank heli struct',   def: false }
+  { id: 'g25',  name: '25MM',    sub: 'GAU-12',   zoom: 1.25, rounds: 1800, mag: 300, reload: 4,   use: 25, reticle: 'cross',  band: 'high',   hits: 'inf car apc',                    cost: 35, def: true },
+  { id: 'g30',  name: '30MM',    sub: 'GAU-23',   zoom: 1.1,  rounds: 500,  mag: 100, reload: 5,   use: 1,  reticle: 'box',    band: 'mid',    hits: 'inf car apc struct',             cost: 70, def: true },
+  { id: 'h105', name: '105MM',   sub: 'M102',     zoom: 0.85, rounds: 100,  mag: 1,   reload: 2.6, use: 1,  reticle: 'frame',  band: 'low',    hits: 'inf car apc tank struct',        cost: 1200, def: true },
+  { id: 'b40',  name: '40MM',    sub: 'L/60',     zoom: 1.05, rounds: 256,  mag: 4,   reload: 1.5, use: 4,  reticle: 'box',    band: 'mid',    hits: 'inf car apc struct',             cost: 180, def: false },
+  { id: 'hf',   name: 'HELLFIRE', sub: 'AGM-114', zoom: 0.9,  rounds: 4,    mag: 1,   reload: 6,   use: 1,  reticle: 'circle', band: 'strong', hits: 'car apc tank struct',            cost: 150000, def: false },
+  { id: 'apk',  name: 'APKWS',   sub: 'HYDRA 70', zoom: 0.9,  rounds: 16,   mag: 4,   reload: 6,   use: 4,  reticle: 'circle', band: 'strong', hits: 'inf car apc struct',             cost: 25000, def: false },
+  { id: 'gbu',  name: 'GBU-39',  sub: 'SDB',      zoom: 0.72, rounds: 4,    mag: 1,   reload: 8,   use: 1,  reticle: 'circle', band: 'strong', hits: 'inf car apc tank struct',        cost: 40000, def: false },
+  { id: 'aim',  name: 'AIM-9X',  sub: 'SIDEWNDR', zoom: 0.68, rounds: 2,    mag: 1,   reload: 10,  use: 1,  reticle: 'seeker', band: 'strong', hits: 'heli',                           cost: 470000, def: false },
+  { id: 'las',  name: 'LASER',   sub: 'HEL 60KW', zoom: 1.2,  rounds: 0,    mag: 0,   reload: 0,   use: 0,  reticle: 'laser',  band: 'hold',   hits: 'inf car apc tank heli struct',   cost: 10, def: false },
+  { id: 'rail', name: 'RAILGUN', sub: 'EMRG',     zoom: 0.9,  rounds: 40,   mag: 1,   reload: 3.5, use: 1,  reticle: 'rail',   band: 'strong', hits: 'inf car apc tank heli struct',   cost: 25000, def: false }
 ];
 for (const w of WEAPONS) w.hitSet = new Set(w.hits.split(' '));
 const WEAPON = Object.fromEntries(WEAPONS.map(w => [w.id, w]));

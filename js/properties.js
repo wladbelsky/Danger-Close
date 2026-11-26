@@ -81,6 +81,12 @@ const WE_PROPERTIES = {
   "min": 0,
   "max": 160
  },
+ "cost": {
+  "order": 8,
+  "text": "Money spent on the HUD",
+  "type": "bool",
+  "value": true
+ },
  "timemode": {
   "order": 10,
   "text": "Time of day",

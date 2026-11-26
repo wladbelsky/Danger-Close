@@ -5,6 +5,14 @@
 const HUD_COL = '#e2ebe6', HUD_DARK = 'rgba(0,0,0,0.5)', ALLY_COL = '#4da6ff', ENEMY_COL = '#ffffff';
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const _hp = new V3();
+/* dollars in three figures: $750, $12.4K, $1.25M, $3.40B, $1.00T */
+function fmtMoney(v) {
+  const U = ['', 'K', 'M', 'B', 'T']; let i = 0;
+  while (i < 4 && v >= 1000) { v /= 1000; i++; }
+  let s = i ? (v < 9.995 ? v.toFixed(2) : v < 99.95 ? v.toFixed(1) : v.toFixed(0)) : String(Math.round(v));
+  if (s === '1000' && i < 4) { s = '1.00'; i++; }   // (999.7 rounds up into the next unit)
+  return '$' + s + U[i];
+}
 const HUD = {
   on: false, cv: null, g: null, W: 0, H: 0, u: 1, ui: null, armsEl: null, boxes: [], domT: 0, cache: {},
   build() {
@@ -58,7 +66,7 @@ const HUD = {
     const g = this.g, W = this.W, H = this.H, u = this.u;
     g.clearRect(0, 0, W, H); g.lineCap = 'butt'; g.textBaseline = 'middle';
     this.brackets(); this.designate(); this.lockOn(); this.laseOn(); this.compass(W / 2, 52 * u); this.ladder(W - 64 * u, (H - this.sb) / 2);
-    const R = VIEW.ret(), ra = this.retAt || (this.retAt = { x: 0.5, y: 0.5 }); ra.x = (R.x + 1) / 2; ra.y = (1 - R.y) / 2; this.reticle(ra.x * W, ra.y * H);   // (at the map's edge: on the sensor's point, not the frame's centre)
+    this.reticle(W / 2, H / 2);
     // the clock and the sensor point at the top right
     const now = getNow(), p2 = n => String(n).padStart(2, '0'), x = W - 40 * u;
     this.text(`${p2(now.getHours())}:${p2(now.getMinutes())}:${p2(now.getSeconds())}`, x, 44 * u, 26, 'right');
@@ -68,6 +76,7 @@ const HUD = {
     const e = Math.round((44000 + CAM_TGT.x + MAP_HALF) / 10) % 10000, n = Math.round((68000 - CAM_TGT.z + MAP_HALF) / 10) % 10000;
     this.text(`GRID 38T LN ${String(e).padStart(4, '0')} ${String(n).padStart(4, '0')}`, x, 122 * u, 14, 'right');
     this.text(`ELEV ${Math.round(CAM_TGT.y * 3.28 + 1460)} FT`, x, 144 * u, 14, 'right');
+    if (CFG.cost) this.text(`SPENT ${fmtMoney(BATTLE.spent)}`, x, 174 * u, 16, 'right');   // (the money the gunship has fired off since the start: WEAPONS cost)
     // the callsign and what the gunship is doing at the top left (under the mode buttons)
     this.text(CFG.callsign, 30 * u, 92 * u, 18);
     const T_ = GUNSHIP.tr, ao = k => k ? 'AO-' + k : 'OBJ', st = GUNSHIP.state === 'transit' ? `TRANSIT  ${ao(GUNSHIP.list.indexOf(T_.to) + 1)}  ${(Math.hypot(T_.to.x - CAM_TGT.x, T_.to.z - CAM_TGT.z) / 1000).toFixed(1)} KM` : `${AUD.fighting ? 'ENGAGING' : AUD.holding ? 'CEASE FIRE' : 'ORBIT'}  ${ao(GUNSHIP.ao)}`;
@@ -132,14 +141,16 @@ const HUD = {
   /* a lock (BATTLE.lock: the AIM-9X's, the Hellfire's): a box on the target and a diamond round it, only their corners while the
      seeker locks on, the diamond shrinking from far out down onto the box; once it has it both drawn whole with a dot in the middle,
      then SHOOT boxed and blinking low in the middle (under the reticle, over the weapon selector) until the launch */
+  /* the tracked object of the lock's target while a lock is drawn (a base structure's track is its mark, not its model), else null */
+  lockObj() { const L = BATTLE.lock; return L && L.t.alive && GUNSHIP.state === 'orbit' ? L.t.mark || L.t.obj : null; },
   lockOn() {
-    const L = BATTLE.lock; this.lockDraw = null; if (!L || !L.t.alive || GUNSHIP.state !== 'orbit') return;
+    const L = BATTLE.lock, lk = this.lockObj(); this.lockDraw = null; if (!lk) return;
     const shoot = !!L.shootT; if (shoot && Math.floor((T - L.shootT) * 8) % 2 === 0) this.shootCue(this.W / 2, this.H - this.sb - 112 * this.u);
-    _hp.copy(L.t.pos); _hp.y += 2.5; _hp.project(camera); if (_hp.z > 1 || Math.abs(_hp.x) > 1.05 || Math.abs(_hp.y) > 1.05) return;
-    const g = this.g, u = this.u, x = (_hp.x + 1) / 2 * this.W, y = (1 - _hp.y) / 2 * this.H, s = 26 * u, got = L.k >= 1, d = lerp(5.5 * s, 1.45 * s, smoothstep(0, 1, L.k));
+    const tr = TRACKS.find(t => t.obj === lk); _hp.copy(L.t.pos); _hp.y += tr ? tr.h : 2.5; _hp.project(camera); if (_hp.z > 1 || Math.abs(_hp.x) > 1.05 || Math.abs(_hp.y) > 1.05) return;
+    const g = this.g, u = this.u, x = (_hp.x + 1) / 2 * this.W, y = (1 - _hp.y) / 2 * this.H, s = 30 * u, got = L.k >= 1, d = lerp(5.5 * s, 1.45 * s, smoothstep(0, 1, L.k));
     g.beginPath();
-    this.corners([[x - s, y - s], [x + s, y - s], [x + s, y + s], [x - s, y + s]], got ? 0.5 : 0.22);   // (the box)
-    this.corners([[x, y - d], [x + d, y], [x, y + d], [x - d, y]], got ? 0.5 : 0.22 * 1.45 * s / d);   // (the diamond: corners the same length all the way in)
+    this.corners([[x - s, y - s], [x + s, y - s], [x + s, y + s], [x - s, y + s]], got ? 0.5 : 0.2);   // (the box: in place of its track's bracket, brackets(), the same size and corners, not a second one by it)
+    this.corners([[x, y - d], [x + d, y], [x, y + d], [x - d, y]], got ? 0.5 : 0.2 * 1.45 * s / d);   // (the diamond: corners the same length all the way in)
     this.stroke(2 * u);
     if (got) { g.beginPath(); g.arc(x, y, 2.4 * u, 0, TAU); this.stroke(1.2 * u); g.fillStyle = HUD_COL; g.fill(); }   // (the dot: locked)
     if (L.w === 'hf') this.spot(x, y);   // (the Hellfire's: the designator's spot on the target)
@@ -177,11 +188,11 @@ const HUD = {
   },
   /* corner brackets of a fixed screen size: allies blue, enemies white */
   brackets() {
-    const g = this.g, u = this.u, W = this.W, H = this.H; this.boxes.length = 0;
+    const g = this.g, u = this.u, W = this.W, H = this.H, lk = this.lockObj(); this.boxes.length = 0;
     for (const side of ['ally', 'enemy']) {
       g.beginPath();
       for (const t of TRACKS) {
-        if (t.side !== side || !t.obj.visible) continue;
+        if (t.side !== side || !t.obj.visible || t.obj === lk) continue;   // (a lock's target: its box is the lock's, lockOn)
         _hp.copy(t.obj.position); _hp.y += t.h; _hp.project(camera);
         if (_hp.z > 1 || Math.abs(_hp.x) > 1.05 || Math.abs(_hp.y) > 1.05) continue;
         const x = (_hp.x + 1) / 2 * W, y = (1 - _hp.y) / 2 * H, s = (t.inf ? 16 : 30) * u, c = s * 0.4;
