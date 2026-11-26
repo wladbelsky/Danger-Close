@@ -662,17 +662,30 @@ const BATTLE = {
   },
   /* the target for a weapon: the one it is on while that is alive and in the frame, else the nearest to the frame's centre */
   target(w) {
-    const f = this.focus; if (f && f.alive && w.hitSet.has(f.kind) && this.inFrame(f.pos) && this.reach(f)) return f;
+    const f = this.focus; if (f && f.alive && w.hitSet.has(f.kind) && this.inFrame(f.pos) && this.reach(f) && !this.doomed(f)) return f;
     let best = null, bs = 1e9;
-    for (const u of UNITS) { if (!this.canHit(w, u)) continue; const d = Math.hypot(u.pos.x - CAM_TGT.x, u.pos.z - CAM_TGT.z) * (u.kind === 'struct' ? 1.6 : 1); if (d < bs) { bs = d; best = u; } }
+    for (const u of UNITS) { if (!this.canHit(w, u) || this.doomed(u)) continue; const d = Math.hypot(u.pos.x - CAM_TGT.x, u.pos.z - CAM_TGT.z) * (u.kind === 'struct' ? 1.6 : 1); if (d < bs) { bs = d; best = u; } }
     if (best) { this.offT = 0; this.focus = best; } return best;
   },
+  /* the damage the gunship's missiles in flight will do to u, as strike() deals it: a homing one's in full, the rest by where they land */
+  incoming(u) {
+    let s = 0; const S0 = this.lase, fly = u.kind === 'heli' && u.pos.y > groundH(u.pos.x, u.pos.z) + 8;
+    for (const m of this.missiles) {
+      const G = m.G, w = m.w, S = G.air ? 0 : SPLASH[w.id] || 0, r = Math.max(G.r, S); if ((!w.hitSet.has(u.kind) && !S) || fly !== !!G.air) continue;
+      const on = m.tgt === u || (m.laser && S0 && S0.m === m && S0.tgt === u), d = on ? 0 : Math.max(0, Math.hypot(u.pos.x - m.to.x, u.pos.z - m.to.z) - (u.kind === 'struct' ? 3 : u.kind === 'inf' ? 0 : 1.5)); if (d >= (u.kind === 'struct' ? Math.min(r, 4) : r)) continue;
+      const A = ARMOR[w.id]; s += m.dmg * (1 - d / r) * (u.kind === 'inf' ? 3 : 1) * (A && A[u.kind] || 1);
+    }
+    return s;
+  },
+  /* a missile on its way will kill it: no other weapon is wasted on it meanwhile (a 105 mm shell gets there first, and one is as dead
+     from either), the sensor goes on to the next */
+  doomed(u) { return this.missiles.length > 0 && u.hp > 0 && this.incoming(u) >= u.hp; },
   /* an enemy in the frame that weapon w may hit */
   canHit(w, u) { return u.side === 'enemy' && w.hitSet.has(u.kind) && this.inFrame(u.pos) && this.reach(u); },
   /* the target in the frame nearest the reticle other than x (null: none) */
   nearestTo(w, x) {
     let best = null, bs = 1e9;
-    for (const u of UNITS) { if (u === x || !this.canHit(w, u)) continue; const n = VIEW.ndc(u.pos), d = Math.hypot(n.x * camera.aspect, n.y); if (d < bs) { bs = d; best = u; } }
+    for (const u of UNITS) { if (u === x || !this.canHit(w, u) || this.doomed(u)) continue; const n = VIEW.ndc(u.pos), d = Math.hypot(n.x * camera.aspect, n.y); if (d < bs) { bs = d; best = u; } }
     return best;
   },
   onBeat(band, st) {
@@ -681,12 +694,14 @@ const BATTLE = {
     for (const m of this.missiles) if (m.p > 0.55) m.rush = true;                     // what is in flight lands on this beat
     this.gunOnBeat(band, st, false);
   },
+  /* a song fading out: the share of the gunship's shots it still fires (AUD.fade); a drop's surge at full (the loudness over ~2 s lags behind its return) */
+  fadeK() { return T < this.surgeUntil ? 1 : AUD.fade; },
   /* the gunship on a beat: the selected weapon, if the beat suits it (force: a drop, at once) */
   gunOnBeat(band, st, force) {
     if (GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled) return;                     // (flying to another place, or just arrived: the sensor is not on anything yet)
     const w = ARMS.w, f = CFG.fire / 100; if (!w || f <= 0) return;
     force = force || T < this.forceUntil;   // (a drop's shot waits up to 1.5 s for the reticle to come onto a target)
-    const fv = force ? 1 : AUD.fade;   // (a song fading out: fewer shots, none at its end; FADE)
+    const fv = force ? 1 : this.fadeK();   // (a song fading out: fewer shots, none at its end; FADE)
     if (fv < 1 && Math.random() > fv) return;
     if (w.band === 'hold') { const t = this.target(w); if (t && this.onReticle(t)) { this.laserUntil = T + (force ? 1.5 : 0.5); if (force) this.forceUntil = 0; } return; }
     if (LOCK_T[w.id]) { const L = this.lock; if (L && L.shootT && T - L.shootT >= LOCK.win[0] && st > 1.2) this.launch(w, L); return; }   // (the AIM-9X and the Hellfire only through their lock: SHOOT, then on a strong beat or LOCK.fire s on)
@@ -706,7 +721,7 @@ const BATTLE = {
     const w = ARMS.w, LT = w && LOCK_T[w.id]; let L = this.lock;
     if (!LT || GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled || CFG.fire <= 0 || this.lase) { this.lock = null; return; }
     if (L && L.w !== w.id) L = this.lock = null;
-    if (L && L.shootT) { if (!L.t.alive || !this.canHit(w, L.t)) this.lock = null; else if (T >= L.fireT) this.launch(w, L); return; }   // (SHOOT: the launch is coming)
+    if (L && L.shootT) { if (!L.t.alive || !this.canHit(w, L.t)) this.lock = null; else if (T >= L.fireT) { const fv = this.fadeK(); if (fv < 1 && Math.random() > fv) L.fireT = T + LOCK.fire; else this.launch(w, L); } return; }   // (SHOOT: the launch is coming; a song fading out: held, tried again LOCK.fire s on)
     const t = this.target(w);
     if (!t || (t.kind === 'heli') !== (w.id === 'aim') || !ARMS.ready(w)) { if (L && (L.k -= dt / LT * 2) <= 0) this.lock = null; return; }
     if (!L || L.t !== t) { L = this.lock = { w: w.id, t, t0: T, k: 0, off: 0, shootT: 0, fireT: 0 }; this.stat.locks++; }
@@ -727,7 +742,7 @@ const BATTLE = {
     let n = 1; for (const [t, k] of S) if (AUD.tempo > t) n = k; if (n < 2) { this.gridN = -1; return; }
     const q = AUD.beatP / n, now = RT(), g = Math.floor((now - AUD.kickT) / q); if (g === this.gridN || now - AUD.kickT > AUD.beatP * 2) return;
     const fresh = this.gridN < 0; this.gridN = g; if (fresh) return;   // (just back on the grid: wait for its next point, not fire off it)
-    const f = CFG.fire / 100, fv = AUD.fade; if (GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled || now - this.shotRT < q * 0.6 || !ARMS.ready(w) || (f < 1 && Math.random() > f) || (fv < 1 && Math.random() > fv)) return;   // (a fading song: fewer, FADE)
+    const f = CFG.fire / 100, fv = this.fadeK(); if (GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled || now - this.shotRT < q * 0.6 || !ARMS.ready(w) || (f < 1 && Math.random() > f) || (fv < 1 && Math.random() > fv)) return;   // (a fading song: fewer, FADE)
     const t = this.target(w), k = t ? this.shotAt(w, t) : 0; if (!k) return;
     this.noteShot(k); this.shotRT = now; this.stat.subShots++; this.stat.subOff = Math.max(this.stat.subOff, Math.abs((now - AUD.kickT) - g * q));
     this.fire(w, t, 1.15, 0.5, k > 1 ? this.atP : null);   // (half the damage: faster music, more fire, not a quicker fight)
@@ -948,10 +963,10 @@ const BATTLE = {
     this.fTick = 0.4; if (GUNSHIP.state === 'transit') { this.offT = 0; this.focus = this.chase = null; return; }
     const w0 = ARMS.w;   // a weapon picked by hand: the auto-switching takes over again after 30 s, or 3 s after the click once nothing it may hit is left round here
     if (CFG.autoArms && T < this.manualUntil && T > this.manualUntil - 27 && w0 && !UNITS.some(u => u.alive && u.side === 'enemy' && w0.hitSet.has(u.kind) && Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z) < 250)) { this.manualUntil = 0; this.autoTick = 0; }
-    const man = !CFG.autoArms || T < this.manualUntil; let here = null;
-    for (const u of UNITS) if (u.side === 'enemy' && this.inFrame(u.pos) && this.reach(u)) { here = u; break; }   // (never away from enemies still in the frame)
+    const man = !CFG.autoArms || T < this.manualUntil; let here = null, dm = null;
+    for (const u of UNITS) if (u.side === 'enemy' && this.inFrame(u.pos) && this.reach(u)) { if (!this.doomed(u)) here = here || u; else dm = dm || u; }   // (never away from enemies still in the frame; dm: one a missile is on its way to)
     // away from the zone only when the gunship may leave it (a quiet part, past its stay and its timer) and no enemy is in the frame
-    const go = !here && GUNSHIP.mayLeave(this.dry());
+    const go = !here && !dm && GUNSHIP.mayLeave(this.dry());
     if (this.wantGo && go) { const d = this.wantGo; this.wantGo = null; this.focus = null; GUNSHIP.goTo(d); return; }
     if (go && !man) {   // to another fight: the base, or one out in the country
       const c = this.spots.filter(s => this.hot(s, 160) && UNITS.some(u => u.side === 'ally' && Math.hypot(u.pos.x - s.x, u.pos.z - s.z) < 130)); if (this.base && this.hot(this.base, 120)) c.push(this.base);   // (only where both sides already are)
@@ -960,6 +975,7 @@ const BATTLE = {
     const w = ARMS.w, f = w ? this.target(w) : null;
     let t = f; if (f && this.offT > OFF_SWITCH) { const g = this.nearestTo(w, f); if (g) { this.focus = t = g; this.offT = 0; this.stat.refocus++; } }   // (it got away from the reticle: the one nearest it now)
     if (t) { this.chase = null; this.seekT = T + 0.8; this.lookAt(t); this.offT = this.onAim(t) ? 0 : this.offT + 0.4; return; }
+    if (dm) { this.focus = dm; this.offT = 0; this.chase = null; this.lookAt(dm); return; }   // (nothing else for the weapon in hand here: the sensor follows the missile's target to the hit, every frame as its focus; target() skips it)
     this.focus = null; this.offT = 0; if (T < this.seekT) { if (this.chase && this.chase.alive) this.lookAt(this.chase); return; }   // (on the way to the next one: it is followed)
     this.chase = null;
     if (here && !man) {   // enemies here that no enabled weapon may hit: the sensor stays on them and the allies are called in to finish them
@@ -968,7 +984,7 @@ const BATTLE = {
       if (T < this.waitT) return;
     } else this.waitT = 0;
     const en = man && w ? [w] : ARMS.enabled(); let best = null, bd = 1e9;   // (a weapon chosen by hand: to what it can hit)
-    for (const u of UNITS) { if (u.side !== 'enemy' || !en.some(q => q.hitSet.has(u.kind)) || !this.reach(u)) continue; let d = Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z); const ad = this.allyD(u.pos); if (ad < MIXED.r) d *= MIXED.k; else if (ad < 80) d *= 0.25; else if (d * 0.4 < bd && this.backed(u.pos)) d *= 0.4; if (d < bd) { bd = d; best = u; } }   // (rather where the allies are in the frame with them (MIXED), then where they are near; backed() only for one that could win)
+    for (const u of UNITS) { if (u.side !== 'enemy' || !en.some(q => q.hitSet.has(u.kind)) || !this.reach(u) || this.doomed(u)) continue; let d = Math.hypot(u.pos.x - GUNSHIP.look.x, u.pos.z - GUNSHIP.look.z); const ad = this.allyD(u.pos); if (ad < MIXED.r) d *= MIXED.k; else if (ad < 80) d *= 0.25; else if (d * 0.4 < bd && this.backed(u.pos)) d *= 0.4; if (d < bd) { bd = d; best = u; } }   // (rather where the allies are in the frame with them (MIXED), then where they are near; backed() only for one that could win)
     if (best) bd = Math.hypot(best.pos.x - GUNSHIP.look.x, best.pos.z - GUNSHIP.look.z);
     if (best && !this.backed(best.pos) && T > this.nextCall) { this.nextCall = T + 25; this.columnTo('ally', this.toPlace(best.pos.x, best.pos.z), pick(QRF_TYPES)); }   // (nobody of ours there: a column is called in)
     if (!best) { if (man) this.manualUntil = 0; return; }   // (nothing anywhere for the chosen weapon: the auto-switching takes over)
@@ -980,7 +996,7 @@ const BATTLE = {
     if (!CFG.autoArms || T < this.manualUntil || T < this.autoTick || this.lock || this.lase) return;   // (never in the middle of a lock, nor with a Hellfire on its way)
     this.autoTick = T + 1;
     const w0 = ARMS.w, s0 = w0 && ARMS.st[w0.id], hop = w0 && w0.mag && s0.reload > Math.max(RELOAD_HOP, 2 * (AUD.beatP || 0.5));   // (the weapon in hand reloads for a while: one that is ready fires meanwhile)
-    const cnt = {}; let any = false; for (const u of UNITS) if (u.side === 'enemy' && this.inFrame(u.pos) && this.reach(u)) { cnt[u.kind] = (cnt[u.kind] || 0) + 1; any = true; }
+    const cnt = {}; let any = false; for (const u of UNITS) if (u.side === 'enemy' && this.inFrame(u.pos) && this.reach(u) && !this.doomed(u)) { cnt[u.kind] = (cnt[u.kind] || 0) + 1; any = true; }
     if (!any) return;
     let best = null, bs = 0, cur = 0, alt = null, as = 0;   // (switching at once if the one in hand has nothing to do here, else after its dwell)
     for (const w of ARMS.enabled()) {

@@ -302,6 +302,15 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   the gunship's weapon with that chance (`gunOnBeat`, `subBeat`; not a drop's forced shot), and the any-beat fallbacks only at 1.
   Measured (a 15 s fade to a tenth): the 105 mm 0.53 / 0.53 / 0.6 a second loud / fading / at a tenth before; now 0.53 loud, 0.53
   in the fade's first half (down a quarter, as a quieter verse), 0.13 in its second, 0 at its end. Test: music.spec.js.
+  `BATTLE.fadeK()`: 1 in a drop's surge (`mid` lags 2 s behind the drop), else `AUD.fade`; the AIM-9X's and Hellfire's launch after
+  SHOOT obeys it too (held another `LOCK.fire` s). Sound after a silence (a new song) resets `peakL` to `mid`: a quieter song is
+  not measured against the loud one before it.
+- No weapon is wasted on a target a missile in flight will kill: `BATTLE.incoming(u)` is what the gunship's missiles on their way
+  will do to it, as `strike()` deals it (a homing one's or the Hellfire's spot's in full, the rest by where they land); `doomed(u)`
+  when that is its hp or more. `target()`, `nearestTo()`, the camera's search and `autoArm()`'s count skip a doomed one: the
+  auto-switching no longer picks the 105 mm and fires it at the GBU-39's target (the shell gets there first, as dead from either).
+  With nothing else for the weapon in hand, the sensor follows the doomed one to the hit. Measured (gbu + h105, 150 s): 4 of 56 105 mm triggers at a doomed
+  target before, now 0; the GBU-39 hits 22 before, 31 now (it goes on to the next). Test: battle.spec.js.
 - A vehicle inside the hull of the one it goes round is pushed out of it (`shove`, to the side it goes round by, `byp.d`; dropping
   the bypass instead set the two against each other: 4–5x the bypasses, the jitter test over), no longer held there now that its
   moves aside are checked (seed 3's traffic test: 70 overlaps in sight, now 3–5).
@@ -375,7 +384,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=94`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=96`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

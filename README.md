@@ -101,8 +101,9 @@ fullscreen apps by default.
 - **Helicopters over the fight**: the enemy's circle over the frame and make their rocket runs at what is in it.
 - **Detailed helicopters**: cockpits with flat panes set in their frames, tapering blades on a full rotor head, sensors, guns,
   rockets and missiles on their pylons, wheels, hot exhausts on the thermal sensor.
-- **The reticle is where the guns fire**: at the map's edge, where the picture cannot centre the sensor's point, the reticle
-  moves off the centre onto it.
+- **The reticle is where the guns fire**: always in the frame's centre; at the map's edge the sensor stops where the frame can
+  still be centred on it.
+- **No round wasted**: a target a missile in flight will kill is left to it; the other weapons and the sensor go on to the next.
 - **The Hellfire rides the laser**: the sensor lases the vehicle under the reticle, the seeker locks on the spot, SHOOT, and in
   flight the missile goes for the spot while the sensor holds it there, LASE and the time of flight on the HUD.
 - **The AIM-9X locks on**: the corners of a diamond close in on the helicopter's box under the reticle, a dot once locked,

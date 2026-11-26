@@ -159,8 +159,9 @@ test('APCs let their infantry out by the rear door near the enemy; a knocked-out
       if (i % 20 === 0) for (const sd of INF.list) { const p = sd.position, w = waterAt(p.x, p.z); if (w === 1 || w === 2 || (occAt(p.x, p.z) & (OCC_WATER | OCC_BUILD))) bad++; }
     }
     // an APC with its infantry aboard knocked out in the fight
-    const v = UNITS.find(u => u.kind === 'apc' && u.alive && !u.retreat && BATTLE.cols.some(E => E.col === u.col)); let bailed = -1;
-    if (v) { for (const u of UNITS) if (u.kind === 'apc' && u !== v) u.troops = 0; __t.sim(1.2, { audio: true }); v.troops = 5; for (const u of UNITS) if (u.kind === 'apc' && u !== v) u.troops = 0; const b0 = BATTLE.stat.bailed; hurt(v, 99); __t.sim(1.5, { audio: true }); bailed = BATTLE.stat.bailed - b0; }   // (another knocked out just before still had its crew getting out, up to 1 s on: let them out first)   // (its own crew only: another APC dying meanwhile has nobody aboard; counted as they get out, so one shot dead at once still counts)
+    for (const u of UNITS) if (u.kind === 'apc') u.troops = 0; __t.sim(1.2, { audio: true });   // (another knocked out just before still had its crew getting out, up to 1 s on: let them out first)
+    const v = UNITS.find(u => u.kind === 'apc' && u.alive && !u.retreat && BATTLE.cols.some(E => E.col === u.col)); let bailed = -1;   // (picked after that: one picked before may have died meanwhile)
+    if (v) { for (const u of UNITS) if (u.kind === 'apc' && u !== v) u.troops = 0; v.troops = 5; const b0 = BATTLE.stat.bailed; hurt(v, 99); __t.sim(1.5, { audio: true }); bailed = BATTLE.stat.bailed - b0; }   // (its own crew only: another APC dying meanwhile has nobody aboard; counted as they get out, so one shot dead at once still counts)
     const { dismounts, outOf, doorMax } = BATTLE.stat;
     return { dismounts, outOf, doorMax, bad, bailed, sides: [...sides] };
   });
@@ -604,4 +605,33 @@ test('the money spent: every round at its weapon\'s price, in three figures at t
   expect(r.on, 'on the HUD').toBe('SPENT ' + r.want); expect(r.off, 'not with the setting off').toBe(false);
   expect(r.roll[0], 'a new sum: not there at once').toBeLessThan(0.4); expect(r.roll[1], 'most of it in a second').toBeGreaterThan(0.8);
   expect(r.roll[2], 'nearly all in two').toBeGreaterThan(0.98); expect(r.roll[3]).toBeLessThanOrEqual(1);
+});
+
+test('a missile on its way to a target it will kill: no other weapon wasted on it, the sensor on to the next', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&weapons=gbu,h105&auto=0&transit=0' });
+  await wp.sim(8, { audio: true });
+  const r = await wp.run(() => {
+    for (const u of UNITS.slice()) if (u.side === 'enemy' && u instanceof Vehicle) u.remove();
+    BATTLE.nextWave = BATTLE.nextFeed = 1e9;
+    const put = (dx) => { const v = new Vehicle('car', 'enemy'); v.obj.position.set(CAM_TGT.x + dx, 0, CAM_TGT.z); v.obj.position.y = groundH(v.obj.position.x, v.obj.position.z); v.path = new Path([{ x: v.pos.x, z: v.pos.z, y: NaN, hw: 0 }, { x: v.pos.x + 1, z: v.pos.z, y: NaN, hw: 0 }]); return v; };
+    const a = put(0), b = put(25);
+    const k = BATTLE.pend.length; BATTLE.fire(WEAPON.gbu, a, 1.5); for (const q of BATTLE.pend.splice(k)) q.fn();   // (the bomb released: in flight to a)
+    const out = { flying: BATTLE.missiles.length, doomedA: BATTLE.doomed(a), doomedB: BATTLE.doomed(b) };
+    ARMS.select('h105'); BATTLE.focus = a; const t = BATTLE.target(WEAPON.h105); out.next = t === b ? 'b' : t === a ? 'a' : String(t && t.kind);
+    b.remove(); out.alone = BATTLE.target(WEAPON.h105) === null;   // (nothing else to shoot: none at it either)
+    // in a fight: every round of another weapon fired while a missile flies to a target it will kill, at that target
+    BATTLE.missiles.length = 0; a.remove(); BATTLE.nextWave = BATTLE.nextFeed = 0; CFG.autoArms = true; BATTLE.manualUntil = 0;
+    const f0 = BATTLE.fire.bind(BATTLE); let wasted = 0, other = 0;
+    BATTLE.fire = (w, t, ...x) => { if (!GUN[w.id].missile) { other++; if (BATTLE.missiles.some(m => m.tgt === t && BATTLE.incoming(t) >= t.hp)) wasted++; } return f0(w, t, ...x); };
+    __t.sim(150, { audio: true, bpm: 120 }); BATTLE.fire = f0;
+    out.wasted = wasted; out.other = other; out.gbu = BATTLE.log.filter(l => l.startsWith('gbu')).length;
+    return out;
+  });
+  console.log(JSON.stringify(r));
+  expect(r.flying, 'the bomb in flight').toBe(1);
+  expect(r.doomedA, 'the car it is on: doomed').toBe(true); expect(r.doomedB, 'one 25 m off: not').toBe(false);
+  expect(r.next, 'the 105 mm on the other car').toBe('b');
+  expect(r.alone, 'and with only the doomed one left, at nothing').toBe(true);
+  expect(r.other, 'the 105 mm fired in the fight').toBeGreaterThan(5); expect(r.gbu, 'and the GBU-39').toBeGreaterThan(0);
+  expect(r.wasted, 'never at what a missile in flight will kill').toBe(0);
 });

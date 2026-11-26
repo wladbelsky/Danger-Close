@@ -14,8 +14,8 @@ const AUD = {
   short: 0, long: 0, mid: 0, peakL: 0, lastCall: -1, calmFrom: -1, calmT: -99, calmStart: -99, lastDrop: -99, armedAt: -99, drops: 0,   // (loudness over ~0.6 s and ~8 s; a quiet part's start and end; the last drop)
   get active() { return RT() - this.lastActive < 1.6; },
   get drive() { return smoothstep(0.15, 0.6, this.heavy); },                                             // how hard the music drives the fight, 0..1
-  get calm() { return this.calmFrom >= 0 && RT() - this.calmFrom > 1; },
-  get fade() { return this.peakL > 1e-4 ? smoothstep(FADE.lo, FADE.hi, this.mid / this.peakL) : 1; },   // 1: as loud as the song gets, 0: faded out (FADE)                                 // a quiet part of the music (not silence's hold): the fight at half pace
+  get calm() { return this.calmFrom >= 0 && RT() - this.calmFrom > 1; },                                 // a quiet part of the music (not silence's hold): the fight at half pace
+  get fade() { return this.peakL > 1e-4 ? smoothstep(FADE.lo, FADE.hi, this.mid / this.peakL) : 1; },   // 1: as loud as the song gets, 0: faded out (FADE)
   get hot() { return this.soundStart >= 0 && this.active && RT() - this.soundStart >= ARM_DELAY; },   // long enough to fight
   get armed() { return this.combat; },
   get holding() { return this.holdUntil > 0; },
@@ -63,7 +63,7 @@ function onAudio(arr) {
   const dense = (BANDS.mid.norm * 0.5 + BANDS.low.norm * 0.3 + BANDS.high.norm * 0.2) * smoothstep(0.03, 0.12, (BANDS.mid.val + BANDS.low.val) / 2);
   AUD.heavy += (dense - AUD.heavy) * (dense > AUD.heavy ? 0.08 : 0.02);
   AUD.level = tot / 3;
-  if (AUD.level > 0.012) { if (AUD.soundStart < 0 || !AUD.active) AUD.soundStart = RT(); AUD.lastActive = RT(); }
+  if (AUD.level > 0.012) { if (AUD.soundStart < 0 || !AUD.active) { AUD.soundStart = RT(); AUD.peakL = AUD.mid; } AUD.lastActive = RT(); }   // (sound after a silence: a new song, measured against its own peak, not a louder one's before it: FADE)
   else if (!AUD.active) AUD.soundStart = -1;
   dynamics(kick);
 }
