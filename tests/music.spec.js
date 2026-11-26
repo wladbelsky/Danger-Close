@@ -98,3 +98,19 @@ test('the tempo from the kicks; faster music, the guns fire faster: between the 
   expect(r.subOff, 'between the beats, on the grid').toBeLessThan(0.06);
   expect(fast.rl).toBeLessThan(slow.rl * 0.6);
 });
+
+test('a song fading out: the gunship fires less and less, and not at all at its end (every weapon on the same rule; the 105 mm here)', async ({ wp }) => {
+  test.setTimeout(120000);
+  await wp.boot({ query: '?hour=11&seed=11&transit=0&weapons=h105&auto=0' });
+  const r = await wp.run(() => {
+    let t0 = 0; const fade = t => t < 40 ? 1 : t < 55 ? 1 - (t - 40) / 15 * 0.9 : 0.1;   // (40 s of music, a 15 s fade to a tenth, 5 s there)
+    const spec = rt => { if (!t0) t0 = rt; const k = fade(rt - t0); return demoSpectrum(rt, 128, false).map(v => v * k); };
+    const S = BATTLE.stat, at = []; __t.sim(10, { audio: true, spec });
+    for (const sec of [30, 7.5, 7.5, 5]) { const s0 = S.shots; __t.sim(sec, { audio: true, spec }); at.push((S.shots - s0) / sec); }
+    return { loud: at[0], early: at[1], late: at[2], end: at[3], fadeNow: AUD.fade };   // (the fade's first half: down a quarter at most, as a quieter verse)
+  });
+  console.log(JSON.stringify(r));
+  expect(r.loud, 'shots a second while it plays').toBeGreaterThan(0.3);
+  expect(r.late, 'fewer in the second half of the fade').toBeLessThan(r.loud * 0.5);
+  expect(r.end, 'none at a tenth of its loudness').toBe(0); expect(r.fadeNow).toBe(0);
+});

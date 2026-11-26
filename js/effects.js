@@ -21,7 +21,7 @@ class Tracers {
   spawn(p, v, o) {
     const i = this.next, it = this.items[i]; this.next = (this.next + 1) % this.n;
     it.on = true; it.p.copy(p); it.v.copy(v); it.life = it.max = o.life || 1; it.len = o.len || 1; it.w = o.w || 0.1;
-    it.col.setHex(o.color || 0xffaa55); it.grav = o.grav || 0;
+    it.col.setHex(o.color || 0xffaa55).multiplyScalar(o.glow || 1); it.grav = o.grav || 0;   // (glow: brighter than white, so that it blooms: SENSOR's over())
     this.mesh.setColorAt(i, it.col); this.mesh.instanceColor.needsUpdate = true; this.mesh.visible = true;
     return it;
   }

@@ -4,13 +4,18 @@
    for DISARM_DELAY seconds (nobody fires), then stands down; sound lasting RESUME_DELAY seconds in the hold resumes it.
    In a browser ?demo=<bpm> plays a synthetic beat (with silent bars: ?demo=124), ?demo=124&pause=0 without them.          */
 const ARM_DELAY = 5, DISARM_DELAY = 5, RESUME_DELAY = 1;
+/* a song fading out: the loudness now (`mid`, over ~`win` s: not a beat's rise and fall) over the song's (its peak, sinking over `tau` s): the gunship fires as before over
+   `hi` of it, less and less down to `lo`, not at all under it (BATTLE.gunOnBeat / subBeat: AUD.fade). The beats themselves are
+   measured against the last moments only, so a fading song's beats were as strong as a loud one's */
+const FADE = { tau: 40, win: 2, lo: 0.35, hi: 0.85 };
 const AUD = {
   level: 0, heavy: 0, lastActive: -99, soundStart: -1, raw: new Float32Array(128), combat: false, holdUntil: 0,
   kicks: [], beatP: 0, bpm: 0, kickT: -99, tempo: 0,   // (the kicks' times, the beat's period and bpm from them, the last kick, how fast the music is 0..1)
-  short: 0, long: 0, lastCall: -1, calmFrom: -1, calmT: -99, calmStart: -99, lastDrop: -99, armedAt: -99, drops: 0,   // (loudness over ~0.6 s and ~8 s; a quiet part's start and end; the last drop)
+  short: 0, long: 0, mid: 0, peakL: 0, lastCall: -1, calmFrom: -1, calmT: -99, calmStart: -99, lastDrop: -99, armedAt: -99, drops: 0,   // (loudness over ~0.6 s and ~8 s; a quiet part's start and end; the last drop)
   get active() { return RT() - this.lastActive < 1.6; },
   get drive() { return smoothstep(0.15, 0.6, this.heavy); },                                             // how hard the music drives the fight, 0..1
-  get calm() { return this.calmFrom >= 0 && RT() - this.calmFrom > 1; },                                 // a quiet part of the music (not silence's hold): the fight at half pace
+  get calm() { return this.calmFrom >= 0 && RT() - this.calmFrom > 1; },
+  get fade() { return this.peakL > 1e-4 ? smoothstep(FADE.lo, FADE.hi, this.mid / this.peakL) : 1; },   // 1: as loud as the song gets, 0: faded out (FADE)                                 // a quiet part of the music (not silence's hold): the fight at half pace
   get hot() { return this.soundStart >= 0 && this.active && RT() - this.soundStart >= ARM_DELAY; },   // long enough to fight
   get armed() { return this.combat; },
   get holding() { return this.holdUntil > 0; },
@@ -77,6 +82,7 @@ function dynamics(kick) {
   const now = RT(), dt = AUD.lastCall < 0 ? 0 : clamp(now - AUD.lastCall, 0, 0.25); AUD.lastCall = now;
   const tt = AUD.beatP && now - AUD.kickT < 2.5 ? smoothstep(95, 150, AUD.bpm) : 0; AUD.tempo += (tt - AUD.tempo) * (1 - Math.exp(-dt / 1.5));   // (no kick for 2.5 s: no tempo)
   const L = AUD.level; AUD.short += (L - AUD.short) * (1 - Math.exp(-dt / 0.6)); AUD.long += (L - AUD.long) * (1 - Math.exp(-dt / 8));
+  AUD.mid += (L - AUD.mid) * (1 - Math.exp(-dt / FADE.win)); AUD.peakL = AUD.mid > AUD.peakL ? AUD.mid : AUD.peakL + (AUD.mid - AUD.peakL) * (1 - Math.exp(-dt / FADE.tau));
   if (AUD.short < AUD.long * 0.5 && AUD.long > 0.004) { if (AUD.calmFrom < 0) AUD.calmFrom = now; if (now - AUD.calmFrom >= 2) { AUD.calmT = now; AUD.calmStart = AUD.calmFrom; } }
   else if (AUD.short > AUD.long * 0.7) AUD.calmFrom = -1;
   if (kick > 1.3 && AUD.fighting && AUD.calmFrom < 0 && now - AUD.calmT < 20 && AUD.calmStart > AUD.armedAt && L > AUD.long * 1.05 && now - AUD.lastDrop > 20) { AUD.lastDrop = now; AUD.drops++; BATTLE.onDrop(); }

@@ -221,6 +221,28 @@ test('battle', async ({ wp }) => {
   await at(() => { CFG.fixedHour = 11; SENSOR.set('tv'); HUD.markModes(); updateEnvironment(); __t.sim(30, { audio: true }); __t.sim(9); __t.render(); });   // the music has stopped: they leave
   await sheet(wp, shots, 3, 'battle.png');
 });
+/* tracers: a moment with the most of the ground units' tracers in the frame, by day (TV), at night (NV) and in white-hot; the
+   whole frame, and under it a close look round them (unit: the ones FIRE spawns, TRACER_GLOW.unit) */
+test('tracers', async ({ wp }) => {
+  await wp.page.setViewportSize({ width: 1280, height: 720 });
+  await wp.boot({ query: '?hour=11&seed=11&season=summer&transit=0' });
+  await wp.run(() => { const sp = FX.tracers.spawn.bind(FX.tracers); FX.tracers.spawn = (p, v, o) => { const it = sp(p, v, o); it.unit = o.glow === TRACER_GLOW.unit; return it; }; });
+  const full = [], close = [];
+  for (const [mode, hour] of [['tv', 11], ['nv', 23.5], ['wh', 11]]) {
+    const at = await wp.run(([mode, hour]) => {
+      CFG.fixedHour = hour; SENSOR.manual = true; SENSOR.set(mode); HUD.markModes(); updateEnvironment(); __t.sim(8, { audio: true });
+      const mine = () => FX.tracers.items.filter(it => it.on && it.unit && BATTLE.inFrame(it.p));
+      for (let i = 0; i < 2400; i++) { __t.sim(0.05, { audio: true }); if (mine().length >= 4) break; }
+      __t.render(); const m = mine(); let x = 0, y = 0; for (const it of m) { const n = VIEW.ndc(it.p); x += n.x; y += n.y; }
+      return m.length ? { x: (x / m.length + 1) / 2, y: (1 - y / m.length) / 2, n: m.length } : { x: 0.5, y: 0.5, n: 0 };
+    }, [mode, hour]);
+    full.push((await wp.page.screenshot()).toString('base64'));
+    const cx = Math.min(Math.max(at.x * 1280 - 213, 0), 1280 - 427), cy = Math.min(Math.max(at.y * 720 - 120, 0), 720 - 240);
+    close.push((await wp.page.screenshot({ clip: { x: cx, y: cy, width: 427, height: 240 } })).toString('base64'));
+    console.log('tracers', mode, JSON.stringify(at));
+  }
+  await sheet(wp, full, 3, 'tracers.png'); await sheet(wp, close, 3, 'tracers-close.png');
+});
 test('weapons firing', async ({ wp }) => {
   await wp.page.setViewportSize({ width: 960, height: 540 });
   const shots = [];

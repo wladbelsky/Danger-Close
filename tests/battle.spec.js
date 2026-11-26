@@ -160,7 +160,7 @@ test('APCs let their infantry out by the rear door near the enemy; a knocked-out
     }
     // an APC with its infantry aboard knocked out in the fight
     const v = UNITS.find(u => u.kind === 'apc' && u.alive && !u.retreat && BATTLE.cols.some(E => E.col === u.col)); let bailed = -1;
-    if (v) { for (const u of UNITS) if (u.kind === 'apc' && u !== v) u.troops = 0; v.troops = 5; const b0 = BATTLE.stat.bailed; hurt(v, 99); __t.sim(1.5, { audio: true }); bailed = BATTLE.stat.bailed - b0; }   // (its own crew only: another APC dying meanwhile has nobody aboard; counted as they get out, so one shot dead at once still counts)
+    if (v) { for (const u of UNITS) if (u.kind === 'apc' && u !== v) u.troops = 0; __t.sim(1.2, { audio: true }); v.troops = 5; for (const u of UNITS) if (u.kind === 'apc' && u !== v) u.troops = 0; const b0 = BATTLE.stat.bailed; hurt(v, 99); __t.sim(1.5, { audio: true }); bailed = BATTLE.stat.bailed - b0; }   // (another knocked out just before still had its crew getting out, up to 1 s on: let them out first)   // (its own crew only: another APC dying meanwhile has nobody aboard; counted as they get out, so one shot dead at once still counts)
     const { dismounts, outOf, doorMax } = BATTLE.stat;
     return { dismounts, outOf, doorMax, bad, bailed, sides: [...sides] };
   });

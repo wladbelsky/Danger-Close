@@ -186,10 +186,10 @@ class Vehicle {
     const H = this.hull, c = Math.cos(this.yaw), sn = Math.sin(this.yaw), A = { x: this.pos.x + c * H.c, z: this.pos.z + sn * H.c, c, s: sn, l: H.l, w: H.w + 0.3 };
     const hd = this.dirAt(this.s, this.laneK), hc = Math.cos(hd), hs = Math.sin(hd);   // (sideways measured across its path, not its nose: the nose turns as it moves aside)
     const push = (u, p, still) => {
-      if (this.byp && this.byp.o === u) return false;   // (the one it is going round: that steers it, bumps() keeps them apart)
       const h = u.hull, dx = p.x - this.pos.x, dz = p.z - this.pos.z; if (dx * dx + dz * dz > (H.l + h.l + 1) ** 2) return false;
       const oc = Math.cos(u.yaw), os = Math.sin(u.yaw), B = { x: p.x + oc * h.c, z: p.z + os * h.c, c: oc, s: os, l: h.l, w: h.w + 0.3 }; if (!obbOverlap(A, B)) return false;
-      const lat = -(B.x - A.x) * hs + (B.z - A.z) * hc, d = this.shoveO === u ? this.shoveE : Math.abs(lat) > 0.1 ? -Math.sign(lat) : this.ph < u.ph || still ? -1 : 1;   // (away from it, the same way while they touch; right on top of each other: one each way)
+      const round = this.byp && this.byp.o === u; if (round && !obbOverlap(A, { x: B.x, z: B.z, c: oc, s: os, l: h.l, w: h.w })) return false;   // (the one it is going round steers it, bumps() keeps them apart; but inside its hull already: pushed out of it, to the side it goes round by: dropping the bypass to push it out set the two against each other, left and right)
+      const lat = -(B.x - A.x) * hs + (B.z - A.z) * hc, d = round ? this.byp.d : this.shoveO === u ? this.shoveE : Math.abs(lat) > 0.1 ? -Math.sign(lat) : this.ph < u.ph || still ? -1 : 1;   // (away from it, the same way while they touch; right on top of each other: one each way)
       for (const e of [d, -d]) { const po = clamp(this.po + e * 1.5, -TRAFFIC.side - 3, TRAFFIC.side + 3); if (Math.abs(po - this.po) > 0.1 && this.clear(po, 6)) { this.shoveD = this.shoveE = e; this.shoveO = u; this.shoveT = T + 2; BATTLE.stat.shove += dt; return true; } }   // (traffic() eases it out that way)
       return false;
     };

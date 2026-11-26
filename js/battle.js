@@ -11,12 +11,14 @@
    beat it fires on (reloaded, it waits for a beat of its band: rifles and technicals the hats, APCs and helicopters the snare, tanks
    the kick; after 1.2 s any beat will do, after 3 s with none it fires anyway) ---- */
 const FIRE = {
-  inf:  { range: 90,  reload: [1.5, 3.5], n: 1, v: 320, len: 2.2, w: 0.07, acc: 0.3,  dmg: 0.5, mh: 1.3, band: 'high' },
-  car:  { range: 150, reload: [1.6, 3],   n: 3, v: 340, len: 3,   w: 0.1,  acc: 0.35, dmg: 0.6, mh: 2,   band: 'high' },
-  apc:  { range: 180, reload: [2, 4],     n: 3, v: 380, len: 3.5, w: 0.14, acc: 0.4,  dmg: 1.4, mh: 2.6, band: 'mid', blast: 0.35 },
-  tank: { range: 230, reload: [5, 8],     n: 1, v: 520, len: 5,   w: 0.3,  acc: 0.45, dmg: 7,   mh: 2.2, band: 'low', blast: 1.2, flash: 2.2 },
-  heli: { range: 260, reload: [1.4, 2.8], n: 2, v: 260, len: 4,   w: 0.2,  acc: 0.4,  dmg: 2.5, mh: 0,   band: 'mid', blast: 0.8 }
+  inf:  { range: 90,  reload: [1.5, 3.5], n: 1, v: 320, len: 3.5, w: 0.13, acc: 0.3,  dmg: 0.5, mh: 1.3, band: 'high' },
+  car:  { range: 150, reload: [1.6, 3],   n: 3, v: 340, len: 5,   w: 0.2,  acc: 0.35, dmg: 0.6, mh: 2,   band: 'high', flash: 0.5 },
+  apc:  { range: 180, reload: [2, 4],     n: 3, v: 380, len: 6,   w: 0.26, acc: 0.4,  dmg: 1.4, mh: 2.6, band: 'mid', blast: 0.35, flash: 0.8 },
+  tank: { range: 230, reload: [5, 8],     n: 1, v: 520, len: 7,   w: 0.4,  acc: 0.45, dmg: 7,   mh: 2.2, band: 'low', blast: 1.2, flash: 2.2 },
+  heli: { range: 260, reload: [1.4, 2.8], n: 2, v: 260, len: 6,   w: 0.3,  acc: 0.4,  dmg: 2.5, mh: 0,   band: 'mid', blast: 0.8 }
 };
+/* tracers brighter than white, so that they bloom (SENSOR's over(): what is over 1.9 at the exposure); a unit's / the gunship's */
+const TRACER_GLOW = { unit: 6, gun: 3 };
 const UNIT_BEAT_MAX = 24;   // unit shots on one beat at most (a volley)
 /* ---- splash: the blast of a bomb, a rocket or a shell hurts every enemy round it, not only the kinds the weapon is aimed at (the
    table says what a weapon is fired at, not what its blast spares): the gunship's blast radii, metres ---- */
@@ -639,7 +641,7 @@ const BATTLE = {
     const hit = Math.random() < F.acc, off = hit ? 0.5 : rand(3, 7), a = rand(0, TAU), air = t.kind === 'heli', x = t.pos.x + Math.cos(a) * off, z = t.pos.z + Math.sin(a) * off, y = air ? t.pos.y + rand(-3, 3) : groundH(x, z) + (hit ? t.ah * 0.6 : 0);
     _bd.set(x - _bm.x, y - _bm.y, z - _bm.z); const d = _bd.length() || 1, fl = d / F.v, col = u.side === 'ally' ? 0xffb060 : 0xa8ff8a;
     _bd.multiplyScalar(F.v / d);
-    for (let i = 0; i < F.n; i++) { _bt.copy(_bd); if (i) { _bt.x += rand(-6, 6); _bt.y += rand(-4, 4); _bt.z += rand(-6, 6); _bt.multiplyScalar(1 - i * 0.07); } FX.tracers.spawn(_bm, _bt, { life: fl, len: F.len, w: F.w, color: col }); }
+    for (let i = 0; i < F.n; i++) { _bt.copy(_bd); if (i) { _bt.x += rand(-6, 6); _bt.y += rand(-4, 4); _bt.z += rand(-6, 6); _bt.multiplyScalar(1 - i * 0.07); } FX.tracers.spawn(_bm, _bt, { life: fl, len: F.len, w: F.w, color: col, glow: TRACER_GLOW.unit }); }
     if (F.flash) FX.flash.spawn(_bm, { s0: F.flash * 2, s1: F.flash * 4, life: 0.12 });
     const dmg = F.dmg * VS[u.kind][t.kind] * (u.side === 'ally' ? ALLY_DPS / ALLY_RATE[u.kind] : ALLY_TOUGH_K(t)) / (pace || 1), side = u.side;
     this.after(fl, () => {
@@ -684,10 +686,12 @@ const BATTLE = {
     if (GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled) return;                     // (flying to another place, or just arrived: the sensor is not on anything yet)
     const w = ARMS.w, f = CFG.fire / 100; if (!w || f <= 0) return;
     force = force || T < this.forceUntil;   // (a drop's shot waits up to 1.5 s for the reticle to come onto a target)
+    const fv = force ? 1 : AUD.fade;   // (a song fading out: fewer shots, none at its end; FADE)
+    if (fv < 1 && Math.random() > fv) return;
     if (w.band === 'hold') { const t = this.target(w); if (t && this.onReticle(t)) { this.laserUntil = T + (force ? 1.5 : 0.5); if (force) this.forceUntil = 0; } return; }
     if (LOCK_T[w.id]) { const L = this.lock; if (L && L.shootT && T - L.shootT >= LOCK.win[0] && st > 1.2) this.launch(w, L); return; }   // (the AIM-9X and the Hellfire only through their lock: SHOOT, then on a strong beat or LOCK.fire s on)
-    const idle = T - this.lastShot, strong = st > 1.45 || (band === 'low' && AUD.heavy > 0.45);
-    let ok = w.band === 'strong' ? (strong || (band === 'low' && idle > w.reload + 2.5)) : (w.band === band || idle > 1.4 / Math.min(2, f) || (LIGHT_ARMS.has(w.id) && AUD.drive > 0.6));   // (music with no such beats: any beat will do after a while; dense music: any beat for the light guns)
+    const idle = T - this.lastShot, strong = st > 1.45 || (band === 'low' && AUD.heavy > 0.45), any = fv >= 1;
+    let ok = w.band === 'strong' ? (strong || (any && band === 'low' && idle > w.reload + 2.5)) : (w.band === band || (any && idle > 1.4 / Math.min(2, f)) || (LIGHT_ARMS.has(w.id) && AUD.drive > 0.6));   // (music with no such beats: any beat will do after a while, not in a fading song; dense music: any beat for the light guns)
     if (AUD.calm && st <= 1.45) ok = false;                                            // (a quiet part: only the strong beats)
     if (!force && (!ok || idle < GUN[w.id].gap || (f < 1 && Math.random() > f))) return;
     const t = this.target(w), k = t ? this.shotAt(w, t) : 0; if (!k || !ARMS.shoot()) return;   // (at what the reticle is on, or a gun's at what it is coming onto)
@@ -723,7 +727,7 @@ const BATTLE = {
     let n = 1; for (const [t, k] of S) if (AUD.tempo > t) n = k; if (n < 2) { this.gridN = -1; return; }
     const q = AUD.beatP / n, now = RT(), g = Math.floor((now - AUD.kickT) / q); if (g === this.gridN || now - AUD.kickT > AUD.beatP * 2) return;
     const fresh = this.gridN < 0; this.gridN = g; if (fresh) return;   // (just back on the grid: wait for its next point, not fire off it)
-    const f = CFG.fire / 100; if (GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled || now - this.shotRT < q * 0.6 || !ARMS.ready(w) || (f < 1 && Math.random() > f)) return;
+    const f = CFG.fire / 100, fv = AUD.fade; if (GUNSHIP.state !== 'orbit' || T < GUNSHIP.settled || now - this.shotRT < q * 0.6 || !ARMS.ready(w) || (f < 1 && Math.random() > f) || (fv < 1 && Math.random() > fv)) return;   // (a fading song: fewer, FADE)
     const t = this.target(w), k = t ? this.shotAt(w, t) : 0; if (!k) return;
     this.noteShot(k); this.shotRT = now; this.stat.subShots++; this.stat.subOff = Math.max(this.stat.subOff, Math.abs((now - AUD.kickT) - g * q));
     this.fire(w, t, 1.15, 0.5, k > 1 ? this.atP : null);   // (half the damage: faster music, more fire, not a quicker fight)
@@ -799,7 +803,7 @@ const BATTLE = {
         if (w.id === 'hf') { this.lase = { tgt: t, p: t.pos.clone(), m: this.missiles[this.missiles.length - 1] }; this.stat.lased++; }   // (the designator holds the spot on it until the hit)
         return; }
       this.muzzle(_bm); _bt.subVectors(to, _bm); const d = _bt.length();
-      FX.tracers.spawn(_bm, _bt.multiplyScalar(1 / fl), { life: fl, len: G.tl, w: G.tw, color: 0xffc070 });
+      FX.tracers.spawn(_bm, _bt.multiplyScalar(1 / fl), { life: fl, len: G.tl, w: G.tw, color: 0xffc070, glow: TRACER_GLOW.gun });
       FX.tracers.spawn(_bm, _bt, this.barrel ? { life: 0.08, len: 45, w: G.tw * 2.5, color: 0xffd090 } : { life: 0.06, len: 20, w: G.tw * 1.3, color: 0xffd090 });   // (out of the barrel in the frame, or in from its edge: a streak back to the muzzle for the first frames)
       this.after(fl, () => { hitFx(to.x, to.y, to.z, fx); this.strike(to, G.r, dmg, w, false); });
     });

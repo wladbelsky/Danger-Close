@@ -111,6 +111,7 @@ test('a column hit behind its knocked-out leader still scatters (round the wreck
     const went = V.slice(1).map((v, i) => Math.hypot(v.pos.x - at[i].x, v.pos.z - at[i].z));
     let held = null; for (let i = 0; i < 600 && !held; i++) { __t.sim(0.05, { audio: true }); for (const v of V.slice(1)) { const F = BATTLE.cols.find(e => e.col.u.includes(v)); if (F && F.scat > T && !F.scatHold && !F.move && T > F.scT) held = v; } }   // (holding its spot, 15 s after it scattered)
     if (!held) return { went, again: null };
+    GUNSHIP.track(held.pos); __t.sim(2, { audio: true });   // (the sensor on it: only one hit in the frame scatters)
     const h0 = held.pos.clone(); BATTLE.strike(held.pos.clone(), 3, 0, WEAPON.g25, false); __t.sim(8, { audio: true });
     return { went, again: Math.hypot(held.pos.x - h0.x, held.pos.z - h0.z), wrecked: !V[0].alive };
   });

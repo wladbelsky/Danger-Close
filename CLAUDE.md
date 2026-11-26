@@ -289,6 +289,22 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   through a wreck and back had 92 overlaps in sight in the traffic test (seed 11), now 0. The scatter's way near one it stands by
   must lead off from it (`wayClear`: each point further than it is now, not along it).
 
+- Brighter tracers. They were drawn no brighter than white (2x at the exposure, just over the 1.9 the bloom starts at, and thin ones
+  are lost in its blurred levels), so they hardly glowed by day. `Tracers.spawn(..., { glow })` multiplies the colour past white
+  (the core goes white, the colour blooms round it): the units' x `TRACER_GLOW.unit` 6, the gunship's guns x `.gun` 3. The units'
+  are thicker and longer too (`FIRE` w / len: infantry 0.13 / 3.5, car 0.2 / 5, APC 0.26 / 6, tank 0.4 / 7, helicopter 0.3 / 6;
+  were 0.07–0.3 / 2.2–5), with a muzzle flash from a car (0.5) and an APC (0.8) as from a tank. Sheets: tracers.png,
+  tracers-close.png (the most units' tracers in the frame, TV / NV / white-hot, and a close look round them).
+- A song fading out no longer keeps the guns going to its end. A beat's strength is measured against the last moments only, so a
+  fading song's kicks were as strong as a loud one's, and "any beat will do after a while" fired the rest: the 105 mm fired about
+  0.5 a second loud, fading and at a tenth of the loudness alike (every weapon the same). Now `AUD.fade` (`FADE`): the loudness over
+  the last `win` 2 s (`mid`: not a beat's rise and fall) over the song's (`peakL`: its peak, sinking over `tau` 40 s), smoothstep from `lo` 0.35 to `hi` 0.85; a beat fires
+  the gunship's weapon with that chance (`gunOnBeat`, `subBeat`; not a drop's forced shot), and the any-beat fallbacks only at 1.
+  Measured (a 15 s fade to a tenth): the 105 mm 0.53 / 0.53 / 0.6 a second loud / fading / at a tenth before; now 0.53 loud, 0.53
+  in the fade's first half (down a quarter, as a quieter verse), 0.13 in its second, 0 at its end. Test: music.spec.js.
+- A vehicle inside the hull of the one it goes round is pushed out of it (`shove`, to the side it goes round by, `byp.d`; dropping
+  the bypass instead set the two against each other: 4–5x the bypasses, the jitter test over), no longer held there now that its
+  moves aside are checked (seed 3's traffic test: 70 overlaps in sight, now 3–5).
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -359,7 +375,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=92`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=94`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
