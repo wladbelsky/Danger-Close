@@ -35,7 +35,8 @@ fullscreen apps by default.
   out of the box: TV by day, thermal at night.
 - **The HUD**: mode, callsign, compass, altitude ladder, the PC clock, a reticle per weapon, corner brackets on what it
   tracks (allies blue, enemies white), the weapon selector with cosmetic ammunition and reloads. At the top right, the
-  money the gunship has fired off since the start, each weapon at its own price (**Money spent on the HUD** turns it off). It keeps clear of the
+  money the gunship has fired off since the start, each weapon at its own price, counting up to each new sum
+  (**Money spent on the HUD** turns it off). It keeps clear of the
   taskbar (**HUD space kept free at the bottom**) and scales with **HUD scale**.
 - **The camera**: a left orbit over one area, a transit to another every few minutes in silence; in a fight it slews
   onto the enemy, each weapon with its own zoom — lazily in a quiet part, fast and sharp when the music drives hard.
@@ -86,8 +87,8 @@ fullscreen apps by default.
   the kinds the weapon is aimed at (a Hellfire on a tank takes the soldiers beside it too). Never their own side.
 - **Hits show**: a knocked-out vehicle cooks off on the next strong beats (a tank may throw its turret), a column under
   fire weaves across the road. A vehicle hit on the move rolls on for a few seconds, slowing, before it stands burning.
-- **Allies in the fight**: their fireteams and columns come where the sensor looks, close in and fight beside the enemy in
-  the frame; the camera rather picks a fight with both sides in it.
+- **Allies in the fight**: their fireteams and columns come where the sensor looks, run into the picture and fight beside
+  the enemy in it; the camera rather picks a target with an ally right by it, so you see what the enemy is firing at.
 - **Infantry under fire scatters**: soldiers near a hit run off from it, the squad spreads out, then they fight on.
 - **Smooth driving**: vehicles steer round the corners of a road instead of turning on the spot, each slows for its own bend,
   and a swerve eases in and out. They keep out of each other: they brake for what is ahead, pull aside for one coming the other
@@ -96,7 +97,7 @@ fullscreen apps by default.
   out in the fields, across them) instead of stopping to fight the allies somewhere out of sight. Out of the frame nobody fights
   and the vehicles drive as they like; near it they keep out of each other without jittering.
 - **Off the road**: enemy armour leaves the road to assault the allies' infantry in the fields, a column halted for a fight
-  takes positions beside the road, and one the gunship hits scatters off it in every direction, holds, then goes on alone.
+  takes positions beside the road, and one the gunship hits scatters off it in every direction (round the wrecks of its own), holds, and goes again if it is hit there, then goes on alone.
 - **Helicopters over the fight**: the enemy's circle over the frame and make their rocket runs at what is in it.
 - **Detailed helicopters**: cockpits with flat panes set in their frames, tapering blades on a full rotor head, sensors, guns,
   rockets and missiles on their pylons, wheels, hot exhausts on the thermal sensor.

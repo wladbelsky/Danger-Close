@@ -95,6 +95,32 @@ test('a column the gunship hits in the frame scatters off the road, holds, then 
   for (const g of r.went) expect(g, 'on its way again after holding').toBe(true);
 });
 
+test('a column hit behind its knocked-out leader still scatters (round the wreck, not into it), and one holding its spot hit again goes again', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&transit=0&weapons=aim&auto=0' });
+  await wp.sim(6, { audio: true });
+  const r = await wp.run(() => {
+    const N = ROADNET; let S = null;
+    for (let k = 0; k < N.n && !S; k += 3) { if (N.BR[k] || !VIEW.near(new V3(N.X[k], 0, N.Z[k]), -20)) continue; let free = 0; for (let t = 0; t < 12; t++) { const a = t / 12 * TAU; if (!fieldBlocked(N.X[k] + Math.cos(a) * 60, N.Z[k] + Math.sin(a) * 60)) free++; } if (free >= 6) S = k; }
+    if (S === null) return null;
+    let dest = -1; for (let t = 0; t < 400 && dest < 0; t++) { const c = (t * 7919) % N.n, d = Math.hypot(N.X[c] - N.X[S], N.Z[c] - N.Z[S]); if (d > 250 && d < 450) dest = c; }
+    const col = new Column(['tank', 'apc', 'car'].map(ty => new Vehicle(ty, 'enemy'))); col.place(Path.fromNodes(N.route(S, dest))); BATTLE.cols.push({ col, hold: false, retreat: false });
+    const V = col.u.slice(); for (const v of V.slice(1)) v.hp = 1e9;   /* (the two behind live through it: the test is where they go) */
+    __t.sim(3, { audio: true }); V[0].hp = 1; hurt(V[0], 5); __t.sim(4, { audio: true });   // (the leader knocked out on the road: a wreck, rolling to a stop, the two behind it)
+    const at = V.slice(1).map(v => v.pos.clone()); BATTLE.strike(V[1].pos.clone(), 3, 0, WEAPON.g25, false);
+    __t.sim(10, { audio: true });
+    const went = V.slice(1).map((v, i) => Math.hypot(v.pos.x - at[i].x, v.pos.z - at[i].z));
+    let held = null; for (let i = 0; i < 600 && !held; i++) { __t.sim(0.05, { audio: true }); for (const v of V.slice(1)) { const F = BATTLE.cols.find(e => e.col.u.includes(v)); if (F && F.scat > T && !F.scatHold && !F.move && T > F.scT) held = v; } }   // (holding its spot, 15 s after it scattered)
+    if (!held) return { went, again: null };
+    const h0 = held.pos.clone(); BATTLE.strike(held.pos.clone(), 3, 0, WEAPON.g25, false); __t.sim(8, { audio: true });
+    return { went, again: Math.hypot(held.pos.x - h0.x, held.pos.z - h0.z), wrecked: !V[0].alive };
+  });
+  console.log(JSON.stringify(r));
+  expect(r, 'a road in the frame with room round it').not.toBeNull();
+  expect(r.wrecked).toBe(true);
+  for (const d of r.went) expect(d, 'each of the two behind the wreck got away from where it was hit (m in 10 s)').toBeGreaterThan(20);
+  expect(r.again, 'hit again while holding its spot: off again (m in 8 s)').toBeGreaterThan(12);
+});
+
 test('the helicopters fight over the frame: in it, and rocket runs at what is in it', async ({ wp }) => {
   test.setTimeout(240000);
   const out = [];

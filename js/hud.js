@@ -14,7 +14,7 @@ function fmtMoney(v) {
   return '$' + s + U[i];
 }
 const HUD = {
-  on: false, cv: null, g: null, W: 0, H: 0, u: 1, ui: null, armsEl: null, boxes: [], domT: 0, cache: {},
+  on: false, cv: null, g: null, W: 0, H: 0, u: 1, ui: null, armsEl: null, boxes: [], domT: 0, cache: {}, spentShown: 0, spentRT: 0,
   build() {
     this.on = QS.get('hud') !== '0';
     const modes = document.getElementById('modes');
@@ -76,7 +76,8 @@ const HUD = {
     const e = Math.round((44000 + CAM_TGT.x + MAP_HALF) / 10) % 10000, n = Math.round((68000 - CAM_TGT.z + MAP_HALF) / 10) % 10000;
     this.text(`GRID 38T LN ${String(e).padStart(4, '0')} ${String(n).padStart(4, '0')}`, x, 122 * u, 14, 'right');
     this.text(`ELEV ${Math.round(CAM_TGT.y * 3.28 + 1460)} FT`, x, 144 * u, 14, 'right');
-    if (CFG.cost) this.text(`SPENT ${fmtMoney(BATTLE.spent)}`, x, 174 * u, 16, 'right');   // (the money the gunship has fired off since the start: WEAPONS cost)
+    if (CFG.cost) { const now = RT(), dt = clamp(now - (this.spentRT || now), 0, 0.5); this.spentRT = now; this.text(`SPENT ${fmtMoney(this.spentAt(dt))}`, x, 174 * u, 16, 'right'); }   // (the money the gunship has fired off since the start: WEAPONS cost)
+    else { this.spentShown = BATTLE.spent; this.spentRT = 0; }
     // the callsign and what the gunship is doing at the top left (under the mode buttons)
     this.text(CFG.callsign, 30 * u, 92 * u, 18);
     const T_ = GUNSHIP.tr, ao = k => k ? 'AO-' + k : 'OBJ', st = GUNSHIP.state === 'transit' ? `TRANSIT  ${ao(GUNSHIP.list.indexOf(T_.to) + 1)}  ${(Math.hypot(T_.to.x - CAM_TGT.x, T_.to.z - CAM_TGT.z) / 1000).toFixed(1)} KM` : `${AUD.fighting ? 'ENGAGING' : AUD.holding ? 'CEASE FIRE' : 'ORBIT'}  ${ao(GUNSHIP.ao)}`;
@@ -138,6 +139,9 @@ const HUD = {
     const g = this.g, u = this.u, x = (_hp.x + 1) / 2 * this.W, y = (1 - _hp.y) / 2 * this.H, s = 44 * u;
     g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s, y); g.lineTo(x, y + s); g.lineTo(x - s, y); g.closePath(); this.stroke(1.4 * u);
   },
+  /* the money spent as shown, dt real seconds on: it rolls up to BATTLE.spent over a couple of seconds (a missile's price counts up,
+     it does not jump; 99 % of a sum there in 2 s) */
+  spentAt(dt) { const s = BATTLE.spent, d = s - this.spentShown; this.spentShown = d < 1 ? s : this.spentShown + d * (1 - Math.exp(-dt * 2.3)); return this.spentShown; },
   /* a lock (BATTLE.lock: the AIM-9X's, the Hellfire's): a box on the target and a diamond round it, only their corners while the
      seeker locks on, the diamond shrinking from far out down onto the box; once it has it both drawn whole with a dot in the middle,
      then SHOOT boxed and blinking low in the middle (under the reticle, over the weapon selector) until the launch */

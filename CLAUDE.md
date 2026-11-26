@@ -263,6 +263,31 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   $35, 30 mm $70, 40 mm $180, 105 mm $1,200, APKWS $25K a rocket, GBU-39 $40K, Hellfire $150K, AIM-9X $470K, railgun $25K, the
   laser $10 a second of beam). Every round of a burst counts, the sub-beat ones too (they take no cosmetic ammunition). The
   property **Money spent on the HUD** (`cost`, on; `?cost=0`). Not kept across launches.
+- A vehicle hit in the frame no longer stays put, firing: of those that lived 8 s after a hit 41 % had not moved 8 m (6 maps x 4 min),
+  mostly stuck on their dash behind the wreck of their column's leader on the road ahead (the way off started down the road from
+  where it could turn off, `ahead()`, into the wreck; going round it at a crawl), and one holding its spot was not scattered again
+  however often it was hit. Now: `spread(..., opt)`: a scatter's way is kept 9 m off other vehicles and wrecks for its first 14
+  tries (`wayClear`: unless no closer to one than it stands now); stuck on its dash (under 0.5 m/s for 2 s) it picks another spot
+  and goes from where it stands (`opt.here`; up to 3 times, `stat.rescat`); holding its spot it scatters again when hit 15 s on
+  (`scT`; only not on its dash). `scatSpot(p)` and `scatGo` out of `scatterNear`. Most of those still standing now have got to
+  their spot; one map's pile-up of wrecks still pins some (seed 7). Test: offroad.spec.js, behind a knocked-out leader.
+- The money spent rolls up to a new sum over a couple of seconds instead of jumping (`HUD.spentAt(dt)`: eased at 2.3 a second
+  in real time, 99 % there in 2 s; `spentShown`).
+- More of the allies in the frame, so that it shows what the enemy fires at. Measured (6 maps x 4 min of fighting): an ally in
+  the frame 33 % -> 46 % of the time, 1.3 -> 2.4 of them on average; an enemy's shot at one in the frame 10 % -> 19 % (shooter and
+  target both 6 % -> 14 %). The frame's ground reaches only 40–70 m from its centre; the allies stood or ran 100–150 m off it.
+  What changed: the sensor's next target is rather one with an ally within `MIXED.r` 35 m (in the picture with it; distance x
+  `MIXED.k` 0.1; the 80 m one x 0.25 as before), since the frame moves on faster than infantry runs; the allies' loops round the
+  point keep inside the frame (`ALLY_LOOP` 8–28 m, was 15–45) and leave out the spot they start from (they came back out to it
+  every lap), also once got to their target (`Squad.update`, within `SQUAD_NEAR` 220 m); fireteams running in are given a loop
+  round where the point is now (every 4 s, `reT`; they ran on to where it had been); one fighting out of the picture near it goes
+  in (at its target if that is in the picture, to `SQUAD_IN` 15 m, else at the centre); the fireteams fed in run in at 5 m/s (was 3; `feed`: they alone are re-aimed, not an APC's still coming out); a
+  fireteam is fed while fewer than `ALLY_FEED.min` 3 are in the frame (was none), every 4 s at most (was 6); `ALLY_TOUGH` 0.25
+  (was 0.4); their infantry capped at `ALLY_FEED.inf` 45 (was 30: with more fireteams their APCs let only some of theirs out).
+  A vehicle standing and moved aside (`traffic()`: shoved by another, going round one) was never checked for running into
+  anything: `step()` compared its aside with itself, already moved. Now `drive()` passes the aside before (`po0`); an APC pushed
+  through a wreck and back had 92 overlaps in sight in the traffic test (seed 11), now 0. The scatter's way near one it stands by
+  must lead off from it (`wayClear`: each point further than it is now, not along it).
 
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
@@ -334,7 +359,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=89`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=92`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
