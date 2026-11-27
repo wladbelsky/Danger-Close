@@ -56,7 +56,7 @@ lamps and memory. Run it once in silence and once in a fight with music.
 - **Music arms it**: after 5 s of sound the enemy arrives — always out of sight — in columns along the roads, squads and
   helicopters, and builds a base on a cleared site. The camera stays where it is and they come to it; it moves to the base or
   another fight only in a quiet part of the music. They keep coming: a wrecked base is soon rebuilt, and when nothing is left
-  in view the next ones are called in at once.
+  in view the next ones are called in at once; however long the music plays, they keep coming to where the sensor looks now.
 - **The allies** are always out: garrisons in walled outposts, patrols, helicopters; in a fight the garrisons sortie to the
   enemy base, and their reinforcements come where the sensor looks. Both sides shoot at each other.
 - **The gunship fires on the beat**, only at what is under the reticle and only at what its weapon may hit:

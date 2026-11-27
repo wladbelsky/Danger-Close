@@ -127,7 +127,7 @@ const NOSE_EASE = 1.0;
 /* the direction its aside (po) is laid off in (pd) turns towards its path's at most so fast that the aside moves `v` m/s round, never
    slower than `min` rad/s (a bend at speed turns it no faster: never held back there; a wide aside swings round faster than `v`); dirAt flips at once where a path doubles back: the aside jumped across */
 const PD_RATE = { v: 3, min: 2 };
-const TRAFFIC = { look: 35, every: 0.15, gap: 2, brake: 4, side: 5, rate: 1.6, wait: 1.5, head: 4, ghost: 8, near: 80, shove: 2 };
+const TRAFFIC = { look: 35, every: 0.15, gap: 2, brake: 4, side: 5, off: 8, rate: 1.6, wait: 1.5, head: 4, ghost: 8, near: 80, shove: 2 };
 /* do two boxes { x, z (centre), c, s (cos, sin of the heading), l, w (half length, half width) } overlap? (separating axes) */
 function obbOverlap(A, B) {
   for (const [ax, az] of [[A.c, A.s], [-A.s, A.c], [B.c, B.s], [-B.s, B.c]]) {
@@ -234,21 +234,21 @@ class Vehicle {
   /* the target speed with what is ahead in mind; steers it aside (po) round what stands in its way or past one coming the other way */
   traffic(dt, vt) {
     if ((this.tk -= dt) <= 0) { this.tk = TRAFFIC.every; this.blk = this.near ? this.blocker() : null; }   // (TRAFFIC.near)
-    const b = this.blk, H = this.hull, c = Math.cos(this.yaw), sn = Math.sin(this.yaw); let want = 0;
+    const b = this.blk, H = this.hull, c = Math.cos(this.yaw), sn = Math.sin(this.yaw), S = occAt(this.pos.x, this.pos.z) & OCC_ROAD ? TRAFFIC.side : TRAFFIC.off; let want = 0;   // (S: how far aside it may go: off the road no verge, buildings and water are clear()'s)
     if (this.byp) {   // driving round something: until it is behind
       const o = this.byp.o, op = o.obj.position;
       if ((op.x - this.pos.x) * c + (op.z - this.pos.z) * sn < -(H.l + o.hull.l + 1)) this.byp = null; else { want = this.byp.po; vt = Math.min(vt, 4); }
     }
     if (b) {
       const rl = b.lat - this.po, inWay = Math.abs(rl) < b.need, side = b.opp && Math.abs(rl) < 1.5 ? 1 : rl >= 0 ? -1 : 1, round = this.byp && this.byp.o === b.o;   // (rl: where it is from this one; side: aside away from it; nose to nose, both to their right: away from a lat of nearly nothing both went the same way)
-      if (round) { this.byp.po = want = clamp(b.lat + this.byp.d * (b.need + 0.4), -TRAFFIC.side, TRAFFIC.side); }   // (round it: as far aside as it takes, from its path's line: steady as the nose turns; a bend turns it)
+      if (round) { this.byp.po = want = clamp(b.lat + this.byp.d * (b.need + 0.4), -S, S); }   // (round it: as far aside as it takes, from its path's line: steady as the nose turns; a bend turns it)
       if (b.head) { want = this.po + side * Math.max(0, b.need + side * rl + 0.4) * 0.6; vt = Math.min(vt, TRAFFIC.head); }   // (both pull aside, each a share of it)
       else if (inWay && b.still && !round && this.path.L - this.s > b.al + 12) {   // (a new one in its way: round that one now)
         const mates = this.col && this.col.u.some(v => v.byp && v.byp.o === b.o);   // (a wreck, or the one ahead of it in the column already going round: at once)
         this.blkT = b.o.dead || mates ? TRAFFIC.wait : this.blkT + dt;
         if (this.blkT >= TRAFFIC.wait) for (const d of [side, -side]) {
-          const raw = b.lat + d * (b.need + 0.4), po = clamp(raw, -TRAFFIC.side, TRAFFIC.side);   // (its lat then: need + 0.4 to that side; one facing it pulls out as well, not a wreck: half of it will do)
-          if (Math.abs(raw) <= TRAFFIC.side + (b.opp && !b.o.dead ? b.need / 2 : 0.5) && this.clear(po, b.al + b.hl + 6)) { this.byp = { o: b.o, po, d }; want = po; BATTLE.stat.bypass++; break; }
+          const raw = b.lat + d * (b.need + 0.4), po = clamp(raw, -S, S);   // (its lat then: need + 0.4 to that side; one facing it pulls out as well, not a wreck: half of it will do)
+          if ((b.opp && !b.o.dead ? Math.abs(raw) <= S + b.need / 2 : Math.abs(po - b.lat) >= b.need + 0.1) && this.clear(po, b.al + b.hl + 6)) { this.byp = { o: b.o, po, d }; want = po; BATTLE.stat.bypass++; break; }   // (held to S it must still get past: 0.1 m short of it, it stood nose to the wreck for good)
         }
       }
       if (inWay) {
@@ -260,9 +260,9 @@ class Vehicle {
       } else this.stuckT = 0;
     } else { this.blkT = 0; this.stuckT = 0; }
     if (!this.byp && !(b && b.head)) want = this.shoveT > T ? this.po : 0;   // (pushed aside: it stays there while it touches)
-    want = clamp(want, -TRAFFIC.side, TRAFFIC.side);
+    want = clamp(want, -S, S);
     const r = Math.max(this.byp && this.v < 0.5 ? 0.5 : 0, Math.min(TRAFFIC.rate, this.v * 0.6) + (this.v > 0.3 ? 0.1 : 0)), e = want - this.po, pv = this.shoveD && this.shoveT > T ? this.shoveD * TRAFFIC.shove : Math.abs(e) < 0.03 ? 0 : Math.sign(e) * Math.min(r, Math.sqrt(3 * Math.abs(e)));   // (towards its target no faster than it can stop there at 1.5 m/s per second: no overshoot, no swinging about it)   // (shoved: out at TRAFFIC.shove m/s, eased like the rest; aside only as it rolls on: no crabbing; but going round one it stands nose to: slowly out, steering)
-    const room = TRAFFIC.side + (this.shoveT > T ? 3 : 0) - Math.sign(pv) * this.po, pvs = Math.sign(pv) * Math.min(Math.abs(pv), Math.sqrt(4 * Math.max(0, room)));   // (easing to a stop at TRAFFIC.side: never further aside, off the verge)
+    const room = S + (this.shoveT > T ? 3 : 0) - Math.sign(pv) * this.po, pvs = Math.sign(pv) * Math.min(Math.abs(pv), Math.sqrt(4 * Math.max(0, room)));   // (easing to a stop at TRAFFIC.side: never further aside, off the verge)
     this.pov += clamp(pvs - this.pov, -2 * dt, 2 * dt); this.po += this.pov * dt;   // (its rate aside eased at 2 m/s per second: no jerk)
     if (this.ghosts && Math.random() < dt * 0.05) this.ghosts = null;
     return vt;
@@ -381,7 +381,7 @@ class Column {
     const U = this.u;
     for (const v of U) {   // (the new way is smoothed: off where it stands by up to a metre; s and po take that up, po eases back: no jump)
       const h = v.dirAt(v.s, v.laneK); path.at(v.s, v.laneK, _va); const c = Math.cos(h), sn = Math.sin(h), dx = v.pos.x - _va.x, dz = v.pos.z - _va.z;
-      v.s = clamp(v.s + dx * c + dz * sn, 0, path.L); v.po = clamp(-dx * sn + dz * c, -TRAFFIC.side, TRAFFIC.side); v.pov = 0; v.byp = null;
+      v.s = clamp(v.s + dx * c + dz * sn, 0, path.L); v.po = clamp(-dx * sn + dz * c, -TRAFFIC.side, TRAFFIC.side); v.pov = 0; v.byp = null; v.blk = null; v.tk = 0;   // (what is in its way measured again at once, across the new way: the old one's lat set a way round a wreck to the wrong side, into it)
     }
     this.path = path; this.sort();
   }

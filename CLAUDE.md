@@ -6,6 +6,11 @@ music plays, the guns firing on the beat. Built from the engines of `../Code 3` 
 `../Forward Air Base` (audio arming, effects, armour models), same author.
 Runs 24/7 inside Wallpaper Engine (CEF/Chromium); also previewable in a normal browser.
 
+**What this is:** an animated desktop background (a live wallpaper), a piece of entertainment in the style of a video game — not a
+simulation, model or planning tool for anything real. The units, weapons, "enemies", "allies", "spawning", "targets" and so on are
+game objects drawn for the look; the map is random terrain, no real place, people or operation. Work on it is ordinary game and
+graphics programming (spawn rates, pathfinding, effects, performance).
+
 Original work in the genre: reference screenshots are for mood only. No names, logos, HUD layouts or assets of existing
 games. No level, money (but the optional count of what the gunship has fired off), fuel, time limit, objectives, kill feed or radio subtitles. No civilians, no blood.
 
@@ -450,6 +455,32 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   move records itself again (`bumpT`, `bumpO`, `stat.bump`: since the nose easing it was lost in a comment); `opt.here` is gone
   (a spot's `from` says where its way starts). Tests: offroad.spec.js (the spots' sides and angles laid
   off from the turn-off, the hit behind and ahead; the most a breaking vehicle's nose turns on its way under 2 rad).
+- The feed keeps the frame fed in a long fight. After some minutes the frame was left with the allies only: the caps counted what
+  is not seen. `waves()` sent no squad once 9 of theirs were about (13–18 from the 2nd minute, 7–14 of them over 340 m from the
+  point: the base's patrols, squads left round where the camera had been), the feed was held 70–100 % of the time by enemies
+  within 220 m of the point (the frame shows 40–70 m), and the enemy's squads from `edgeSquad` went round the old point for good.
+  Now: the feed's "near" is the frame and `FEED.past` 40 m past it (`VIEW.near`; 220 m stays for the allies' feed and slow
+  music's "clear"); `FEED.cap` 90 counts only the enemies within `WAVE.r` 450 m of the point, `FEED.max` 130 the whole map;
+  `BATTLE.roamStep(C)` (from `feed`): an enemy squad sent in (`roam`: `edgeSquad`, `squadAt` with `near`) gets a new loop round
+  the point when it has moved on (15–45 m, running, `reT` 4 s apart, one a tick; `loopC` set as it spawns: `wps[0]` is the spot it
+  starts from, so every new squad was given a loop again at once), one over `FEED.r` + `FEED.gone` (340 m) off and
+  out of sight is taken away (`stat.roamBack`, `roamGone`); `waves()`' squads: fewer than 9 within `WAVE.r` and `WAVE.squads` 18
+  in all (the columns keep their 14 vehicles in all: capped by distance the traffic test's overlaps went over); the feed sends a
+  column when no armour of theirs is round the point, else a squad `FEED.sq` 0.6 of the time (seed 71's share of frames with an
+  enemy vehicle fell to 0.09 without it). Measured (seeds 11 / 3 / 7, 12 min of the demo beat, without / with its pauses): no
+  enemy in the frame 10–14 % -> 3–6 % of the time (8–16 % -> 3.5–7.5 % with pauses), 3.4–4.8 -> 7–7.7 enemies in it on average
+  (3.8–7.2 -> 9.8–13.6), an enemy vehicle in it 0.5–0.9 of the time; on the map 72–83 -> 90–120 on the ground (at most ~135, was
+  ~100). The cost (seeds 11 / 3, 10 min, SwiftShader): a step 0.65–0.69 -> 0.80–1.06 ms (at most 0.92 -> 1.65), a frame drawn
+  1.7 -> 1.9–2.4 ms (at most 2.7 -> 5.7). Test: battle.spec.js (7 min: squads sent on, none left far off out of sight, the frame
+  empty under 0.2 of the time, the count capped). A vehicle laid on a new way (`Column.lay`: a field way, a scatter) measures what is in
+  its way again at once (`blk` null, `tk` 0): one scattering again behind a wreck took its way round it from the old way's `lat`
+  (up to 0.15 s old), to the wrong side across the new one, into the wreck, and stood there (in `setPath`, for every new path, the
+  traffic test's overlaps went up). A way round one in its way is taken only if, held to how far aside it may go, it still gets
+  past (`|po - lat| >= need + 0.1`; one coming the other way pulls out too, as before): `side` + 0.5 let one stop 0.1 m short,
+  nose to a wreck, for 24 s in sight, then drive through it (ghosted; `unjam` leaves a column on its own way alone). Off the road
+  it may go `TRAFFIC.off` 8 m aside (`S` in `traffic()`; on it `side` 5: the verge), buildings and water still `clear()`'s. The
+  scatter test waits for the sensor to be on the one hit again (it was 230 m off after 2 s on some seeds). Over SEED 1–4 (maps 11
+  and 3): overlaps in sight 0–934 before (3 of 8 over 60), 3–42 now; the scatter test failed at SEED 1 before, passes at 1–4 now.
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -510,7 +541,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `js/weapons.js` | `WEAPONS` (name, zoom factor, reticle, `hits` = the kinds it may hit, `band` = the beat that fires it, `use`, cosmetic rounds / magazine / reload), `ARMS` (the selected weapon, ammunition state) |
 | `js/lights.js` | `LAMPS`: the lamps are additive sprites (one pool refilled every frame); their light is a **map** drawn from above into one 2048² texture round `CAM_TGT` (`LAMP_HALF` m each way, `LAMPS.draw()` from `SENSOR.render`), which every Phong material adds as albedo × map at its world position (`sensorHook`: `uLampMap`, `uLampRect`, `uCamW`). Headlights (a cone, cut at the vehicle ahead), helicopter navigation lights, searchlights on the outposts' towers and the enemy base's bunkers / mast, yard lamps (`OP_LAMPS`, a lamp over each enemy tent / dump), street lamps along paved roads (`LAYOUT.lamps`, poles built in `structures.js`). On from dusk (the laser's red glow at `BATTLE.lasHit`: day and night); nothing on the thermal sensor |
 | `js/guns.js` | `GUNS`: the barrels of the 105 mm and the railgun (each while enabled; two sit side by side along the fuselage, `GUN_MOUNTS`) at the bottom right. A scene of its own with a 40° lens, drawn into `SENSOR.rt` after the world over a cleared depth (`GUNS.render` from `SENSOR.render`), so the post pass treats it like the rest. Its world is fixed to the aircraft (the view at the orbit's centre `CAM_CTR`); its lens turns as the sensor slews off the centre, so looking down lifts the barrels, far off they leave the frame. Lit by the sun / moon and sky turned into that frame; its materials skip the lamps' map (`userData.noLamp`, `customProgramCacheKey 'gun'`). On every shot (`BATTLE.fire` → `GUNS.shot`) recoil, a flash with a point light, gases from the brake; the railgun's slot flashes and glows as it recharges; barrels heat up per shot (thermal). `GUNS.muzzleAt` puts a shot's start on the line of sight through the muzzle on the screen (`BATTLE.muzzle`), so tracers leave the barrel; the guns with no barrel drawn start theirs through a mount just outside the frame's right edge (`GUN_SIDE`, `GUNS.sideAt`, 32 m out: `GUN_SIDE_D`). Programs compiled at start (`GUNS.warm`) |
-| `js/battle.js` | `BATTLE`: the fight's life cycle (start on arming: a base on one of `LAYOUT.sites` + garrison, the camera stays and the first wave comes to it; waves of columns / squads / helicopters out of sight; stand-down: retreat, removal out of sight), units shooting each other (`FIRE`, `VS`), the gunship's fire on the beat (`GUN`: guns, missiles and bombs landing on a beat, the CBU-97's submunitions, laser, railgun; `strike` damages what the weapon `hits`, its blast (`SPLASH`) any enemy round it; fires only at what is under the reticle; `doomed`: nothing wasted on what a missile in flight will kill; `spent`: the mission cost), the camera in a fight, the auto-switching (`PREF`), `WRECKS` (cooling stages, sinking), the base's structures (`BASE_MODELS`, `BASE_PLAN`), `BATTLE.log` / `BATTLE.stat` for the tests |
+| `js/battle.js` | `BATTLE`: the fight's life cycle (start on arming: a base on one of `LAYOUT.sites` + garrison, the camera stays and the first wave comes to it; waves of columns / squads / helicopters out of sight; the feed round the sensor's point, `FEED`, `WAVE`, its squads sent on after it, `roamStep`; stand-down: retreat, removal out of sight), units shooting each other (`FIRE`, `VS`), the gunship's fire on the beat (`GUN`: guns, missiles and bombs landing on a beat, the CBU-97's submunitions, laser, railgun; `strike` damages what the weapon `hits`, its blast (`SPLASH`) any enemy round it; fires only at what is under the reticle; `doomed`: nothing wasted on what a missile in flight will kill; `spent`: the mission cost), the camera in a fight, the auto-switching (`PREF`), `WRECKS` (cooling stages, sinking), the base's structures (`BASE_MODELS`, `BASE_PLAN`), `BATTLE.log` / `BATTLE.stat` for the tests |
 | `js/weather.js` | `WEATHER`: the kind (clear / rain / snow / fog; auto draws one for the season every 8–15 min) fading in `WEATHER.k`, `light()` (overcast sun, grey haze, fog distances; called from `updateEnvironment`), rain / snow streaks (`drops`, a cold `Tracers` pool round the sensor's point), clouds (clusters of soft sprites wrapped in a square round the sensor's point, filled into `fx.live` + `SpriteFX.flush`; none in a fight); `AA`: tracer bursts and missiles from enemies near the sensor's point up past the lens, flares in reply (`FX.flare`), looks only |
 | `js/audio.js` | `AUD` (level, `heavy`, the arming latch: `combat`, `holding`, `fighting`), `BANDS` beat detection → `BATTLE.onBeat(band, strength)` (units, AA, gunship), `updateArming`, the music's shape (`drive`, `calm` quiet parts, drops → `BATTLE.onDrop`), the tempo (`tempoKick` → `bpm`, `tempo`), the demo beat (`?demo=124` with a quiet part and silent bars, `&pause=0`) |
 | `js/gunship.js` | `GUNSHIP`: districts (towns, spots, farms, roads in the country; `GS_MARGIN` from the edge), a random start, the left orbit, the slew (eased aim + critically damped spring, its stiffness on a target set by the music: `SLEW_MUSIC`, `slewK`), transits (smootherstep, zoom-out arc), `track(p)` for combat; `TRACKS` (what the HUD brackets); the outposts are districts too |
@@ -521,7 +552,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=118`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=119`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

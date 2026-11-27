@@ -203,7 +203,13 @@ const ZONE_FILL = 12;
 /* a turret's next target (a tank's, an APC's, a car's gun): by its distance times 1 + `turn` × the turn to it over 180° (one the gun
    points at first); the one it has kept unless another scores under `keep` × its; with none, the turret holds `hold` s where it was */
 const TURRET_PICK = { turn: 1.5, keep: 0.65, hold: 3 };
-const FEED = { r: 220, want: [5, 14], every: [6, 2], slow: 92, brk: [8, 14], cap: 90, sq: 0.6 };
+const FEED = { r: 220, want: [5, 14], every: [6, 2], slow: 92, brk: [8, 14], cap: 90, max: 130, sq: 0.6, past: 40, gone: 120 };
+/* the enemy's squads that count against the arrivals' cap are the ones by the fight (within `r` m of the sensor's zone), the rest
+   (drifted off, at the base, at a fight elsewhere) only against a total of `squads`: 10 minutes in, the cap was full of what
+   nobody could see and no squad came in any more. `FEED.cap` counts only those within `r` too (and `max` all of them on the map: what nobody sees must not stop the feed, nor grow without end); `past`: how far past the frame the enemy counts as "here" for the feed (the
+   frame shows 40-70 m of ground; 220 m of fighting out of it counted as a full frame); `gone`: how far past `r` a squad sent in to
+   the fight is taken away, out of sight */
+const WAVE = { r: 450, squads: 18 };
 /* the allies in the sensor's frame: when fewer than `min` of theirs have been in it for ALLY_FEED.gap s, a fireteam of theirs runs in from its
    edge (every `every` s at most, while fewer than near + k × the enemies are round the point, FEED.r);
    their fireteams with nobody to shoot get a new loop round the point when it has moved on `move` m, and one far out of the fight
@@ -335,12 +341,13 @@ const BATTLE = {
   /* keeps the next group coming in round the sensor's point (FEED); true while slow music has its break */
   feed(k) {
     if (T < this.feedT) return T < this.breakUntil; this.feedT = T + 0.5;
-    const F = FEED, C = CAM_TGT, en = ARMS.enabled(); let n = 0, all = 0;
+    const F = FEED, C = CAM_TGT, en = ARMS.enabled(); let n = 0, nf = 0, all = 0, allG = 0, ev = false;
     let an = 0, av = false, ain = 0;
     for (const u of UNITS) {
       if (u.side === 'ally') { if (u.kind === 'heli' || !u.alive) continue; const d = Math.hypot(u.pos.x - C.x, u.pos.z - C.z); if (d < F.r) { an++; if (u.kind !== 'inf') av = true; } if (this.inFrame(u.pos)) ain++; continue; }
-      if (u.side !== 'enemy' || !u.alive || u.kind === 'struct' || u.kind === 'heli') continue; all++; const d = Math.hypot(u.pos.x - C.x, u.pos.z - C.z); if (en.some(w => w.hitSet.has(u.kind)) && d < F.r) n++;
+      if (u.side !== 'enemy' || !u.alive || u.kind === 'struct' || u.kind === 'heli') continue; allG++; const d = Math.hypot(u.pos.x - C.x, u.pos.z - C.z); if (d < WAVE.r) all++; if (d < F.r && u.kind !== 'inf') ev = true; if (en.some(w => w.hitSet.has(u.kind)) && d < F.r) { n++; if (VIEW.near(u.pos, F.past)) nf++; }
     }
+    this.roamStep(C);
     if (ain >= ALLY_FEED.min) this.allyFrameT = T;
     if (CFG.allies > 0 && n > 0) {   // the allies come where the camera looks: a fireteam in from the frame's edge, a column from just out of sight
       if (T - this.allyFrameT > ALLY_FEED.gap && T > this.nextAllyFeed && an < ALLY_FEED.near + ALLY_FEED.k * n && this.edgeSquad('ally')) { this.nextAllyFeed = T + ALLY_FEED.every; this.stat.allyFeed++; }
@@ -361,9 +368,24 @@ const BATTLE = {
       if (T < this.breakUntil) return true;
       if (!clear) return false;
     } else this.breakUntil = 0;
-    const p = this.pace(); if (n >= Math.round(lerp(F.want[0], F.want[1], p) * k) || T < this.nextFeed || all >= F.cap * k) return false;
-    if (Math.random() < F.sq ? this.edgeSquad() : this.columnTo('enemy', this.toPlace(C.x, C.z, 200), pick(WAVES), true) || this.edgeSquad()) { this.nextFeed = T + lerp(F.every[0], F.every[1], p); this.stat.feed++; }
+    const p = this.pace(); if (nf >= Math.round(lerp(F.want[0], F.want[1], p) * k) || T < this.nextFeed || all >= F.cap * k || allG >= F.max * k) return false;   // (nf: by the frame, not the 220 m round it)
+    if (ev && Math.random() < F.sq ? this.edgeSquad() :   /* (no armour of theirs round the point: a column) */ this.columnTo('enemy', this.toPlace(C.x, C.z, 200), pick(WAVES), true) || this.edgeSquad()) { this.nextFeed = T + lerp(F.every[0], F.every[1], p); this.stat.feed++; }
     return false;
+  },
+  /* the enemy's squads sent in to the fight (`roam`: edgeSquad, squadAt near the zone) as the allies' fireteams: the sensor's point
+     moves on, they go on round it (a new loop where it is, one squad every 0.5 s, running: `reT` 4 s apart); one far out of the fight
+     and out of sight is taken away */
+  roamStep(C) {
+    let re = false;   // (one new loop a tick; the far ones are taken away all the same)
+    for (let i = this.squads.length - 1; i >= 0; i--) {
+      const q = this.squads[i], L0 = q.m[0]; if (!q.roam || q.flee || !L0 || L0.scatter) continue;
+      const dl = Math.hypot(L0.position.x - C.x, L0.position.z - C.z);
+      if (dl > FEED.r + FEED.gone) { if (q.m.every(s => this.hidden(s.position.x, s.position.z, 0.3))) { for (const s of q.m.slice()) { this.seen('out', s.position); s.remove(); } this.squads.splice(i, 1); this.stat.roamGone = (this.stat.roamGone || 0) + 1; } continue; }
+      if (re || T < (q.reT || 0) || q.moved) continue;
+      const c = q.loopC || q.wps[0]; if (Math.hypot(c[0] - C.x, c[1] - C.z) < ALLY_FEED.move || dl < 40) continue;
+      const loop = patrolLoop(C.x, C.z, 15, 45, [L0.position.x, L0.position.z]); if (loop.length < 3) continue;
+      q.wps = loop; q.wi = 1; q.wait = 0; q.go = T + 10; q.reT = T + 4; q.loopC = [C.x, C.z]; this.stat.roamBack = (this.stat.roamBack || 0) + 1; re = true;
+    }
   },
   /* a squad of a side (the enemy's by default) just off the frame (10–30 m past its edge), running in to a loop round the sensor's point */
   edgeSquad(side = 'enemy') {
@@ -375,7 +397,7 @@ const BATTLE = {
       if (Math.abs(x) > MAP_HALF - 40 || Math.abs(z) > MAP_HALF - 40 || VIEW.onScreen(_bp.set(x, groundH(x, z), z), 0.1) || !walkable(x, z, x, z) || UNITS.some(u => u.side !== side && Math.hypot(u.pos.x - x, u.pos.z - z) < 50)) continue;
       const loop = patrolLoop(C.x, C.z, ...(side === 'ally' ? ALLY_LOOP : [15, 45]), [x, z]); if (loop.length < 3) continue;
       const own = side === 'ally' && loopOn(loop), s = new Squad(side, randi(4, 6), x, z, own || loop); if (!s.m.length) return null;   // (the allies' loop without the spot they start from out of the frame: they came back out to it every lap)
-      s.wait = 0; s.wi = own ? 0 : 1; s.go = T + (side === 'ally' ? rand(14, 18) : rand(6, 10)); s.feed = side === 'ally';   // (wi 1: straight on, no halt at the spot it starts from)
+      s.wait = 0; s.wi = own ? 0 : 1; s.go = T + (side === 'ally' ? rand(14, 18) : rand(6, 10)); s.feed = side === 'ally'; if (side === 'enemy') { s.roam = true; s.loopC = [C.x, C.z]; }   // (wi 1: straight on, no halt at the spot it starts from; loopC: its loop's centre, not wps[0], the spot it starts from)
       this.squads.push(s); for (const m of s.m) this.seen('in', m.position); return s;   // (the allies run in further: into the frame)
     }
     return null;
@@ -391,10 +413,11 @@ const BATTLE = {
     // few of them left round the camera's zone (outside a quiet part): the next arrivals now too
     const L = GUNSHIP.look; let zn = 0; for (const u of UNITS) if (u.side === 'enemy' && u.kind !== 'struct' && u.kind !== 'heli' && Math.hypot(u.pos.x - L.x, u.pos.z - L.z) < ZONE.r) zn++;
     if (zn < Math.round(ZONE_FILL * k) && !AUD.calm && !this.slow()) this.rush();
-    if (T > this.nextWave) { this.nextWave = T + rand(6, 12) / k; let n = 0; for (const E of this.cols) if (!E.retreat && !E.ally) n += E.col.u.length; if (n < Math.round(14 * k)) this.spawnColumn(); }
+    if (T > this.nextWave) { this.nextWave = T + rand(6, 12) / k; let n = 0; for (const E of this.cols) if (!E.retreat && !E.ally) n += E.col.u.length; if (n < Math.round(14 * k)) this.spawnColumn(); }   // (all of them: more columns by the fight, more of them in each other's way; the feed sends one in when no armour of theirs is by the point)
     if (T > this.nextSquad) {   // squads: running into the camera's zone from just out of sight, else round the base
       this.nextSquad = T + rand(8, 16) / k; const sq = this.squads.filter(s => !s.flee && s.side === 'enemy'), inZ = sq.filter(s => s.m[0] && Math.hypot(s.m[0].position.x - L.x, s.m[0].position.z - L.z) < ZONE.r).length;
-      if (sq.length < Math.round(9 * k) && !(inZ < Math.round(4 * k) && this.squadAt('enemy', L.x, L.z, 150, 240, 25, 70, true)) && this.base) this.squadAt('enemy', this.base.x, this.base.z, 95, 170, 60, 150);
+      const sqN = sq.filter(s => s.m[0] && Math.hypot(s.m[0].position.x - L.x, s.m[0].position.z - L.z) < WAVE.r).length;
+      if (sqN < Math.round(9 * k) && sq.length < Math.round(WAVE.squads * k) && !(inZ < Math.round(4 * k) && this.squadAt('enemy', L.x, L.z, 150, 240, 25, 70, true)) && this.base) this.squadAt('enemy', this.base.x, this.base.z, 95, 170, 60, 150);
     }
     if (T > this.nextField) { this.nextField = T + rand(25, 45) / k; this.spots = this.spots.filter(s => this.hot(s, 200)); if (this.spots.length < 3) this.spawnField(); }
     if (T > this.nextHeli) { this.nextHeli = T + rand(40, 70) / k; if (this.helis.filter(h => h.alive && !h.retreat).length < Math.round(2 * k)) this.spawnHeli(); }   // (with a base or without, whatever the allies' share)
@@ -571,7 +594,7 @@ const BATTLE = {
       const a = rand(0, TAU), r = rand(r0, r1), x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
       if (!(near ? this.hiddenNear(x, z) : this.hidden(x, z, 0.5)) || !walkable(x, z, x, z)) continue;
       const loop = patrolLoop(cx, cz, l0, l1, [x, z]); if (loop.length < 3) continue;
-      const s = new Squad(side, randi(4, 6), x, z, loop); if (near) { s.go = T + 60; s.wait = 0; s.wi = 1; } this.squads.push(s); for (const m of s.m) this.seen('in', m.position); return s;
+      const s = new Squad(side, randi(4, 6), x, z, loop); if (near) { s.go = T + 60; s.wait = 0; s.wi = 1; if (side === 'enemy') { s.roam = true; s.loopC = [cx, cz]; } } this.squads.push(s); for (const m of s.m) this.seen('in', m.position); return s;
     }
   },
   /* a fight out in the country, away from the base: enemies at a district (a squad or two, a column driving in) and allies coming for them */

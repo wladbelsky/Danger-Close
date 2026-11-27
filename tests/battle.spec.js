@@ -334,6 +334,29 @@ test('the feed: the next group comes in as the last one dies, at the music pace;
   expect(slow.breaks, 'breaks between the groups').toBeGreaterThan(0); expect(slow.seenIn).toBe(0);
 });
 
+test('a long fight keeps the enemy in the frame: their squads follow the point or are taken away out of sight, the count stays capped', async ({ wp }) => {
+  test.setTimeout(600000);
+  await wp.boot({ query: '?hour=12&seed=11' });
+  await wp.sim(10, { audio: true });
+  const r = await wp.run(() => {
+    let n = 0, empty = 0, maxEn = 0, stale = 0, staleMax = 0;
+    for (let i = 0; i < 840; i++) {   // 7 min, a look every 0.5 s
+      __t.sim(0.5, { audio: true }); if (GUNSHIP.state === 'transit') { stale = 0; continue; }   // (no feed, no roamStep in a transit)
+      let en = 0, inF = 0; for (const u of UNITS) { if (u.side !== 'enemy' || !u.alive || u.kind === 'struct' || u.kind === 'heli') continue; en++; if (BATTLE.inFrame(u.pos)) inF++; }
+      n++; if (!inF) empty++; maxEn = Math.max(maxEn, en);
+      const C = CAM_TGT, far = BATTLE.squads.some(q => { const L0 = q.m[0]; return q.roam && !q.flee && L0 && !L0.scatter && Math.hypot(L0.position.x - C.x, L0.position.z - C.z) > FEED.r + FEED.gone && q.m.every(s => BATTLE.hidden(s.position.x, s.position.z, 0.3)); });
+      stale = far ? stale + 1 : 0; staleMax = Math.max(staleMax, stale);
+    }
+    return { empty: empty / n, maxEn, staleMax, cap: FEED.max * CFG.enemies / 100, back: BATTLE.stat.roamBack || 0, gone: BATTLE.stat.roamGone || 0, feed: BATTLE.stat.feed, seenIn: BATTLE.stat.seenIn };
+  });
+  console.log(JSON.stringify(r));
+  expect(r.back, 'squads sent on round the new point').toBeGreaterThan(0);
+  expect(r.staleMax, 'looks in a row with a squad of theirs left far off and out of sight (it is taken away at the next feed, 0.5 s on)').toBeLessThanOrEqual(1);
+  expect(r.empty, 'share of the time with no enemy in the frame (was 0.10–0.14)').toBeLessThan(0.2);
+  expect(r.maxEn, 'enemies on the map at most (FEED.max and what the waves add)').toBeLessThanOrEqual(r.cap * 1.25);
+  expect(r.seenIn, 'nobody appears in sight').toBe(0);
+});
+
 test('a column under fire weaves across the road, steered: no jump sideways, no sharp turn', async ({ wp }) => {
   await wp.boot({ query: '?hour=12&seed=11&transit=0' });
   await wp.sim(6, { audio: true });
