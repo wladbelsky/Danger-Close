@@ -62,8 +62,9 @@ function paneMesh(g, pos, nor, G) {
 }
 /* a rounded body lofted along x: stations [x, y, w, hb, ht, k] in rising x (y its centre line, w the half width, hb / ht down and
    up from y; its section a superellipse: k 2 an ellipse, higher a box with round corners, o.k for all), o.seg points round (from
-   the side +z, over the top), the ends closed. o.glass [[x0, x1, a0, a1]]: the cells between stations within x0..x1 whose middle is
-   a0..a1 degrees round (0 the +z side, 90 the top, -90 the bottom) glazed: a flat pane in each, o.fr of the body round it the frame */
+   the side +z, over the top), the ends closed. o.glass [[x0, x1, a0, a1, na, nx]]: the cells between stations within x0..x1 whose
+   middle is a0..a1 degrees round (0 the +z side, 90 the top, -90 the bottom) glazed, a pane every na cells round and nx along
+   (1 by default), following the body; o.fr of the body round each pane the frame */
 function hull(g, st, C, o) {
   o = o || {}; const seg = o.seg || 16, pos = [], idx = [], R = [];
   for (const [x, y, w, hb, ht, k] of st) {
@@ -81,13 +82,24 @@ function hull(g, st, C, o) {
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
   const m = shade(new THREE.Mesh(geo, mm(C))); g.add(m);
   if (o.glass) {
-    const gp = [], gn = [], fr = o.fr || 0.008;
+    const gp = [], gn = [], fr = o.fr || 0.008, am = i => { const a = (i + 0.5) / seg * 360; return a > 270 ? a - 360 : a; };
+    const pn = (s, i) => {   // (the pane a cell is part of: its entry, its place round and along; null not glazed)
+      if (s < 0 || s >= n - 1) return null; i = (i + seg) % seg;
+      const e = o.glass.findIndex(([x0, x1, a0, a1]) => st[s][0] >= x0 - 1e-6 && st[s + 1][0] <= x1 + 1e-6 && am(i) >= a0 && am(i) <= a1); if (e < 0) return null;
+      const [x0, , a0, , na, nx] = o.glass[e]; let j = 0, r = 0;
+      for (let k = 0; k < seg; k++) if (am(k) >= a0 && am(k) < am(i)) j++;
+      for (let t = 0; t < s; t++) if (st[t][0] >= x0 - 1e-6) r++;
+      return e + ':' + Math.floor(j / (na || 1)) + ':' + Math.floor(r / (nx || 1));
+    };
     for (let s = 0; s < n - 1; s++) for (let i = 0; i < seg; i++) {
-      let am = (i + 0.5) / seg * 360; if (am > 270) am -= 360;
-      if (!o.glass.some(([x0, x1, a0, a1]) => st[s][0] >= x0 - 1e-6 && st[s + 1][0] <= x1 + 1e-6 && am >= a0 && am <= a1)) continue;
-      const p = [R[s][i], R[s + 1][i], R[s + 1][(i + 1) % seg], R[s][(i + 1) % seg]], c = p.reduce((a, b) => a.add(b), new V3()).multiplyScalar(0.25);
+      const P = pn(s, i); if (!P) continue;
+      const p = [R[s][i], R[s + 1][i], R[s + 1][(i + 1) % seg], R[s][(i + 1) % seg]];
       const N = new V3().subVectors(p[1], p[0]).cross(new V3().subVectors(p[3], p[0])); if (N.lengthSq() < 1e-10) continue; N.normalize();
-      pane(gp, gn, p.map(v => v.clone().lerp(c, Math.min(0.45, fr / Math.max(1e-6, v.distanceTo(c)) * 1.4))), N);
+      const eu = (p[0].distanceTo(p[1]) + p[3].distanceTo(p[2])) / 2, ev = (p[0].distanceTo(p[3]) + p[1].distanceTo(p[2])) / 2;
+      const f = (ds, di, len) => pn(s + ds, i + di) === P ? 0 : Math.min(0.4, fr / Math.max(len, 1e-6));   // (a frame only where the pane ends)
+      const u0 = f(-1, 0, eu), u1 = 1 - f(1, 0, eu), v0 = f(0, -1, ev), v1 = 1 - f(0, 1, ev);
+      const L = (u, v) => new V3().addScaledVector(p[0], (1 - u) * (1 - v)).addScaledVector(p[1], u * (1 - v)).addScaledVector(p[2], u * v).addScaledVector(p[3], (1 - u) * v);
+      pane(gp, gn, [L(u0, v0), L(u1, v0), L(u1, v1), L(u0, v1)], N);
     }
     paneMesh(g, gp, gn, o.G);
   }
@@ -299,7 +311,7 @@ function buildMi8() {
   const B = [[-1.1, 0.34, 0.016, 0.018, 0.018], [-1.08, 0.34, 0.022, 0.025, 0.025], [-0.6, 0.3, 0.042, 0.05, 0.05], [-0.52, 0.27, 0.07, 0.07, 0.075],   // (one body: the boom out of the clamshell doors,
     [-0.42, 0.235, 0.105, 0.1, 0.11, 3], [-0.33, 0.215, 0.125, 0.125, 0.125, 3.2], [0.4, 0.215, 0.125, 0.125, 0.125, 3.2], [0.47, 0.21, 0.118, 0.12, 0.125, 2.8],   //  the cabin,
     [0.53, 0.205, 0.105, 0.11, 0.115, 2.4], [0.58, 0.2, 0.085, 0.095, 0.095, 2.2], [0.615, 0.195, 0.055, 0.07, 0.065, 2], [0.635, 0.19, 0.02, 0.03, 0.025, 2]];   //  the round nose: glazed above, its chin windows)
-  hull(g, B, C, { G, glass: [[0.47, 0.635, -8, 188], [0.53, 0.615, -62, -30], [0.53, 0.615, 210, 242]], seg: 18, fr: 0.007 });
+  hull(g, B, C, { G, glass: [[0.47, 0.635, -8, 188, 2, 2], [0.53, 0.615, -62, -30, 2, 2], [0.53, 0.615, 210, 242, 2, 2]], seg: 16, fr: 0.007 });   // (8 panes above, the windscreen's post on top; a chin window a side)
   taper(g, 0.16, 0.3, 0.03, C, -1.1, 0.48, 0, 0.55, 0.8, -0.07); box(g, 0.05, 0.04, 0.04, GB, -1.13, 0.58, 0);   // (tail pylon, its gearbox)
   pair(g, [[-0.94, 0.0], [-0.96, 0.14], [-1.02, 0.14], [-1.02, 0.0]], 0.31, 0.012, C);   // (stabiliser)
   strut(g, P3(-1.0, 0.31, 0), P3(-1.04, 0.2, 0), 0.006, D);   // (tail bumper)

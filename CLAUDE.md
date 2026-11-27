@@ -515,6 +515,9 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   The Mi-24's shaft cover raised onto the round boom (it was inside it). Sheets: the showroom.
 - The Ka-52's cockpit no longer ends in a back face of glass standing up over the body (seen from the side): behind it the body
   goes on at its roof's height, as wide, and slopes down onto the deck before the engines.
+- Fewer frames on the Mi-8's nose: a `hull()` glass entry takes `na`, `nx` (cells per pane round and along), a pane following the
+  body over its cells with the frame only where it ends. The nose 8 panes above (was 36: one a cell), the windscreen's post on
+  top, a chin window a side (16 points round, was 18).
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -586,7 +589,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=124`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=125`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
