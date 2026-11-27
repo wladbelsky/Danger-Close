@@ -227,6 +227,7 @@ function buildKa52() {
   const g = new THREE.Group(), { C, C3, C2, D, X, X2, GB, G, K, HUB } = heliMats(0x4e5446, 0x585e4f, 0x444a3c), R = 0x262924;
   taper(g, 0.55, 0.2, 0.17, C, 0.2, 0.18, 0, 0.9, 0.85); taper(g, 0.22, 0.16, 0.16, C, 0.55, 0.15, 0, 0.6, 0.8, -0.04);
   canopy(g, 0.2, 0.12, 0.17, C, G, 0.42, 0.29, 0, 0.6, 0.8, -0.03, [['f', 2, 0.15], ['s', 2, 0.2], ['T', 2, 0]]);   // (side by side: the windscreen and the roof in two halves)
+  taper(g, 0.3, 0.07, 0.156, C, 0.19, 0.315, 0, 0.8, 0.87, 0.03);   // (the body behind the cockpit at its roof's height, sloping down onto the deck: no back face of the glass sticking up)
   tube(g, 0.6, 0.75, 0.055, 0.025, C3, 0.16, 0, 10);   // (radome: its root inside the nose's sloped front, 0.5 m off it before)
   const ball = shade(new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), D)); ball.position.set(0.6, 0.07, 0); g.add(ball); box(g, 0.006, 0.03, 0.03, G, 0.638, 0.07, 0);   // (sensor ball)
   box(g, 0.14, 0.04, 0.04, D, 0.22, 0.12, 0.1); tube(g, 0.29, 0.52, 0.009, 0.009, D, 0.12, 0.1, 5); tube(g, 0.5, 0.53, 0.013, 0.013, D, 0.12, 0.1, 6);   // (the 30 mm)
