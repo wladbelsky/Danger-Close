@@ -547,17 +547,17 @@ test('helis close', async ({ wp }) => {
   await wp.page.setViewportSize({ width: 1200, height: 675 });
   await wp.boot({ query: '?hour=10&seed=11&transit=0&season=summer&hud=0&weather=clear&clouds=0' });
   await wp.run(() => {
-    ALLIES.update = () => {}; const S = LAYOUT.sites[0], list = [['enemy', 0], ['enemy', 1], ['ally', 0], ['ally', 1]];
+    ALLIES.update = () => {}; const S = LAYOUT.sites[0], list = ['enemy', 'ally'].flatMap(side => UNIT_TYPES[side].heli.map((b, k) => [side, k]));   // (every model: a row of the enemy's, one of the allies')
     window.__V = list.map(([side, k], i) => {
-      const g = UNIT_TYPES[side].heli[k](), x = S.x + (i % 2 ? 12 : -12), z = S.z + (i < 2 ? -11 : 11); g.position.set(x, groundH(x, z), z); g.rotation.y = 0.6 + i * 0.5; scene.add(g);
+      const g = UNIT_TYPES[side].heli[k](), n = list.length / 2, x = S.x + ((i % n) - (n - 1) / 2) * 24, z = S.z + (i < n ? -13 : 13); g.position.set(x, groundH(x, z), z); g.rotation.y = 0.6 + i * 0.5; scene.add(g);   // (24 m apart: the Mi-8's rotor is 21 m)
       g.traverse(o => { if (o.name === 'rotor' || o.name === 'rotor2') o.rotation.y = 0.3 + i; });
       return g;
     });
   });
   const shots = [];
   const look = async (i, zoom, mode) => { await wp.run(([i, zoom, mode]) => { const S = LAYOUT.sites[0], p = i < 0 ? { x: S.x, z: S.z } : window.__V[i].position; (SENSOR.manual = true, SENSOR).set(mode); HUD.markModes(); updateEnvironment(); GUNSHIP.look.set(p.x, groundH(p.x, p.z), p.z); GUNSHIP.aim.copy(GUNSHIP.look); GUNSHIP.ctr.copy(GUNSHIP.look); GUNSHIP.aimS.copy(GUNSHIP.look); GUNSHIP.vel.set(0, 0, 0); GUNSHIP.nextWander = 1e9; CFG.zoom = zoom; __t.sim(2.5); __t.render(); }, [i, zoom, mode]); shots.push((await wp.page.screenshot()).toString('base64')); };
-  await look(-1, 250, 'tv'); await look(-1, 250, 'wh');
-  for (let i = 0; i < 4; i++) await look(i, 520, 'tv');
+  await look(-1, 160, 'tv'); await look(-1, 160, 'wh');   // (all six: two rows of three)
+  const nV = await wp.run(() => window.__V.length); for (let i = 0; i < nV; i++) await look(i, 520, 'tv');
   await look(0, 520, 'wh'); await look(2, 520, 'bh');
   await sheet(wp, shots, 4, 'helis-close.png');
 });

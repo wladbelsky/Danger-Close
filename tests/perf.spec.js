@@ -2,7 +2,7 @@
 const { test, expect } = require('./support/harness');
 
 test('perfReport: averages the frames, the CPU split into simulation and drawing, the whole frame\'s draw calls; two at once each its own', async ({ wp }) => {
-  await wp.boot();
+  await wp.boot({ query: '?seed=11' });   // (a map of its own: the frame's draw calls are its)
   const [r, r2, after] = await wp.run(async () => {
     lastMs = 0; const p = perfReport(0.3); for (let i = 1; i <= 5; i++) frame(i * 16.7);
     const p2 = perfReport(0.2); for (let i = 6; i <= 10; i++) frame(i * 16.7);   // (the second one starts later: each keeps its own frames)

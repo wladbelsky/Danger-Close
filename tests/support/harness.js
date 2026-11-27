@@ -1,5 +1,6 @@
 /* Test harness: a `wp` fixture that boots the wallpaper deterministically and drives it.
-   - Math.random is a seeded PRNG (SEED env, default 1) — installed before the wallpaper's scripts run;
+   - Math.random is a seeded PRNG (SEED env, default 1) — installed before the wallpaper's scripts run; three.js's uuids come
+     from a stream of their own (serve.js), so how many objects a model has does not shift it;
    - Date is fixed (21 June 2026, 12:00 UTC; the browser runs in UTC — see playwright.config.js);
    - requestAnimationFrame never fires: the simulation only advances through __t.sim() (step(0.05) per tick);
    - Wallpaper Engine mode by default (wallpaperRegisterAudioListener is defined: no settings drawer, no demo beat;
@@ -14,6 +15,8 @@ if (!Number.isInteger(SEED)) throw new Error(`SEED must be an integer, got '${pr
 const INPAGE = path.join(__dirname, 'inpage.js');
 
 function initScript({ seed, we }) {
+  let u = 0x5eed;                                                // three.js's uuids: a stream of their own (serve.js)
+  window.__uuidRandom = () => { u = (u + 0x6D2B79F5) | 0; let t = Math.imul(u ^ (u >>> 15), 1 | u); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   let s = seed >>> 0;                                            // mulberry32
   Math.random = () => {
     s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s);

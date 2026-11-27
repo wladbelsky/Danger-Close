@@ -484,6 +484,26 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   the same limit. The
   scatter test waits for the sensor to be on the one hit again (it was 230 m off after 2 s on some seeds). Over SEED 1–4 (maps 11
   and 3): overlaps in sight 0–934 before (3 of 8 over 60), 3–42 now; the scatter test failed at SEED 1 before, passes at 1–4 now.
+- **Two more helicopters; the four looked over in a showroom** (`showroom.html`, `tools/showroom.spec.js`; see "Running &
+  testing"). New: the AH-1Z Viper for the allies (`buildAH1Z`: a 1 m wide tandem body under one stepped canopy, the TSS ball on
+  the nose, the three-barrel chin gun, stub wings with a rocket pod, four Hellfires and a wingtip missile a side, skids) and the
+  Mi-8AMTSh for the enemy (`buildMi8`: the big cabin with round windows, the glazed nose, engines on the roof with dust filters,
+  fuel tanks, outriggers with two rocket pods and missile tubes a side, clamshell doors, five blades, 24 m over the rotor). Three
+  a side now: the enemy's pick any (`spawnHeli`), each sortie from an allied pad takes the next model (`ALLIES.fly`, `P.flights`),
+  and every variant is built under the splash. Faults the showroom showed and fixed: the AH-64's TADS hung 0.25 m ahead of its
+  nose and the PNVS over it (now under and on the nose), its upper wire cutter in the air, its tail wheel under the tail with
+  nothing to it; the Mi-24's and the Ka-52's tail skids 0.3 m under their booms; the Mi-24's boom 1–2.5 m short of the cabin's
+  sloped back, the Ka-52's 2 m short of its fuselage (a rear fuselage under the engines now); the Ka-52's radome 0.5 m off its
+  nose. The model test allows the Mi-8 up to 26 m (the others still 21); `helis-close.png` (preview.spec.js) shows all six. The tests' three.js uuids come from a stream of their own
+  (`tests/support/serve.js` rewrites `three.min.js` as it serves it, `__uuidRandom` in harness.js): three draws 4 Math.random a
+  uuid, so a model with a part more shifted every seeded scenario after it; with fewer than its 4 calls found (another three.js) serve.js answers 500. That shift (once more) showed tests that held only
+  by luck, now fixed: the thermal and perf tests boot on seed 11 (seed 0 took the map from the run's random numbers); the doomed
+  missile test removes every enemy but its two cars (soldiers by the point were the 105 mm's next target); the scatter test aims
+  the sensor at the column before the first hit too (out of the frame nobody scatters) and picks a road with room along its first
+  100 m (the column had driven into a town); the AIM-9X test allows 6 locks a launch (24 for 4; the fault was 20–80); the weave
+  test 18 m/s² (16: an allied car leaving its outpost, where the start of a path is not smoothed). The AH-1Z's nose is one wedge
+  out of its body (top down, belly up to the point; it was a lower block with a step and a gap under the gunner's canopy), the TSS
+  ball on its point.
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -533,7 +553,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `js/sensor.js` | `SENSOR` (modes, render target, post shader), `SU` shared uniforms, `sensorHook` / `sensorMat` (the heat term) |
 | `js/models.js` | mesh helpers (`M`, `HOT`, `box`, `cyl`, `taper`, `prism`, `strut`…), `mergeStatic` (bakes `aHeat`), `disposeTree`, seasonal materials |
 | `js/armor.js` | vehicle models facing +x (×`ARMOR_SCALE`): T-90, BTR (enemy), Abrams, Bradley, Humvee (ally), technical (enemy car), each with a roof machine gun `mg` (not the Bradley); `WRECK_MATS`, `toWreck` |
-| `js/helis.js` | helicopter models (FAB airframes, ×`HELI_SCALE` = 10): AH-64, UH-60 (ally), Mi-24, Ka-52 (enemy), all on wheels; rotors named `rotor` / `rotor2` / `trotor`; `userData.nav`: their navigation lights |
+| `js/helis.js` | helicopter models (FAB airframes, ×`HELI_SCALE` = 10): AH-64, UH-60, AH-1Z (ally), Mi-24, Ka-52, Mi-8 (enemy), all on wheels; rotors named `rotor` / `rotor2` / `trotor`; `userData.nav`: their navigation lights |
 | `js/mapgen.js` | `MAP` (seeded heights and masks on a 4 m grid, built as a generator run in slices), `vnoise`, `groundH` (exactly the mesh's triangles), `groundN` |
 | `js/layout.js` | `LAYOUT`: outposts (`OP_W`×`OP_D` walled compounds beside a country road: parts, gate, inner drive, pad), lakes, the river, towns, the railway, roads (A* on a 16 m grid, profiles, carving into `MAP.h`), streets, building lots, the station, farms, tracks, fields; the occupancy grid `OCC` (2 m cells, `OCC_*` flags: `occAt`), `MAP.water` / `MAP.wl` (`waterAt`, `waterLevelAt`), the land-use canvas (fields as premultiplied rgb(coverage, row angle, crop)) |
 | `js/terrain.js` | `TERRAIN`: ground chunks (16×16 of 128 m), the ground material (mask + tiled detail in world space, `GROUND_PAL` per season), vegetation (one InstancedMesh per kind and chunk; roles fixed per seed, shapes per season) |
@@ -555,7 +575,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=120`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=121`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
@@ -585,4 +605,9 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   (`renderFrame`), the whole frame's draw calls and triangles (`renderer.info.autoReset` off while a report runs: the shadow
   pass and the post counted too), units, soldiers (drawn: `INF_NEAR`), lamps, programs / geometries / textures, the JS heap.
   WebGL has no GPU time: `frameMs` well over `cpuMs` is waiting (vsync, the FPS limit or the GPU). Test: tests/perf.spec.js.
+- **Showroom** (`showroom.html`, served as the wallpaper is): one model on a plain background from the side, the front and above
+  (orthographic, the same metres a pixel), its size, triangles and meshes; buttons for every helicopter and vehicle, `body` (main
+  rotors hidden, framed on the rest), `IR` (the thermal sensor's heat); `?m=Mi24&body=1&ir=1`. Sheets of all of them:
+  `tools/test.ps1 -c tools/showroom.config.js` → `test-results/showroom-<name>.png`, `-body`, `-body-ir`, `-side` / `-front` / `-top`
+  (the body's views at twice the pixels), `showroom.json`. Look a new or changed model over there before using it.
 - Workshop preview and README screenshots: `tools/test.ps1 -c tools/preview.config.js -g "gif|screens"` → `test-results/gif-*.gif`, `shot-*.jpg`; copy the chosen ones over `preview.gif` / `screenshots/`. `?cfg` shows the settings drawer under the tests.

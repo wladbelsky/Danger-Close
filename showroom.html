@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Danger Close showroom</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg: #8b9096; --ink: #101214; --panel: #1b1e21; --text: #d6dade; --muted: #8d949b; --on: #c9d36a; }
+  html, body { margin: 0; height: 100%; background: var(--panel); color: var(--text); font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #bar { position: absolute; left: 0; right: 0; top: 0; height: 40px; display: flex; gap: 6px; align-items: center; padding: 0 10px; box-sizing: border-box; overflow-x: auto; white-space: nowrap; }
+  #bar b { color: var(--muted); font-weight: 600; margin: 0 2px 0 10px; }
+  #bar button { background: #2a2e32; color: var(--text); border: 1px solid #3a3f44; border-radius: 4px; padding: 4px 9px; font: inherit; cursor: pointer; }
+  #bar button.on { background: var(--on); color: var(--ink); border-color: var(--on); }
+  #c { position: absolute; left: 0; top: 40px; width: 100%; height: calc(100% - 64px); display: block; }
+  #labels { position: absolute; left: 0; right: 0; top: 46px; display: flex; pointer-events: none; }
+  #labels div { flex: 1; text-align: center; color: var(--ink); font-weight: 700; letter-spacing: 0.08em; font-size: 12px; }
+  #info { position: absolute; left: 0; right: 0; bottom: 0; height: 24px; padding: 3px 10px; box-sizing: border-box; color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<canvas id="c"></canvas>
+<div id="labels"><div>SIDE (starboard)</div><div>FRONT</div><div>TOP</div></div>
+<div id="info"></div>
+<script src="js/three.min.js"></script>
+<script src="js/core.js?v=121"></script>
+<script src="js/sensor.js?v=121"></script>
+<script src="js/models.js?v=121"></script>
+<script src="js/armor.js?v=121"></script>
+<script src="js/helis.js?v=121"></script>
+<script>
+'use strict';
+(() => {
+/* The showroom: one model on a plain background from three sides (orthographic: side, front, top), to look a model over for faults.
+   ?m=AH64 picks one, ?ir=1 the thermal sensor's heat, ?body=1 the body alone (main rotors hidden, framed on the rest). Only the model scripts are loaded: no map, no fight. Tests and tools drive it
+   through window.SHOWROOM (show(name), names, stats). */
+const SHOW_MODELS = {
+  ally: ['AH64', 'UH60', 'AH1Z'],
+  enemy: ['Mi24', 'Ka52', 'Mi8'],
+  armour: ['Abrams', 'Bradley', 'Humvee', 'T90', 'BTR', 'Technical']
+};
+const SHOW_BG = 0x8b9096;
+const canvas = document.getElementById('c');
+const R = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+R.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); R.setScissorTest(true); R.info.autoReset = false;
+const S = new THREE.Scene(); S.background = new THREE.Color(SHOW_BG);
+S.add(new THREE.HemisphereLight(0xdfe6ee, 0x5a5448, 1.6));
+const sun = new THREE.DirectionalLight(0xfff4e6, 3.2); sun.position.set(0.6, 1.0, 0.45); S.add(sun);
+const fill = new THREE.DirectionalLight(0xdfe8ff, 0.8); fill.position.set(-0.7, 0.3, -0.5); S.add(fill);
+const cams = [new THREE.OrthographicCamera(), new THREE.OrthographicCamera(), new THREE.OrthographicCamera()];
+let model = null, cur = null, stats = null, body = false; const BB = new THREE.Box3(), _b = new THREE.Box3();
+
+function build(name) { const fn = window['build' + name]; if (!fn) throw new Error('no model ' + name); const g = fn(); if (SHOW_MODELS.armour.includes(name)) g.scale.setScalar(ARMOR_SCALE); return g; }
+function count(g) { let tris = 0, meshes = 0; g.traverse(o => { if (o.isMesh) { meshes++; const gg = o.geometry; tris += (gg.index ? gg.index.count : gg.attributes.position.count) / 3 * (o.count || 1); } }); return { tris: Math.round(tris), meshes }; }
+function show(name) {
+  if (model) { S.remove(model); disposeTree(model); }
+  model = build(name); cur = name; S.add(model); model.updateMatrixWorld(true);
+  BB.setFromObject(model); const sz = BB.getSize(new V3());
+  if (body) { model.traverse(o => { if (o.name === 'rotor' || o.name === 'rotor2') o.visible = false; }); BB.makeEmpty(); model.traverseVisible(o => { if (o.isMesh) BB.union(_b.setFromObject(o)); }); }   // (the sizes stay the whole model's)
+  stats = Object.assign({ name, length: +sz.x.toFixed(2), height: +sz.y.toFixed(2), width: +sz.z.toFixed(2), minY: +BB.min.y.toFixed(2) }, count(model));
+  for (const b of document.querySelectorAll('#bar button[data-m]')) b.classList.toggle('on', b.dataset.m === name);
+  const url = new URL(location.href); url.searchParams.set('m', name); history.replaceState(null, '', url);
+  draw(); return stats;
+}
+/* each view framed on the model's box, the same metres a pixel in all three (they line up: the side's length is the top's) */
+function draw() {
+  const W = canvas.clientWidth, H = canvas.clientHeight; R.setSize(W, H, false); R.info.reset();
+  const sz = BB.getSize(new V3()), c = BB.getCenter(new V3()), pw = W / 3, D = Math.max(sz.x, sz.y, sz.z) * 3 + 10;
+  const views = [   // [eye offset, up, half width the view must show, half height]
+    [new V3(0, 0, D), new V3(0, 1, 0), sz.x / 2, sz.y / 2],
+    [new V3(D, 0, 0), new V3(0, 1, 0), sz.z / 2, sz.y / 2],
+    [new V3(0, D, 0), new V3(0, 0, -1), sz.x / 2, sz.z / 2]
+  ];
+  const k = Math.max(...views.map(([, , hw, hh]) => Math.max(hw / (pw * 0.42), hh / (H * 0.4))));   // (metres a pixel)
+  views.forEach(([eye, up, hw, hh], i) => {
+    const cam = cams[i]; cam.left = -pw / 2 * k; cam.right = pw / 2 * k; cam.top = H / 2 * k; cam.bottom = -H / 2 * k; cam.near = 0.1; cam.far = D * 2;
+    cam.position.copy(c).add(eye); cam.up.copy(up); cam.lookAt(c); cam.updateProjectionMatrix();
+    R.setViewport(i * pw, 0, pw, H); R.setScissor(i * pw, 0, pw, H); R.render(S, cam);
+  });
+  document.getElementById('info').textContent = stats ? `${stats.name}: ${stats.length} m long, ${stats.width} m wide, ${stats.height} m high · ${stats.tris} triangles, ${stats.meshes} meshes, ${R.info.render.calls} draw calls (3 views) · ${SU.uThermal.value ? 'thermal (white-hot)' : 'TV'}` : '';
+}
+function setBody(on) { body = !!on; document.querySelector('#bar button[data-body]').classList.toggle('on', body); if (cur) show(cur); }
+function setIR(on) {
+  SU.uThermal.value = on ? 1 : 0; S.background.set(on ? 0x5c5c5c : SHOW_BG);
+  R.outputColorSpace = on ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace;   // (thermal writes the heat as a display value)
+  document.querySelector('#bar button[data-ir]').classList.toggle('on', !!on); if (model) draw();
+}
+const bar = document.getElementById('bar');
+for (const [grp, names] of Object.entries(SHOW_MODELS)) {
+  const t = document.createElement('b'); t.textContent = grp; bar.appendChild(t);
+  for (const n of names) { const b = document.createElement('button'); b.textContent = n; b.dataset.m = n; b.onclick = () => show(n); bar.appendChild(b); }
+}
+{ const b = document.createElement('button'); b.textContent = 'body'; b.dataset.body = 1; b.style.marginLeft = '16px'; b.onclick = () => setBody(!body); bar.appendChild(b); }
+{ const b = document.createElement('button'); b.textContent = 'IR'; b.dataset.ir = 1; b.onclick = () => setIR(!SU.uThermal.value); bar.appendChild(b); }
+window.addEventListener('resize', () => model && draw());
+const q = new URLSearchParams(location.search);
+const names = Object.values(SHOW_MODELS).flat().filter(n => window['build' + n]);
+body = q.get('body') === '1'; document.querySelector('#bar button[data-body]').classList.toggle('on', body); setIR(q.get('ir') === '1'); show(names.includes(q.get('m')) ? q.get('m') : names[0]);
+window.SHOWROOM = { show, setIR, setBody, names, get stats() { return stats; }, ready: true };
+})();
+</script>
+</body>
+</html>

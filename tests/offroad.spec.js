@@ -129,13 +129,20 @@ test('a column hit behind its knocked-out leader still scatters (round the wreck
   await wp.boot({ query: '?hour=12&seed=11&transit=0&weapons=aim&auto=0' });
   await wp.sim(6, { audio: true });
   const r = await wp.run(() => {
-    const N = ROADNET; let S = null;
-    for (let k = 0; k < N.n && !S; k += 3) { if (N.BR[k] || !VIEW.near(new V3(N.X[k], 0, N.Z[k]), -20)) continue; let free = 0; for (let t = 0; t < 12; t++) { const a = t / 12 * TAU; if (!fieldBlocked(N.X[k] + Math.cos(a) * 60, N.Z[k] + Math.sin(a) * 60)) free++; } if (free >= 6) S = k; }
+    const N = ROADNET, room = (x, z, r, n) => { let free = 0; for (let t = 0; t < 12; t++) { const a = t / 12 * TAU; if (!fieldBlocked(x + Math.cos(a) * r, z + Math.sin(a) * r)) free++; } return free >= n; };
+    let S = null, way = null; const q = new V3();
+    for (let k = 0; k < N.n && S === null; k += 3) {
+      if (N.BR[k] || !VIEW.near(new V3(N.X[k], 0, N.Z[k]), -20) || !room(N.X[k], N.Z[k], 60, 6)) continue;
+      let dest = -1; for (let t = 0; t < 400 && dest < 0; t++) { const c = (t * 7919) % N.n, d = Math.hypot(N.X[c] - N.X[k], N.Z[c] - N.Z[k]); if (d > 250 && d < 450) dest = c; }
+      if (dest < 0) continue; const P = Path.fromNodes(N.route(k, dest)); let ok = P.L > 140;
+      for (let s = 20; ok && s <= 100; s += 20) { P.at(s, 0, q); ok = room(q.x, q.z, 35, 7); }   // (room to break off where they are hit, 7 s of driving on: not boxed in by a town, whatever the run's random numbers)
+      if (ok) { S = k; way = P; }
+    }
     if (S === null) return null;
-    let dest = -1; for (let t = 0; t < 400 && dest < 0; t++) { const c = (t * 7919) % N.n, d = Math.hypot(N.X[c] - N.X[S], N.Z[c] - N.Z[S]); if (d > 250 && d < 450) dest = c; }
-    const col = new Column(['tank', 'apc', 'car'].map(ty => new Vehicle(ty, 'enemy'))); col.place(Path.fromNodes(N.route(S, dest))); BATTLE.cols.push({ col, hold: false, retreat: false });
+    const col = new Column(['tank', 'apc', 'car'].map(ty => new Vehicle(ty, 'enemy'))); col.place(way); BATTLE.cols.push({ col, hold: false, retreat: false });
     const V = col.u.slice(); for (const v of V.slice(1)) v.hp = 1e9;   /* (the two behind live through it: the test is where they go) */
     __t.sim(3, { audio: true }); V[0].hp = 1; hurt(V[0], 5); __t.sim(4, { audio: true });   // (the leader knocked out on the road: a wreck, rolling to a stop, the two behind it)
+    for (let i = 0; i < 160 && !VIEW.near(V[1].pos, 0); i++) { GUNSHIP.track(V[1].pos); __t.sim(0.05, { audio: true }); }   // (the sensor on them: a hit out of the frame scatters nobody)
     const at = V.slice(1).map(v => v.pos.clone()); BATTLE.strike(V[1].pos.clone(), 3, 0, WEAPON.g25, false);
     __t.sim(10, { audio: true });
     const went = V.slice(1).map((v, i) => Math.hypot(v.pos.x - at[i].x, v.pos.z - at[i].z));

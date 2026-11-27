@@ -62,10 +62,10 @@ test('every unit model has a sensible size and goes through the sensor', async (
     INF.add('ally', 0, 0); b.setFromObject(INF.body); out.soldier = { h: +(INF_BODY_GEO.boundingBox || (INF_BODY_GEO.computeBoundingBox(), INF_BODY_GEO.boundingBox)).max.y.toFixed(2) };
     return out;
   });
-  const range = { tank: [6.5, 11], apc: [5.5, 8], car: [4.2, 6], heli: [12, 21] };
+  const range = { tank: [6.5, 11], apc: [5.5, 8], car: [4.2, 6], heli: [12, 21], buildMi8: [20, 26] };   // (the Mi-8: some 24 m over its rotor tips; every other helicopter still within 21)
   for (const [k, v] of Object.entries(r)) {
     if (k === 'soldier') continue;
-    const [lo, hi] = range[k.split(':')[1]];
+    const [lo, hi] = range[k.split(':')[2]] || range[k.split(':')[1]];
     expect(v.len, k).toBeGreaterThan(lo); expect(v.len, k).toBeLessThan(hi); expect(v.raw, k).toBe(0);
     if (k.includes(':heli:')) {   // a helicopter stands on its wheels (none floats over its pad), as detailed as the vehicles, with its lights where its wingtips and tail are
       expect(v.floor, k + ' on its wheels').toBeGreaterThan(-0.05); expect(v.floor, k + ' on its wheels').toBeLessThan(0.05);

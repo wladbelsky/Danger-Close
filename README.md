@@ -114,8 +114,8 @@ lamps and memory. Run it once in silence and once in a fight with music.
 - **Helicopters over the fight**: the enemy's circle over the frame and go for what is in it. A helicopter flies fast, firing its
   gun only at what is in front of it and its rockets only dead ahead (a rocket run comes of it on the way in), or slow round its
   target, sliding sideways with its nose on it, gun and rockets as it bears; never shooting behind itself.
-- **Detailed helicopters**: cockpits with flat panes set in their frames, tapering blades on a full rotor head, sensors, guns,
-  rockets and missiles on their pylons, wheels, hot exhausts on the thermal sensor.
+- **Detailed helicopters**, three a side: cockpits with flat panes set in their frames, tapering blades on a full rotor head,
+  sensors, guns, rockets and missiles on their pylons, wheels or skids, hot exhausts on the thermal sensor.
 - **The reticle is where the guns fire**: always in the frame's centre; at the map's edge the sensor stops where the frame can
   still be centred on it.
 - **No round wasted**: a target a missile in flight will kill is left to it; the other weapons and the sensor go on to the next.

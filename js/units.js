@@ -3,8 +3,8 @@
    The allies always exist: from each outpost a column drives out along the roads to a district and back, a helicopter takes off
    from the pad, flies a round of the map and lands, a fireteam walks a loop round the walls. Runtime choices use Math.random.   */
 const UNIT_TYPES = {
-  ally:  { tank: buildAbrams, apc: buildBradley, car: buildHumvee, heli: [buildAH64, buildUH60] },
-  enemy: { tank: buildT90, apc: buildBTR, car: buildTechnical, heli: [buildMi24, buildKa52] }
+  ally:  { tank: buildAbrams, apc: buildBradley, car: buildHumvee, heli: [buildAH64, buildUH60, buildAH1Z] },
+  enemy: { tank: buildT90, apc: buildBTR, car: buildTechnical, heli: [buildMi24, buildKa52, buildMi8] }
 };
 const UNIT_SPEED = { tank: 8, apc: 9.5, car: 12 };   // m/s on a road
 const GAP = 16;                                          // metres between vehicles in a column
@@ -755,7 +755,7 @@ const ALLIES = {
     });
   },
   garrison(P) { P.col = new Column(POST_TYPES[P.k % 3].map(t => new Vehicle(t, 'ally'))); P.col.place(new Path(P.drive)); P.full = P.col.u.length; P.state = 'park'; },
-  fly(P) { P.heli = new Heli(P.k % 2, 'ally', P.pad); this.helis.push(P.heli); },
+  fly(P) { P.flights = (P.flights || 0) + 1; P.heli = new Heli((P.k + P.flights - 1) % UNIT_TYPES.ally.heli.length, 'ally', P.pad); this.helis.push(P.heli); },   // (each sortie from a pad the next model: all of theirs show up, with two pads or three)
   /* a district to drive to: 350–1200 m off, reached along the roads */
   outbound(post) {
     const o = post.o, g = post.gateNode; if (g < 0) return null;

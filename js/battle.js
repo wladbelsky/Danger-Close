@@ -236,7 +236,7 @@ const BATTLE = {
     this.beam.frustumCulled = false; this.beam.renderOrder = 8; this.beam.visible = false; scene.add(this.beam);
     this.beamGlow = new THREE.Mesh(geo, sensorMat(new THREE.MeshBasicMaterial({ color: 0xff1808, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), 0.8));   // and a wide red haze round it
     this.beamGlow.frustumCulled = false; this.beamGlow.renderOrder = 8; this.beamGlow.visible = false; scene.add(this.beamGlow); this.lasHit = new V3();
-    for (const side in UNIT_TYPES) for (const type in UNIT_TYPES[side]) { unitModel(side, type, 0); if (type === 'heli') unitModel(side, type, 1); }   // (every model built now, under the splash)
+    for (const side in UNIT_TYPES) for (const type in UNIT_TYPES[side]) for (let v = 0; v < [].concat(UNIT_TYPES[side][type]).length; v++) unitModel(side, type, v);   // (every model built now, under the splash)
     for (const type in BASE_MODELS) baseModel(type);
   },
   after(d, fn) { this.pend.push({ t: T + d, fn }); },
@@ -618,7 +618,7 @@ const BATTLE = {
     const L = GUNSHIP.look; let p = null;   // (in from some 700 m off the fight, out of sight: it is over the frame within half a minute)
     for (let t = 0; t < 12 && !p; t++) { const a = rand(0, TAU), x = clamp(L.x + Math.cos(a) * 700, -MAP_HALF + 60, MAP_HALF - 60), z = clamp(L.z + Math.sin(a) * 700, -MAP_HALF + 60, MAP_HALF - 60); if (this.hidden(x, z, 0.3)) p = new V3(x, groundH(x, z) + 140, z); }
     if (!p) { const a = rand(0, TAU); p = new V3(Math.cos(a) * 1500, 140, Math.sin(a) * 1500); }
-    const h = new Heli(randi(0, 1), 'enemy', null, p); this.helis.push(h); this.seen('in', p);
+    const h = new Heli(randi(0, UNIT_TYPES.enemy.heli.length - 1), 'enemy', null, p); this.helis.push(h); this.seen('in', p);
   },
 
   /* ---- units shooting at each other ---- */

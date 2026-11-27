@@ -94,10 +94,10 @@ function buildAH64() {
   taper(g, 0.5, 0.17, 0.13, C, 0.3, 0.16, 0, 0.9, 0.8);
   canopy(g, 0.16, 0.08, 0.11, C, G, 0.43, 0.27, 0, 0.62, 0.75, -0.015, [['f', 1, 0.3], ['s', 1, 0.3], ['t', 1, 0]]);   // (the gunner's flat-plate canopy, the pilot's higher behind it)
   canopy(g, 0.18, 0.11, 0.115, C, G, 0.25, 0.29, 0, 0.7, 0.75, -0.02, [['f', 1, 0.55], ['s', 2, 0.3], ['t', 1, 0]]);
-  cyl(g, 0.045, 0.045, 0.05, 10, D, 0.62, 0.115, 0); for (const s of [-1, 1]) { tube(g, 0.6, 0.67, 0.03, 0.03, D, 0.115, s * 0.055, 8); box(g, 0.006, 0.03, 0.03, G, 0.672, 0.115, s * 0.055); }   // (TADS)
-  cyl(g, 0.022, 0.022, 0.04, 8, D, 0.58, 0.225, 0); box(g, 0.006, 0.02, 0.02, G, 0.602, 0.225, 0);   // (PNVS)
+  box(g, 0.05, 0.03, 0.05, D, 0.545, 0.1, 0); cyl(g, 0.045, 0.045, 0.05, 10, D, 0.57, 0.08, 0); for (const s of [-1, 1]) { tube(g, 0.55, 0.62, 0.03, 0.03, D, 0.08, s * 0.055, 8); box(g, 0.006, 0.03, 0.03, G, 0.622, 0.08, s * 0.055); }   // (TADS: its turret under the nose's tip, the day and night sights either side)
+  box(g, 0.04, 0.02, 0.03, D, 0.51, 0.25, 0); cyl(g, 0.022, 0.022, 0.035, 8, D, 0.53, 0.27, 0); box(g, 0.006, 0.02, 0.02, G, 0.549, 0.27, 0);   // (PNVS on top of the nose, ahead of the gunner)
   for (const s of [-1, 1]) strut(g, P3(0.55, 0.2, s * 0.04), P3(0.65, 0.21, s * 0.06), 0.003, D);
-  strut(g, P3(0.5, 0.315, 0), P3(0.36, 0.36, 0), 0.004, D); strut(g, P3(0.5, 0.08, 0), P3(0.44, 0.07, 0), 0.004, D);   // (wire cutters)
+  strut(g, P3(0.49, 0.25, 0), P3(0.41, 0.33, 0), 0.004, D); strut(g, P3(0.5, 0.08, 0), P3(0.44, 0.07, 0), 0.004, D);   // (wire cutters: on the nose up the gunner's windscreen, under the chin)
   taper(g, 0.4, 0.2, 0.15, C, -0.08, 0.18, 0, 1, 0.8);
   for (const s of [-1, 1]) { taper(g, 0.36, 0.1, 0.05, C3, 0.14, 0.13, s * 0.09, 0.9, 0.8); for (const x of [0.04, 0.12, 0.2]) box(g, 0.05, 0.004, 0.035, D, x, 0.181, s * 0.09); }   // (avionics bays, their doors)
   for (const s of [-1, 1]) {
@@ -123,7 +123,7 @@ function buildAH64() {
   strut(g, P3(-0.3, 0.25, 0), P3(-0.35, 0.31, 0), 0.004, D); strut(g, P3(-0.1, 0.08, 0.03), P3(-0.15, 0.03, 0.03), 0.004, D);
   pair(g, [[-0.82, 0.0], [-0.84, 0.17], [-0.92, 0.17], [-0.92, 0.0]], 0.2, 0.012, C); taper(g, 0.12, 0.28, 0.025, C, -0.84, 0.36, 0, 0.55, 0.8, -0.05); box(g, 0.05, 0.04, 0.035, GB, -0.89, 0.48, 0);
   for (const s of [-1, 1]) { const st = box(g, 0.02, 0.1, 0.02, D, 0.36, 0.07, s * 0.12); st.rotation.x = s * 0.4; box(g, 0.07, 0.014, 0.014, D, 0.34, 0.035, s * 0.15); wheel(g, 0.36, 0.035, s * 0.15, 0.035, 0.025, K); }
-  box(g, 0.012, 0.05, 0.012, D, -0.86, 0.05, 0); wheel(g, -0.86, 0.025, 0, 0.025, 0.02, K);
+  box(g, 0.014, 0.2, 0.014, D, -0.85, 0.12, 0); wheel(g, -0.85, 0.025, 0, 0.025, 0.02, K);   // (tail wheel: its leg up into the tail)
   heliRotor(g, 0.02, 0.43, 4, 0.73, 0.05, R, 'rotor', HUB);
   tailRotor(g, -0.88, 0.48, -0.03, 0.14, R, [0, 0.96, Math.PI, Math.PI + 0.96]);   // (the scissor tail rotor)
   return heliDone(g, { w: [-0.2, 1.9, 3.3], t: [-9.2, 5.0] });
@@ -153,8 +153,8 @@ function buildMi24() {
   }
   strut(g, P3(0.5, 0.08, 0), P3(0.52, 0.025, 0), 0.008, D);   // (nose gear)
   taper(g, 0.34, 0.06, 0.12, C, -0.02, 0.32, 0, 0.85, 0.7); box(g, 0.12, 0.04, 0.09, GB, 0.0, 0.37, 0); cyl(g, 0.035, 0.035, 0.02, 10, D, -0.14, 0.355, 0);   // (deck, gearbox, the oil cooler's fan)
-  const tb = taper(g, 0.1, 0.7, 0.08, C, -0.62, 0.24, 0, 0.45, 0.5, 0.04); tb.rotation.z = Math.PI / 2;
-  box(g, 0.5, 0.012, 0.018, C3, -0.55, 0.29, 0); strut(g, P3(-0.4, 0.28, 0), P3(-0.45, 0.34, 0), 0.004, D); strut(g, P3(-0.83, 0.21, 0), P3(-0.87, 0.12, 0), 0.006, D);   // (shaft cover, antenna, tail skid)
+  const tb = taper(g, 0.1, 0.78, 0.08, C, -0.59, 0.24, 0, 0.45, 0.5, 0.04); tb.rotation.z = Math.PI / 2;   // (into the cabin's sloped back)
+  box(g, 0.5, 0.012, 0.018, C3, -0.55, 0.29, 0); strut(g, P3(-0.4, 0.28, 0), P3(-0.45, 0.34, 0), 0.004, D); strut(g, P3(-0.83, 0.26, 0), P3(-0.87, 0.12, 0), 0.006, D);   // (shaft cover, antenna, tail skid)
   pair(g, [[-0.8, 0.0], [-0.82, 0.15], [-0.9, 0.15], [-0.9, 0.0]], 0.26, 0.012, C);
   taper(g, 0.14, 0.26, 0.025, C, -0.98, 0.36, 0, 0.6, 0.8, -0.05); box(g, 0.05, 0.035, 0.035, GB, -1.0, 0.38, 0);
   tailRotor(g, -1.0, 0.38, 0.04, 0.15, R, [0, TAU / 3, TAU * 2 / 3]);
@@ -168,7 +168,7 @@ function buildKa52() {
   const g = new THREE.Group(), { C, C3, C2, D, X, X2, GB, G, K, HUB } = heliMats(0x4e5446, 0x585e4f, 0x444a3c), R = 0x262924;
   taper(g, 0.55, 0.2, 0.17, C, 0.2, 0.18, 0, 0.9, 0.85); taper(g, 0.22, 0.16, 0.16, C, 0.55, 0.15, 0, 0.6, 0.8, -0.04);
   canopy(g, 0.2, 0.12, 0.17, C, G, 0.42, 0.29, 0, 0.6, 0.8, -0.03, [['f', 2, 0.15], ['s', 2, 0.2], ['T', 2, 0]]);   // (side by side: the windscreen and the roof in two halves)
-  tube(g, 0.66, 0.75, 0.055, 0.025, C3, 0.16, 0, 10);   // (radome)
+  tube(g, 0.6, 0.75, 0.055, 0.025, C3, 0.16, 0, 10);   // (radome: its root inside the nose's sloped front, 0.5 m off it before)
   const ball = shade(new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), D)); ball.position.set(0.6, 0.07, 0); g.add(ball); box(g, 0.006, 0.03, 0.03, G, 0.638, 0.07, 0);   // (sensor ball)
   box(g, 0.14, 0.04, 0.04, D, 0.22, 0.12, 0.1); tube(g, 0.29, 0.52, 0.009, 0.009, D, 0.12, 0.1, 5); tube(g, 0.5, 0.53, 0.013, 0.013, D, 0.12, 0.1, 6);   // (the 30 mm)
   for (const s of [-1, 1]) {
@@ -185,11 +185,86 @@ function buildKa52() {
   }
   strut(g, P3(0.54, 0.08, 0), P3(0.55, 0.025, 0), 0.008, D);
   taper(g, 0.3, 0.06, 0.12, C, 0.0, 0.31, 0, 0.85, 0.7); box(g, 0.12, 0.05, 0.09, GB, 0.02, 0.36, 0);
+  taper(g, 0.38, 0.16, 0.15, C, -0.15, 0.2, 0, 0.8, 0.75);   // (the rear fuselage under the engines, the tail boom out of it)
   const tb = taper(g, 0.1, 0.6, 0.08, C, -0.58, 0.22, 0, 0.45, 0.5, 0.04); tb.rotation.z = Math.PI / 2;
-  box(g, 0.4, 0.012, 0.018, C3, -0.5, 0.27, 0); strut(g, P3(-0.3, 0.26, 0), P3(-0.35, 0.32, 0), 0.004, D); strut(g, P3(-0.78, 0.2, 0), P3(-0.8, 0.12, 0), 0.006, D);
+  box(g, 0.4, 0.012, 0.018, C3, -0.5, 0.27, 0); strut(g, P3(-0.3, 0.26, 0), P3(-0.35, 0.32, 0), 0.004, D); strut(g, P3(-0.78, 0.25, 0), P3(-0.8, 0.12, 0), 0.006, D);
   for (const s of [-1, 1]) box(g, 0.06, 0.025, 0.006, D, -0.36, 0.22, s * 0.042);
   pair(g, [[-0.78, 0.0], [-0.8, 0.18], [-0.9, 0.18], [-0.9, 0.0]], 0.2, 0.015, C);
   cyl(g, 0.025, 0.025, 0.2, 6, D, 0.02, 0.45, 0);
   heliRotor(g, 0.02, 0.42, 3, 0.68, 0.05, R, 'rotor', HUB); heliRotor(g, 0.02, 0.55, 3, 0.68, 0.05, R, 'rotor2', HUB);
   return heliDone(g, { w: [-0.2, 2.1, 3.2], t: [-9.1, 3.2] });
+}
+/* AH-1Z Viper — the allies' second attack helicopter: a slim (1 m) tandem fuselage under one long stepped canopy, the TSS sight
+   ball on the nose, the three-barrel chin gun, stub wings with a rocket pod, four Hellfires and a wingtip missile each side, the
+   engines high on the sides with their exhausts turned out, four-blade main and tail rotors, skids */
+function buildAH1Z() {
+  const g = new THREE.Group(), { C, C3, C2, D, X, X2, GB, G, K, HUB } = heliMats(0x575d5f, 0x62686a, 0x4d5355), MS = HOT(0xb8b8b0, 0.12), R = 0x262924;
+  taper(g, 0.62, 0.17, 0.1, C, 0.12, 0.17, 0, 0.92, 0.8);   // (body)
+  const nose = taper(g, 0.17, 0.23, 0.1, C, 0.505, 0.17, 0, 0.35, 0.5, 0.04); nose.rotation.z = -Math.PI / 2;   // (the nose: one wedge out of the body's front, its top sloping down and its belly up to the point, 0.4 m under the body's middle)
+  canopy(g, 0.14, 0.07, 0.085, C, G, 0.4, 0.26, 0, 0.7, 0.75, -0.015, [['f', 1, 0.25], ['s', 1, 0.25], ['t', 1, 0]]);   // (the gunner's, low in front; the pilot's higher behind)
+  canopy(g, 0.15, 0.1, 0.09, C, G, 0.29, 0.29, 0, 0.75, 0.75, -0.02, [['f', 1, 0.5], ['s', 2, 0.3], ['t', 1, 0]]);
+  const ball = shade(new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), D)); ball.position.set(0.635, 0.13, 0); g.add(ball); box(g, 0.006, 0.028, 0.03, G, 0.673, 0.13, 0);   // (TSS: the sight ball on the nose's point)
+  box(g, 0.06, 0.035, 0.05, D, 0.44, 0.07, 0); tube(g, 0.46, 0.6, 0.007, 0.007, D, 0.06, 0, 5); for (const s of [-1, 1]) tube(g, 0.46, 0.58, 0.005, 0.005, D, 0.072, s * 0.008, 4);   // (the 20 mm's three barrels)
+  strut(g, P3(0.5, 0.215, 0), P3(0.43, 0.3, 0), 0.004, D); strut(g, P3(0.5, 0.092, 0), P3(0.44, 0.075, 0), 0.004, D);   // (wire cutters: up the gunner's windscreen from the nose, under the chin)
+  for (const s of [-1, 1]) {
+    strut(g, P3(0.57, 0.175, s * 0.02), P3(0.68, 0.185, s * 0.03), 0.003, D);   // (pitots, from the nose's top)
+    tube(g, -0.2, 0.08, 0.042, 0.042, C2, 0.3, s * 0.065, 8); tube(g, 0.08, 0.1, 0.042, 0.035, D, 0.3, s * 0.065, 8); tube(g, 0.1, 0.103, 0.028, 0.028, K, 0.3, s * 0.065, 8);   // (engine, intake lip, intake)
+    for (const x of [-0.14, -0.06, 0.02]) box(g, 0.05, 0.006, 0.03, D, x, 0.342, s * 0.065);
+    const e = tube(g, -0.3, -0.2, 0.035, 0.04, X, 0.31, s * 0.075, 8); e.rotation.y = s * 0.35; box(g, 0.012, 0.05, 0.05, X2, -0.295, 0.31, s * 0.098).rotation.y = s * 0.35;   // (exhaust turned out, its hot mouth)
+    box(g, 0.14, 0.018, 0.13, C, 0.0, 0.17, s * 0.11);   // (stub wing)
+    box(g, 0.05, 0.02, 0.01, D, 0.0, 0.155, s * 0.085); tube(g, -0.09, 0.08, 0.026, 0.026, D, 0.12, s * 0.085, 8); tube(g, 0.08, 0.09, 0.026, 0.018, D, 0.12, s * 0.085, 8);   // (rocket pod)
+    for (const [dy, dz] of [[0, 0], [0.012, 0], [-0.012, 0], [0.006, 0.011], [-0.006, 0.011], [0.006, -0.011], [-0.006, -0.011]]) tube(g, 0.09, 0.092, 0.004, 0.004, K, 0.12 + dy, s * 0.085 + dz, 5);
+    box(g, 0.14, 0.012, 0.045, D, 0.0, 0.155, s * 0.142);   // (the Hellfire launcher: four on its rails)
+    for (const dy of [0.137, 0.116]) for (const dz of [-0.014, 0.014]) { tube(g, -0.07, 0.06, 0.008, 0.008, MS, dy, s * 0.142 + dz, 6); tube(g, 0.06, 0.076, 0.008, 0.003, MS, dy, s * 0.142 + dz, 6); }
+    box(g, 0.16, 0.012, 0.012, D, 0.0, 0.17, s * 0.181); tube(g, -0.07, 0.08, 0.008, 0.008, MS, 0.157, s * 0.181, 6); tube(g, 0.08, 0.095, 0.008, 0.003, MS, 0.157, s * 0.181, 6);   // (wingtip missile)
+    box(g, 0.05, 0.02, 0.006, D, -0.2, 0.2, s * 0.05);   // (flare dispenser)
+    tube(g, -0.24, 0.26, 0.009, 0.009, D, 0.009, s * 0.095, 6); strut(g, P3(0.26, 0.009, s * 0.095), P3(0.31, 0.035, s * 0.095), 0.009, D);   // (skid, its toe turned up)
+    for (const x of [0.2, -0.12]) strut(g, P3(x, 0.09, s * 0.04), P3(x, 0.009, s * 0.095), 0.008, D);   // (cross tubes)
+  }
+  taper(g, 0.3, 0.06, 0.08, C, -0.02, 0.28, 0, 0.85, 0.7); box(g, 0.12, 0.04, 0.08, GB, 0.0, 0.33, 0); cyl(g, 0.02, 0.025, 0.06, 8, GB, 0.0, 0.37, 0);   // (deck, gearbox, mast)
+  const tb = taper(g, 0.09, 0.66, 0.07, C, -0.5, 0.22, 0, 0.5, 0.55, 0.03); tb.rotation.z = Math.PI / 2;   // (tail boom)
+  box(g, 0.45, 0.012, 0.018, C3, -0.42, 0.262, 0); strut(g, P3(-0.3, 0.26, 0), P3(-0.34, 0.31, 0), 0.004, D);   // (drive shaft cover, antenna)
+  pair(g, [[-0.5, 0.0], [-0.52, 0.12], [-0.58, 0.12], [-0.58, 0.0]], 0.225, 0.012, C);   // (elevators, half way down the boom)
+  taper(g, 0.13, 0.26, 0.025, C, -0.84, 0.36, 0, 0.55, 0.8, -0.06); box(g, 0.05, 0.04, 0.035, GB, -0.88, 0.44, 0);   // (fin, tail gearbox)
+  strut(g, P3(-0.8, 0.22, 0), P3(-0.84, 0.13, 0), 0.006, D);   // (tail skid)
+  heliRotor(g, 0.0, 0.41, 4, 0.73, 0.05, R, 'rotor', HUB);
+  tailRotor(g, -0.88, 0.44, -0.03, 0.13, R);
+  return heliDone(g, { w: [0, 1.6, 1.9], t: [-8.9, 4.6] });
+}
+/* Mi-8AMTSh — the enemies' armed transport: a big cabin with round windows, the glazed nose and its chin windows, the engines on
+   the roof with dust filters on their intakes and exhausts turned out, fuel tanks on the sides, outriggers with two rocket pods
+   each and missile tubes at their tips, a clamshell tail, a long boom, five blades, three on the tail rotor (port), wheels */
+function buildMi8() {
+  const g = new THREE.Group(), { C, C3, C2, D, X, X2, GB, G, K, HUB } = heliMats(0x5e6349, 0x686d52, 0x545940), R = 0x262924;
+  taper(g, 0.78, 0.25, 0.25, C, 0.04, 0.215, 0, 0.95, 0.9);   // (cabin)
+  taper(g, 0.16, 0.12, 0.22, C, 0.5, 0.15, 0, 0.7, 0.8);   // (the lower nose)
+  canopy(g, 0.16, 0.13, 0.22, C, G, 0.48, 0.275, 0, 0.5, 0.7, -0.05, [['f', 3, 0.05], ['s', 2, 0.15], ['t', 2, 0]]);   // (the glazed upper nose)
+  for (const s of [-1, 1]) box(g, 0.004, 0.045, 0.05, G, 0.567, 0.15, s * 0.045);   // (chin windows)
+  const rf = taper(g, 0.22, 0.2, 0.22, C, -0.42, 0.24, 0, 0.55, 0.7); rf.rotation.z = Math.PI / 2;   // (the clamshell doors, narrowing to the boom)
+  const tb = taper(g, 0.1, 0.6, 0.08, C, -0.78, 0.3, 0, 0.5, 0.55, 0.04); tb.rotation.z = Math.PI / 2;   // (tail boom)
+  taper(g, 0.16, 0.3, 0.03, C, -1.1, 0.48, 0, 0.55, 0.8, -0.07); box(g, 0.05, 0.04, 0.04, GB, -1.13, 0.58, 0);   // (tail pylon, its gearbox)
+  pair(g, [[-0.94, 0.0], [-0.96, 0.14], [-1.02, 0.14], [-1.02, 0.0]], 0.31, 0.012, C);   // (stabiliser)
+  strut(g, P3(-1.0, 0.31, 0), P3(-1.04, 0.2, 0), 0.006, D);   // (tail bumper)
+  taper(g, 0.5, 0.08, 0.2, C, 0.08, 0.38, 0, 0.9, 0.6);   // (the engines' cowling)
+  for (const s of [-1, 1]) {
+    tube(g, -0.12, 0.28, 0.05, 0.05, C2, 0.39, s * 0.065, 8); tube(g, 0.28, 0.36, 0.055, 0.045, C3, 0.39, s * 0.065, 8); tube(g, 0.36, 0.363, 0.035, 0.035, K, 0.39, s * 0.065, 8);   // (engine, dust filter, intake)
+    for (const x of [-0.04, 0.06, 0.16]) box(g, 0.06, 0.006, 0.04, D, x, 0.441, s * 0.065);
+    const e = tube(g, -0.22, -0.12, 0.045, 0.04, X, 0.39, s * 0.1, 8); e.rotation.y = s * 0.6; box(g, 0.012, 0.055, 0.055, X2, -0.21, 0.39, s * 0.145).rotation.y = s * 0.6;   // (exhaust turned out, its hot mouth)
+    tube(g, -0.32, -0.08, 0.055, 0.055, C3, 0.14, s * 0.15, 10); tube(g, -0.08, -0.04, 0.055, 0.025, C3, 0.14, s * 0.15, 10); tube(g, -0.36, -0.32, 0.025, 0.055, C3, 0.14, s * 0.15, 10);   // (fuel tank)
+    box(g, 0.07, 0.02, 0.2, C, 0.1, 0.24, s * 0.215); strut(g, P3(0.1, 0.12, s * 0.12), P3(0.1, 0.232, s * 0.28), 0.008, D);   // (outrigger, its brace)
+    for (const z of [0.2, 0.27]) { box(g, 0.05, 0.025, 0.012, D, 0.1, 0.218, s * z); tube(g, -0.02, 0.2, 0.032, 0.032, D, 0.175, s * z, 8); tube(g, 0.2, 0.22, 0.032, 0.02, D, 0.175, s * z, 8); }   // (rocket pods)
+    box(g, 0.16, 0.05, 0.012, D, 0.1, 0.27, s * 0.312); for (const y of [0.255, 0.285]) tube(g, 0.02, 0.2, 0.011, 0.011, C3, y, s * 0.326, 6);   // (missile tubes at the tip)
+    box(g, 0.06, 0.03, 0.006, D, -0.55, 0.3, s * 0.048);   // (flare dispenser)
+    strut(g, P3(0.0, 0.1, s * 0.11), P3(0.0, 0.045, s * 0.2), 0.012, D); strut(g, P3(0.08, 0.11, s * 0.12), P3(0.0, 0.05, s * 0.2), 0.008, D); strut(g, P3(0.0, 0.05, s * 0.2), P3(0.0, 0.2, s * 0.13), 0.01, D);   // (main gear: legs, brace, shock strut)
+    wheel(g, 0.0, 0.045, s * 0.2, 0.045, 0.03, K); wheel(g, 0.5, 0.035, s * 0.025, 0.035, 0.02, K);
+  }
+  for (const x of [0.33, 0.23, 0.13, 0.03, -0.07]) cyl(g, 0.022, 0.022, 0.006, 10, G, x, 0.25, 0.119).rotation.x = Math.PI / 2;   // (round windows, starboard)
+  for (const x of [0.13, 0.03, -0.07]) cyl(g, 0.022, 0.022, 0.006, 10, G, x, 0.25, -0.119).rotation.x = Math.PI / 2;
+  box(g, 0.1, 0.16, 0.004, C3, 0.33, 0.19, -0.121); cyl(g, 0.02, 0.02, 0.006, 10, G, 0.33, 0.25, -0.124).rotation.x = Math.PI / 2;   // (the sliding door, port, its window)
+  strut(g, P3(0.5, 0.1, 0), P3(0.5, 0.035, 0), 0.01, D);   // (nose gear)
+  strut(g, P3(0.3, 0.34, 0), P3(0.25, 0.4, 0), 0.004, D);   // (antenna)
+  box(g, 0.16, 0.06, 0.14, GB, -0.04, 0.45, 0); cyl(g, 0.025, 0.03, 0.08, 8, GB, -0.02, 0.5, 0);   // (main gearbox, mast)
+  heliRotor(g, -0.02, 0.55, 5, 1.06, 0.055, R, 'rotor', HUB);
+  tailRotor(g, -1.13, 0.58, -0.035, 0.19, R, [0, TAU / 3, TAU * 2 / 3]);
+  return heliDone(g, { w: [1.0, 2.5, 3.3], t: [-11.2, 6.0] });
 }

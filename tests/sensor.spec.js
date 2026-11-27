@@ -29,7 +29,7 @@ test('every material in the scene goes through the sensor', async ({ wp }) => {
 });
 
 test('thermal shows heat: the live engine is hot, black-hot is the inverse of white-hot', async ({ wp }) => {
-  await wp.boot({ query: '?hour=12' });
+  await wp.boot({ query: '?hour=12&seed=11' });   // (a map of its own: with seed 0 the map came from the run's random numbers, the far sample on whatever ground)
   await wp.sim(1);
   const r = await wp.run(() => {
     for (const v of TERRAIN.veg) v.visible = false;
