@@ -50,8 +50,16 @@ const ALLY_TOUGH = 0.25, ALLY_TOUGH_K = u => u.side === 'ally' ? ALLY_TOUGH : 1;
 const COL_ZONE = 60, FIRE_NEAR = 150;
 /* off the road (BATTLE.assault / deploy / scatterNear): an assault from within `near` m past the frame at allies `reach` m off, to
    `short` m of them, at most `assaults` at once, given up after `assaultT` s, looked for every `every` s; positions `deploy` m off
-   the road; a scatter within `scatterR` m of the hit, `scatter` m away, holding `hold` s */
-const OFFROAD = { near: 100, tgtNear: 40, reach: [60, 250], short: 40, assaults: 2, assaultT: 60, every: [6, 10], deploy: [15, 35], scatterR: 30, scatter: [30, 60], hold: [10, 20] };
+   the road; a scatter within `scatterR` m of the hit, `scatter` m off (SCAT_BREAK), holding `hold` s */
+const OFFROAD = { near: 100, tgtNear: 40, reach: [60, 250], short: 40, assaults: 2, assaultT: 60, every: [6, 10], deploy: [15, 35], scatterR: 30, scatter: [25, 50], hold: [10, 20] };
+/* a vehicle's scatter is an evasive break, not a flight: from where it can turn off at its speed (Vehicle.ahead; standing: where it
+   is, as it faces), off forward and to one side `turn` rad off its way: [0] first; where none of those is clear (a town) [1] after
+   `at[0]` tries (on ahead out of it, or across: a side street will do then), [2] after `at[1]` (a little back at most: never turning
+   round). The hit ahead of it: `across` the road instead, and no nearer the hit than `clear` m (not up beside the blast); its way
+   ahead `boxed` in (a wreck or a vehicle standing within `box` m ahead, or stuck): `boxed`, off to the side, at last back out of it.
+   The column's vehicles break every other one to the other side (a herringbone), one with the hit `side` m or more to one side of
+   it away from it; `scatter` m off (OFFROAD), `near` m once the first 8 tries have failed */
+const SCAT_BREAK = { turn: [[0.6, 1.1], [0.5, 1.6], [0.15, 1.9]], across: [[1.1, 1.6], [0.6, 1.8], [0.2, 1.9]], boxed: [[1, 1.8], [0.8, 2.5], [0.5, 3.14]], at: [6, 12], side: 4, clear: 25, box: 12, near: [20, 32] };
 /* damage factor shooter → target (0: not a target for it) */
 const VS = {
   inf:  { inf: 1,   car: 0.3, apc: 0,   tank: 0,    heli: 0.06, struct: 0 },
@@ -451,7 +459,7 @@ const BATTLE = {
   /* off the road (OFFROAD): an enemy column near the frame goes across the field at the allies' infantry or vehicles there
      (`assault`: to 40 m short of the nearest one off the road, 60–250 m away); a column halted for a fight on the road in the frame
      takes positions off it (`deploy`: each vehicle 15–35 m out towards the enemy, 15 m apart); a column the gunship hits in the frame
-     scatters (`scatterNear`: each vehicle dashes 40–80 m away from the hit and holds there 10–20 s, then goes on alone) */
+     scatters (`scatterNear`: each vehicle breaks off forward and to one side, SCAT_BREAK, and holds there 10–20 s, then goes on alone) */
   assault(E) {
     const c = E.col, v = c.u[0]; if (!v || !VIEW.near(v.pos, OFFROAD.near) || this.cols.filter(e => e.assault).length >= OFFROAD.assaults) return false;
     let best = null, bd = OFFROAD.reach[1];
@@ -467,14 +475,14 @@ const BATTLE = {
     return false;
   },
   /* each of the column's vehicles a column of its own, on its own way (spot(v, placed) → { x, z } or null; route length max;
-     opt.clear: the way kept off other vehicles and wrecks for the first tries, wayClear; opt.here: from where it stands, not from
+     opt.clear: the way kept off other vehicles and wrecks for the first tries, wayClear; a spot's `from`: where its way starts, else
      where it can turn off at its speed) */
   spread(E, spot, max, after, opt) {
-    const parts = [E.col].concat(E.col.split()), placed = []; let n = 0;
+    const gone = new Set(), parts = [E.col].concat(E.col.split()), placed = []; let n = 0;   // (gone: the column's ones already off on their own way, out of the next one's: one left on the road is not)
     for (const col of parts) {
       const F = col === E.col ? E : { col, hold: false, retreat: false, ally: E.ally }; if (F !== E) this.cols.push(F);
       const v = col.u[0]; if (!v) continue;
-      for (let t = 0; t < 20; t++) { const q = spot(v, placed, t); if (!q || fieldBlocked(q.x, q.z) || placed.some(p => Math.hypot(p.x - q.x, p.z - q.z) < q.gap)) continue; const A = opt && opt.here ? { x: v.pos.x, z: v.pos.z, via: [] } : v.ahead(), r = fieldRoute(A.x, A.z, q.x, q.z, max); if (!r || 4 * r.length > 1.5 * Math.hypot(q.x - A.x, q.z - A.z) + 20) continue; if (opt && opt.clear && t < 14 && !this.wayClear(v, A.via.concat(r))) continue; col.goField(r, A.via); /* (no long way round) */ placed.push(q); F.move = true; after(F, v); n++; break; }
+      for (let t = 0; t < 20; t++) { const q = spot(v, placed, t); if (!q || fieldBlocked(q.x, q.z) || placed.some(p => Math.hypot(p.x - q.x, p.z - q.z) < q.gap)) continue; const A = q.from || v.ahead(),   /* (q.from: where the spot was laid off from, the way's start) */ r = fieldRoute(A.x, A.z, q.x, q.z, max); if (!r || 4 * r.length > 1.5 * Math.hypot(q.x - A.x, q.z - A.z) + 20) continue; if (opt && opt.clear && t < 14 && !this.wayClear(v, A.via.concat(r), gone)) continue; col.goField(r, A.via); /* (no long way round) */ placed.push(q); gone.add(v); F.move = true; after(F, v); n++; break; }
     }
     return n;
   },
@@ -488,9 +496,9 @@ const BATTLE = {
   },
   /* is a way (its points) for v clear of the other vehicles and the wrecks: none of its points within 9 m of one (what traffic() would go round), unless further off
      it than v is now (out of the way of one it stands by)? A scattering column's wreck lay on the road ahead, the way's start */
-  wayClear(v, pts) {
+  wayClear(v, pts, mates) {
     const C = 9, obs = _wobs; obs.length = 0;
-    for (const u of UNITS) if (u !== v && u.alive && u instanceof Vehicle) obs.push(u.pos);
+    for (const u of UNITS) if (u !== v && u.alive && u instanceof Vehicle && !(mates && mates.has(u))) obs.push(u.pos);
     for (const w of WRECKS.list) if (w.veh && w.veh !== v && w.obj.parent === scene && w.obj.position.y > w.y0 - 2) obs.push(w.obj.position);
     for (const o of obs) { const d0 = Math.hypot(o.x - v.pos.x, o.z - v.pos.z); for (const q of pts) { const d = Math.hypot(q.x - o.x, q.z - o.z); if (d < C && d < d0 + (d0 < C ? 1 : -0.5) && Math.hypot(q.x - v.pos.x, q.z - v.pos.z) > 3) return false; } }   // (one it stands by: every point near it further off than it is now, not along it)
     return true;
@@ -499,20 +507,30 @@ const BATTLE = {
     for (const E of this.cols.slice()) {
       if (E.retreat || E.hold || E.scatHold || T < (E.scT || 0)) continue; const c = E.col;   // (on its dash: not again; holding where it got to, hit again 15 s on: off again)
       if (!c.u.some(v => Math.hypot(v.pos.x - p.x, v.pos.z - p.z) < OFFROAD.scatterR && VIEW.near(v.pos, 0))) continue;
-      E.scT = T + 15;
-      const n = this.spread(E, this.scatSpot(p), 140, (F, v) => { F.rescat = 0; this.scatGo(F, v, p); }, { clear: true });
+      E.scT = T + 15; const idx = new Map(c.u.map((v, i) => [v, i]));   // (its place in the column: the herringbone)
+      const n = this.spread(E, this.scatSpot(p, idx), 140, (F, v) => { F.rescat = 0; this.scatGo(F, v, p); }, { clear: true });
       if (n) this.stat.scatterV += n;
     }
   },
   /* a scattering vehicle on its way: until its hold, then on alone (retask); it dashes there */
   scatGo(F, v, p) { F.scatHold = rand(...OFFROAD.hold); F.scat = T + 40; F.wasScat = true; F.scT = T + 15; F.dep = T; F.assault = null; F.scatP = p; F.slowT = 0; v.dashUntil = T + 30; },
-  /* where one scatters to from a hit at p */
-  scatSpot(p) {
-    return (v, placed, k) => {   // (away from the hit and off the road to one side: the first tries only off the road)
-        let ax = v.pos.x - p.x, az = v.pos.z - p.z; const d = Math.hypot(ax, az); if (d < 1) { ax = 0; az = 0; } else { ax /= d; az /= d; }
-        const hd = v.dirAt(v.s), nx = -Math.sin(hd), nz = Math.cos(hd), sd = (k % 2 ? -1 : 1) * (Math.sign(nx * ax + nz * az) || (Math.random() < 0.5 ? -1 : 1));
-        let dx = nx * sd + ax * 0.6, dz = nz * sd + az * 0.6; const dl = Math.hypot(dx, dz) || 1, a = rand(-0.5, 0.5) * (1 + k * 0.15), r = k < 8 ? rand(...OFFROAD.scatter) : rand(25, 40), ca = Math.cos(a), sa = Math.sin(a); dx /= dl; dz /= dl;
-        const q = { x: v.pos.x + (dx * ca - dz * sa) * r, z: v.pos.z + (dx * sa + dz * ca) * r, gap: 20 };
+  /* where one scatters to from a hit at p (SCAT_BREAK; idx: each vehicle's place in the column hit, for the herringbone: one already
+     broken off is a column of its own, place 0; here: from where it stands, stuck on its dash) */
+  scatSpot(p, idx, here) {
+    const s0 = Math.random() < 0.5 ? 1 : -1, B = SCAT_BREAK;   // (s0: the way the column's first breaks)
+    let cv = null, boxed, A, along, lat;   // (the same for each of a vehicle's tries: once)
+    return (v, placed, k) => {   // (the first tries only off the road)
+        if (v !== cv) {
+          cv = v; boxed = here || (v.blk && v.blk.still && v.blk.al < B.box) || (v.v < 0.5 && T - (v.bumpT || 0) < 2);
+          A = boxed || v.v < 1 ? { x: v.pos.x, z: v.pos.z, via: [], hd: v.yaw } : v.ahead(); const fx = Math.cos(A.hd), fz = Math.sin(A.hd);
+          along = (p.x - v.pos.x) * fx + (p.z - v.pos.z) * fz; lat = (p.z - v.pos.z) * fx - (p.x - v.pos.x) * fz;   // (the hit from where it is, not its turn-off: one between them is ahead of it; lat to the right, as po)
+        }
+        const hd = A.hd, i = idx?.get(v) ?? 0;
+        let sd = Math.abs(lat) > B.side && Math.abs(along) < B.clear ? -Math.sign(lat) : i % 2 ? -s0 : s0; if (k % 4 >= 2) sd = -sd;   // (away from a hit beside it, else every other one the other way; that side not clear: the other)
+        const st = k < B.at[0] ? 0 : k < B.at[1] ? 1 : 2, tab = boxed ? B.boxed : along > B.side && Math.abs(lat) < B.clear ? B.across : B.turn;
+        const a = hd + sd * rand(...tab[st]), r = k < 8 ? rand(...OFFROAD.scatter) : rand(...B.near);
+        const q = { x: A.x + Math.cos(a) * r, z: A.z + Math.sin(a) * r, gap: 20, from: A };
+        if (st < 2 && Math.hypot(q.x - p.x, q.z - p.z) < B.clear) return null;   // (not up beside the blast)
         if (k < 9 && !this.inFrame(_bp.set(q.x, groundH(q.x, q.z), q.z))) return null;   // (it stays in the picture if it can)
         return k < 5 && ROADNET.nearest(q.x, q.z, 12) >= 0 ? null : q;   // (later, a road will do: in a town, down a side street)
     };
@@ -1119,7 +1137,7 @@ const BATTLE = {
       if (!c.u.length) { this.cols.splice(i, 1); continue; }
       if (!E.retreat) {   // under the gunship's fire a column does not stand still: it drives on, and from where it was halted, off down the road
         const lead = c.u[0], moving = E.move && c.path.L - lead.s > 3; if (!moving) E.move = false;
-        if (E.scatHold && moving) { E.slowT = lead.v < 0.5 ? (E.slowT || 0) + dt : 0; if (E.slowT > 2 && (E.rescat || 0) < 3) { E.slowT = 0; E.rescat = (E.rescat || 0) + 1; if (this.spread(E, this.scatSpot(E.scatP), 140, (F, v) => this.scatGo(F, v, E.scatP), { clear: true, here: true })) this.stat.rescat++; } }   // (stuck on its dash behind a wreck or another vehicle: off another way, from where it stands)
+        if (E.scatHold && moving) { E.slowT = lead.v < 0.5 ? (E.slowT || 0) + dt : 0; if (E.slowT > 2 && (E.rescat || 0) < 3) { E.slowT = 0; E.rescat = (E.rescat || 0) + 1; if (this.spread(E, this.scatSpot(E.scatP, null, true), 140, (F, v) => this.scatGo(F, v, E.scatP), { clear: true })) this.stat.rescat++; } }   // (stuck on its dash behind a wreck or another vehicle: off another way, from where it stands)
         if (E.scatHold && !moving) { E.scat = T + E.scatHold; E.scatHold = 0; lead.dashUntil = 0; }   // (scattered: the hold starts once it is there, the dash over)
         const scat = E.scat > T, run = c.alarm > T && !scat;
         if (E.wasScat && !scat && !E.scatHold) { E.wasScat = false; if (!run) this.retask(E); }   // (held long enough: off at once, alone)   // (scat: scattered, holding where it got to; move: on its own way off the road, a fight or not)

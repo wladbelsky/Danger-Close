@@ -152,14 +152,15 @@ class Vehicle {
     enlist(this, side, type, this.obj.position, type === 'car' ? 1.3 : 1.9);
     TRACKS.push({ obj: this.obj, side, inf: false, h: type === 'car' ? 1.5 : 2.2 });
   }
-  /* where it can turn off its way from, at its speed (a little further than it takes to stop: `x`, `z`), and its way there (`via`) */
+  /* where it can turn off its way from, at its speed (a little further than it takes to stop: `x`, `z`), its way there (`via`) and its
+     heading there (`hd`) */
   ahead() {
-    const L = clamp(this.v * this.v / 4 + 2, 3, 25), via = [], tL = L / Math.max(this.v, 1);
+    const L = clamp(this.v * this.v / 4 + 2, 3, 25), via = [], tL = L / Math.max(this.v, 1); let hw;
     for (let d = 1.5; ; d = Math.min(d + 4, L)) {   // (the first a step on: the way's first stretch leaves the way it is going)
       const s = Math.min(this.path.L, this.s + d), t = d / Math.max(this.v, 1), e = t * (1 - t / (2 * tL)), k = clamp(this.laneK + this.lv * e, -2.2, 2.2), po = this.po + this.pov * e;   // (a swerve or a move aside under way carries on, easing out: the way on leaves where it is going, not a kink)
-      const hd = this.asideAt(s - this.s, this.dirAt(s, k)); this.path.at(s, k, _va); via.push({ x: _va.x - Math.sin(hd) * po, z: _va.z + Math.cos(hd) * po, y: NaN, hw: 0 }); if (d >= L || s >= this.path.L) break;
+      hw = this.dirAt(s, k); const hd = this.asideAt(s - this.s, hw); this.path.at(s, k, _va); via.push({ x: _va.x - Math.sin(hd) * po, z: _va.z + Math.cos(hd) * po, y: NaN, hw: 0 }); if (d >= L || s >= this.path.L) break;
     }
-    const e = via[via.length - 1]; return { x: e.x, z: e.z, via };
+    const e = via[via.length - 1]; return { x: e.x, z: e.z, via, hd: hw };   // (hd: its way's heading there)
   }
   setPath(path, s, snap) { this.path = path; this.s = s; this.pd = null; if (snap) { this.pose(0, true); } }   // (pd: the aside laid off across the new path at once: reroute measures po across it)
   /* towards the target speed (a gentle start, firmer brakes), then along the path */
@@ -180,7 +181,7 @@ class Vehicle {
     const s0 = this.s, po = po0, k = this.laneK, lv = this.lv, yaw = this.yaw, x0 = this.pos.x, z0 = this.pos.z, pd = this.pd, vE = this.vE, pvE = this.pvE;
     this.s = s; this.pose(dt, false);
     if ((s !== s0 || this.po !== po || (this.po && this.pd !== pd)) && this.near && this.bumps(x0, z0)) {   // (pd: its aside swinging round moves it too)
-      const pn = this.po; this.s = s0; this.po = po; this.laneK = k; this.lv = lv; this.yaw = yaw; this.pd = pd; this.vE = vE; this.pvE = pvE; this.v = 0; this.pose(0, false);   // (all of the refused move's pose undone: where it stood) this.bumpT = T; this.bumpO = this._bo; BATTLE.stat.bump++;
+      const pn = this.po; this.s = s0; this.po = po; this.laneK = k; this.lv = lv; this.yaw = yaw; this.pd = pd; this.vE = vE; this.pvE = pvE; this.v = 0; this.pose(0, false); this.bumpT = T; this.bumpO = this._bo; BATTLE.stat.bump++;   // (all of the refused move's pose undone: where it stood)
       if (pn !== po) { this.po = pn; this.pose(0, false); if (this.bumps(x0, z0)) { this.po = po; this.pov = 0; this.yaw = yaw; this.pose(0, false); } }   // (only aside, then: away from what it touches; nose to nose they would stand for good)
       else this.pov = 0;
     }

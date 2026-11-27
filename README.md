@@ -110,7 +110,7 @@ lamps and memory. Run it once in silence and once in a fight with music.
   out in the fields, across them) instead of stopping to fight the allies somewhere out of sight. Out of the frame nobody fights
   and the vehicles drive as they like; near it they keep out of each other without jittering.
 - **Off the road**: enemy armour leaves the road to assault the allies' infantry in the fields, a column halted for a fight
-  takes positions beside the road, and one the gunship hits scatters off it in every direction (round the wrecks of its own), holds, and goes again if it is hit there, then goes on alone.
+  takes positions beside the road, and one the gunship hits breaks off it like a herringbone, each vehicle forward and off to one side, every other one the other way (round the wrecks of its own), holds, and goes again if it is hit there, then goes on alone.
 - **Helicopters over the fight**: the enemy's circle over the frame and go for what is in it. A helicopter flies fast, firing its
   gun only at what is in front of it and its rockets only dead ahead (a rocket run comes of it on the way in), or slow round its
   target, sliding sideways with its nose on it, gun and rockets as it bears; never shooting behind itself.

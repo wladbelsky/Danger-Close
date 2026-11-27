@@ -435,6 +435,21 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   way and back three times in 3 s, vehicles by the frame, 6 maps): 15.9 % of the windows with the new helicopters' salvos (more
   wrecks to go round), 10.2 % before them, 4.5 % now.
 - The safeguard (`RESTAGE`, `BATTLE.emptyCheck` / `restage`, above) is taken out again at the user's request: not needed.
+- A column hit in the frame breaks off the road as vehicles evade, not as soldiers run (`SCAT_BREAK`, `scatSpot`): each spot was
+  off to a side and away from the hit, turned at random up to ±1.9 rad: a hit ahead sent them back, turning round on the road. Now
+  each breaks from where it can turn off at its speed, along its way there (`Vehicle.ahead` gives its heading, `hd`; the spot's
+  `from` is the way's start in `spread`; one standing from where it is, as it faces), forward and off to one side, `turn[0]`
+  0.6-1.1 rad, 25-50 m (`OFFROAD.scatter`); every other one of the column the other way (a herringbone, by its place in it: `idx`),
+  one with the hit beside it (4 m or more to one side, within `clear` 25 m along) away from it. The hit ahead of it (over 4 m on
+  from where it is, not from where it turns off: one between them is ahead too; one on it is not): `across` 1.1-1.6 rad, and no spot within
+  `clear` 25 m of the hit (the followers of a hit leader drove up beside the blast). Its way `boxed` in (a wreck or one standing
+  within `box` 12 m ahead, or stuck on its dash: `scatSpot(p, null, true)`): off to the side, at last back out of it. None of
+  those clear (a town): wider (`turn[1]`, a side street will do), at last on ahead or a little back (`turn[2]`), never turning
+  round; once 8 tries have failed, `near` 20-32 m. The way clear of other vehicles (`wayClear`) leaves out the column's ones
+  already off on their way (`gone`: the herringbone's ways pass the one ahead; one left on the road is not left out). A refused
+  move records itself again (`bumpT`, `bumpO`, `stat.bump`: since the nose easing it was lost in a comment); `opt.here` is gone
+  (a spot's `from` says where its way starts). Tests: offroad.spec.js (the spots' sides and angles laid
+  off from the turn-off, the hit behind and ahead; the most a breaking vehicle's nose turns on its way under 2 rad).
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -506,7 +521,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=116`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=118`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).

@@ -73,17 +73,17 @@ test('a column the gunship hits in the frame scatters off the road, holds, then 
     const V = col.u.slice(), line = col.path.p.map(p => [p.x, p.z]);
     __t.sim(3, { audio: true });   // (on the move)
     const p = V[1].pos.clone(), s0 = BATTLE.stat.scatterV; BATTLE.strike(p, 3, 0, WEAPON.g25, false);
-    const n = BATTLE.stat.scatterV - s0; let wet = 0, wall = 0; const spot = new Map();
+    const n = BATTLE.stat.scatterV - s0; let wet = 0, wall = 0; const spot = new Map(), y0 = new Map(V.map(v => [v, v.yaw])), turn = new Map(V.map(v => [v, 0])), again = new Set();
     for (let i = 0; i < 900 && spot.size < V.length; i++) {   // (where each holds: on its spot, its way there done)
       __t.sim(0.05, { audio: true });
-      for (const v of V) { const w = waterAt(v.pos.x, v.pos.z); if (w === 1 || w === 2) wet++; if (occAt(v.pos.x, v.pos.z) & OCC_BUILD) wall++; const F = BATTLE.cols.find(e => e.col.u.includes(v)); if (F && !spot.has(v) && F.scat > T && !F.scatHold && !F.move) spot.set(v, { p: v.pos.clone(), path: v.path }); }
+      for (const v of V) { if (!spot.has(v)) turn.set(v, Math.max(turn.get(v), Math.abs(angleWrap(v.yaw - y0.get(v))))); const w = waterAt(v.pos.x, v.pos.z); if (w === 1 || w === 2) wet++; if (occAt(v.pos.x, v.pos.z) & OCC_BUILD) wall++; const F = BATTLE.cols.find(e => e.col.u.includes(v)); if (F && F.rescat) again.add(v); if (F && !spot.has(v) && F.scat > T && !F.scatHold && !F.move) spot.set(v, { p: v.pos.clone(), path: v.path }); }
     }
     const at = [...spot.values()].map(h => h.p), live = V.filter(v => v.alive);
     let apart = 1e9; for (let a = 0; a < at.length; a++) for (let b = a + 1; b < at.length; b++) apart = Math.min(apart, Math.hypot(at[a].x - at[b].x, at[a].z - at[b].z));
     const offLine = Math.max(...at.map(q => Math.min(...line.map(l => Math.hypot(l[0] - q.x, l[1] - q.z)))));
     __t.sim(40, { audio: true });
     const went = [...spot].filter(([v]) => v.alive).map(([v, h]) => v.path !== h.path || Math.hypot(v.pos.x - h.p.x, v.pos.z - h.p.z) > 15);   // (on its way again: a new errand, or a fight where it stands)
-    return { n, held: at.length, live: live.length, apart, offLine, wet, wall, went };
+    return { n, held: at.length, live: live.length, apart, offLine, wet, wall, went, turn: Math.max(0, ...[...spot.keys()].filter(v => !again.has(v)).map(v => turn.get(v))) };   // (the ones that broke off, on their way to their spot; not one stuck and sent off again)
   });
   console.log(JSON.stringify(r));
   expect(r, 'a road in the frame with room round it').not.toBeNull();
@@ -93,6 +93,36 @@ test('a column the gunship hits in the frame scatters off the road, holds, then 
   expect(r.offLine, 'the furthest of them from the road it was on (m; in a town down a side street)').toBeGreaterThan(12);
   expect(r.wet + r.wall, 'samples in water or in a building').toBe(0);
   for (const g of r.went) expect(g, 'on its way again after holding').toBe(true);
+  expect(r.turn, 'an evasive break off to the side, not turning round: the most its nose turned on the way (rad)').toBeLessThan(2);
+});
+
+test('a scatter is a break, not a flight: forward and off to alternate sides from where each turns off; the hit ahead: across, clear of it', async ({ wp }) => {
+  await wp.boot({ query: '?hour=12&seed=11&transit=0&weapons=aim&auto=0' });
+  await wp.sim(6, { audio: true });
+  const r = await wp.run(() => {
+    const N = ROADNET; let S = null, bf = 0;
+    for (let k = 0; k < N.n; k += 3) { if (N.BR[k] || !VIEW.near(new V3(N.X[k], 0, N.Z[k]), -20)) continue; let free = 0; for (let t = 0; t < 12; t++) { const a = t / 12 * TAU; if (!fieldBlocked(N.X[k] + Math.cos(a) * 60, N.Z[k] + Math.sin(a) * 60)) free++; } if (free > bf) { bf = free; S = k; } }   // (the most open stretch of road in the frame)
+    if (S === null || bf < 6) return null;
+    let dest = -1; for (let t = 0; t < 400 && dest < 0; t++) { const c = (t * 7919) % N.n, d = Math.hypot(N.X[c] - N.X[S], N.Z[c] - N.Z[S]); if (d > 250 && d < 450) dest = c; }
+    const col = new Column(['tank', 'apc', 'car', 'apc'].map(ty => new Vehicle(ty, 'enemy'))); col.place(Path.fromNodes(N.route(S, dest))); BATTLE.cols.push({ col, hold: false, retreat: false });
+    __t.sim(3, { audio: true });
+    const V = col.u.slice(), idx = new Map(V.map((v, i) => [v, i]));
+    const spotOf = (f, v) => { for (let t = 0; t < 40; t++) { const q = f(v, [], t % 2); if (q) return q; } return null; };   // (its first-stage spot: tries 0 and 1, no side flipped)
+    const rel = q => { const A = q.from, dx = q.x - A.x, dz = q.z - A.z, c = Math.cos(A.hd), s = Math.sin(A.hd); return { fwd: dx * c + dz * s, side: Math.sign(dz * c - dx * s), off: Math.abs(Math.atan2(dz * c - dx * s, dx * c + dz * s)) }; };
+    const back = V[V.length - 1], bh = back.yaw, behind = new V3(back.pos.x - Math.cos(bh) * 40, 0, back.pos.z - Math.sin(bh) * 40);   // (the hit far behind the column)
+    const f1 = BATTLE.scatSpot(behind, idx), a = V.map(v => spotOf(f1, v)).map(q => q && rel(q));
+    const lead = V[0], ahead = new V3(lead.pos.x + Math.cos(lead.yaw) * 15, 0, lead.pos.z + Math.sin(lead.yaw) * 15);   // (the hit on the road just ahead of the leader)
+    const f2 = BATTLE.scatSpot(ahead, idx), b = V.map(v => { const q = spotOf(f2, v); return q && { ...rel(q), dHit: Math.hypot(q.x - ahead.x, q.z - ahead.z) }; });
+    for (const v of V) v.remove();
+    return { a, b };
+  });
+  console.log(JSON.stringify(r));
+  expect(r, 'a road in the frame with room round it').not.toBeNull();
+  const a = r.a.filter(Boolean); expect(a.length).toBeGreaterThanOrEqual(3);
+  for (const q of a) { expect(q.fwd, 'the hit behind: forward of where it turns off').toBeGreaterThan(0); expect(q.off, 'and off to one side').toBeGreaterThan(0.5); }
+  for (let i = 1; i < r.a.length; i++) if (r.a[i] && r.a[i - 1]) expect(r.a[i].side, 'every other one the other way').toBe(-r.a[i - 1].side);
+  const b = r.b.filter(Boolean); expect(b.length).toBeGreaterThanOrEqual(3);
+  for (const q of b) { expect(q.off, 'the hit ahead: across the road').toBeGreaterThan(1); expect(q.off, 'not back').toBeLessThan(1.7); expect(q.dHit, 'not up beside the blast (m)').toBeGreaterThanOrEqual(25); }
 });
 
 test('a column hit behind its knocked-out leader still scatters (round the wreck, not into it), and one holding its spot hit again goes again', async ({ wp }) => {
