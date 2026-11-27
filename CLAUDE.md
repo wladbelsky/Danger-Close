@@ -478,7 +478,10 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   traffic test's overlaps went up). A way round one in its way is taken only if, held to how far aside it may go, it still gets
   past (`|po - lat| >= need + 0.1`; one coming the other way pulls out too, as before): `side` + 0.5 let one stop 0.1 m short,
   nose to a wreck, for 24 s in sight, then drive through it (ghosted; `unjam` leaves a column on its own way alone). Off the road
-  it may go `TRAFFIC.off` 8 m aside (`S` in `traffic()`; on it `side` 5: the verge), buildings and water still `clear()`'s. The
+  it may go `TRAFFIC.off` 8 m aside (`Vehicle.asideMax()`; on it `side` 5: the verge), buildings and water still `clear()`'s, and
+  past 5 m no thick forest (as `fieldBlocked`'s soft; its yards held the bypasses in a town back again). A way round keeps the
+  limit it started with (`byp.S`: its aside took it on and off the road's edge, 5 one step, 8 the next); `shove` and `lay` go by
+  the same limit. The
   scatter test waits for the sensor to be on the one hit again (it was 230 m off after 2 s on some seeds). Over SEED 1–4 (maps 11
   and 3): overlaps in sight 0–934 before (3 of 8 over 60), 3–42 now; the scatter test failed at SEED 1 before, passes at 1–4 now.
 ## Design
@@ -552,7 +555,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=119`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=120`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
