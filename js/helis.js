@@ -46,13 +46,69 @@ function canopy(g, w, h, d, C, G, x, y, z, tx, tz, sx, faces, fr) {
     const N = new V3().subVectors(b, a).cross(new V3().subVectors(e, a)).normalize(); if (N.dot(new V3().subVectors(L(0.5, 0.5), ctr)) < 0) N.negate();
     for (let i = 0; i < n; i++) {
       const u0 = i / n + (i ? fu / 2 : fu), u1 = (i + 1) / n - (i < n - 1 ? fu / 2 : fu), v0 = (sill || 0) + fv, v1 = 1 - fv;
-      let q = [L(u0, v0), L(u1, v0), L(u1, v1), L(u0, v1)].map(p => p.addScaledVector(N, 0.003));
-      if (new V3().subVectors(q[1], q[0]).cross(new V3().subVectors(q[2], q[0])).dot(N) < 0) q = q.reverse();
-      for (const p of [q[0], q[1], q[2], q[0], q[2], q[3]]) { pos.push(p.x, p.y, p.z); nor.push(N.x, N.y, N.z); }
+      pane(pos, nor, [L(u0, v0), L(u1, v0), L(u1, v1), L(u0, v1)], N);
     }
   }
+  return paneMesh(g, pos, nor, G);
+}
+/* a flat pane of glass: the quad q set 0.003 out along its face's normal N, wound to face it (canopy, hull) */
+function pane(pos, nor, q, N) {
+  q = q.map(p => p.clone().addScaledVector(N, 0.003)); if (new V3().subVectors(q[1], q[0]).cross(new V3().subVectors(q[2], q[0])).dot(N) < 0) q.reverse();
+  for (const p of [q[0], q[1], q[2], q[0], q[2], q[3]]) { pos.push(p.x, p.y, p.z); nor.push(N.x, N.y, N.z); }
+}
+function paneMesh(g, pos, nor, G) {
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   const m = shade(new THREE.Mesh(geo, mm(G)), false); g.add(m); return m;
+}
+/* a rounded body lofted along x: stations [x, y, w, hb, ht, k] in rising x (y its centre line, w the half width, hb / ht down and
+   up from y; its section a superellipse: k 2 an ellipse, higher a box with round corners, o.k for all), o.seg points round (from
+   the side +z, over the top), the ends closed. o.glass [[x0, x1, a0, a1]]: the cells between stations within x0..x1 whose middle is
+   a0..a1 degrees round (0 the +z side, 90 the top, -90 the bottom) glazed: a flat pane in each, o.fr of the body round it the frame */
+function hull(g, st, C, o) {
+  o = o || {}; const seg = o.seg || 16, pos = [], idx = [], R = [];
+  for (const [x, y, w, hb, ht, k] of st) {
+    const e = 2 / (k || o.k || 2.5), ring = [];
+    for (let i = 0; i < seg; i++) { const a = i / seg * TAU, ca = Math.cos(a), sa = Math.sin(a), cz = Math.sign(ca) * Math.abs(ca) ** e, cy = Math.sign(sa) * Math.abs(sa) ** e;
+      ring.push(new V3(x, y + cy * (cy > 0 ? ht : hb), cz * w)); pos.push(x, y + cy * (cy > 0 ? ht : hb), cz * w); }
+    R.push(ring);
+  }
+  const n = st.length, I = (s, i) => s * seg + (i % seg);
+  for (let s = 0; s < n - 1; s++) for (let i = 0; i < seg; i++) idx.push(I(s, i), I(s + 1, i), I(s, i + 1), I(s + 1, i), I(s + 1, i + 1), I(s, i + 1));
+  for (const [s, f] of [[0, false], [n - 1, true]]) {   // (the ends: a fan round the middle)
+    const c = pos.length / 3; pos.push(st[s][0], st[s][1], 0);
+    for (let i = 0; i < seg; i++) f ? idx.push(c, I(s, i + 1), I(s, i)) : idx.push(c, I(s, i), I(s, i + 1));
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  const m = shade(new THREE.Mesh(geo, mm(C))); g.add(m);
+  if (o.glass) {
+    const gp = [], gn = [], fr = o.fr || 0.008;
+    for (let s = 0; s < n - 1; s++) for (let i = 0; i < seg; i++) {
+      let am = (i + 0.5) / seg * 360; if (am > 270) am -= 360;
+      if (!o.glass.some(([x0, x1, a0, a1]) => st[s][0] >= x0 - 1e-6 && st[s + 1][0] <= x1 + 1e-6 && am >= a0 && am <= a1)) continue;
+      const p = [R[s][i], R[s + 1][i], R[s + 1][(i + 1) % seg], R[s][(i + 1) % seg]], c = p.reduce((a, b) => a.add(b), new V3()).multiplyScalar(0.25);
+      const N = new V3().subVectors(p[1], p[0]).cross(new V3().subVectors(p[3], p[0])); if (N.lengthSq() < 1e-10) continue; N.normalize();
+      pane(gp, gn, p.map(v => v.clone().lerp(c, Math.min(0.45, fr / Math.max(1e-6, v.distanceTo(c)) * 1.4))), N);
+    }
+    paneMesh(g, gp, gn, o.G);
+  }
+  return m;
+}
+/* how far out the side of a hull is (z, its half width) at x and height y: its stations' sections eased between them (k0 the
+   hull's o.k); 0 above or below it */
+function hullAt(st, x, y, k0) {
+  let i = 0; while (i < st.length - 2 && st[i + 1][0] < x) i++;
+  const a = st[i], b = st[i + 1], t = clamp((x - a[0]) / (b[0] - a[0]), 0, 1), L = j => a[j] + (b[j] - a[j]) * t;
+  const yc = L(1), k = (a[5] || k0 || 2.5) + ((b[5] || k0 || 2.5) - (a[5] || k0 || 2.5)) * t, d = Math.abs(y - yc) / (y < yc ? L(3) : L(4));
+  return d >= 1 ? 0 : L(2) * (1 - d ** k) ** (1 / k);
+}
+/* a panel (a door) on a hull's side s (±1) from x0 to x1, y0 to y1, following its curve 0.002 out */
+function skin(g, st, x0, x1, y0, y1, s, c, k0) {
+  const pos = [], idx = [], nx = 2, ny = 6;
+  for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) { const x = x0 + (x1 - x0) * i / nx, y = y0 + (y1 - y0) * j / ny; pos.push(x, y, s * (hullAt(st, x, y, k0) + 0.002)); }
+  const I = (i, j) => j * (nx + 1) + i;
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) s > 0 ? idx.push(I(i, j), I(i + 1, j), I(i, j + 1), I(i + 1, j), I(i + 1, j + 1), I(i, j + 1)) : idx.push(I(i, j), I(i, j + 1), I(i + 1, j), I(i + 1, j), I(i, j + 1), I(i + 1, j + 1));
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  const m = shade(new THREE.Mesh(geo, mm(c))); g.add(m); return m;
 }
 function heliDone(g, nav) { const dyn = []; g.traverse(o => { if (o !== g && o.name) dyn.push(o); }); mergeStatic(g, dyn); g.scale.setScalar(HELI_SCALE); g.userData.nav = nav; return g; }
 const heliMats = (c, c3, c2) => ({ C: HOT(c, 0.2), C3: HOT(c3, 0.2), C2: HOT(c2, 0.62), D: HOT(0x262924, 0.3), X: HOT(0x1e1f1e, 0.85), X2: HOT(0x2a2422, 0.97), GB: HOT(0x34372e, 0.42), G: HGLASS(), K: HOT(0x161616, 0.22), HUB: HOT(0x2a2c28, 0.35) });
@@ -132,29 +188,32 @@ function buildAH64() {
    rails at the tips, five blades, wheels */
 function buildMi24() {
   const g = new THREE.Group(), { C, C3, C2, D, X, X2, GB, G, K, HUB } = heliMats(0x6a6648, 0x77734f, 0x5a5640), R = 0x262924;
-  taper(g, 0.6, 0.22, 0.2, C, 0.05, 0.18, 0, 0.9, 0.85); taper(g, 0.34, 0.16, 0.16, C, 0.5, 0.14, 0, 0.75, 0.8, -0.03); box(g, 0.2, 0.07, 0.13, C, 0.4, 0.25, 0);   // (cabin, nose, the step the rear cockpit sits on)
-  canopy(g, 0.17, 0.09, 0.13, C, G, 0.51, 0.255, 0, 0.5, 0.65, -0.02, [['f', 1, 0.2], ['s', 2, 0.2], ['t', 1, 0]]);   // (the gunner's canopy, the pilot's on the step behind)
-  canopy(g, 0.15, 0.085, 0.13, C, G, 0.37, 0.32, 0, 0.55, 0.7, -0.02, [['f', 1, 0.4], ['s', 2, 0.25], ['t', 1, 0]]);
+  const B = [[-1.0, 0.28, 0.014, 0.016, 0.016], [-0.98, 0.28, 0.02, 0.022, 0.022], [-0.36, 0.235, 0.045, 0.045, 0.05], [-0.28, 0.22, 0.065, 0.065, 0.075],   // (one body: the boom out of the cabin's sloped back,
+    [-0.2, 0.185, 0.095, 0.11, 0.105], [0.05, 0.18, 0.1, 0.11, 0.11, 3], [0.3, 0.18, 0.1, 0.11, 0.11, 3], [0.4, 0.17, 0.09, 0.1, 0.115],   //  the cabin, the step the pilot sits on,
+    [0.48, 0.15, 0.08, 0.085, 0.08], [0.58, 0.145, 0.075, 0.08, 0.075], [0.64, 0.135, 0.055, 0.065, 0.06], [0.68, 0.13, 0.02, 0.03, 0.03]]; hull(g, B, C);   //  the nose down to the gunner)
+  hull(g, [[0.44, 0.235, 0.052, 0.03, 0.045], [0.5, 0.24, 0.06, 0.03, 0.06], [0.57, 0.225, 0.052, 0.03, 0.048], [0.62, 0.2, 0.025, 0.02, 0.015]],
+    C, { G, glass: [[0.44, 0.62, 12, 168]], k: 2.2, seg: 10, fr: 0.006 });   // (the gunner's bubble canopy, the pilot's on the step behind)
+  hull(g, [[0.29, 0.3, 0.045, 0.03, 0.03], [0.33, 0.3, 0.062, 0.03, 0.058], [0.42, 0.3, 0.06, 0.03, 0.058], [0.48, 0.275, 0.035, 0.02, 0.018]],
+    C, { G, glass: [[0.33, 0.48, 12, 168]], k: 2.2, seg: 10, fr: 0.006 });
   cyl(g, 0.035, 0.035, 0.04, 8, D, 0.6, 0.065, 0); tube(g, 0.6, 0.7, 0.007, 0.007, D, 0.058, 0, 4); tube(g, 0.6, 0.69, 0.005, 0.005, D, 0.07, 0.008, 4);   // (chin turret, its four barrels)
   box(g, 0.08, 0.035, 0.03, D, 0.6, 0.12, -0.075); box(g, 0.006, 0.02, 0.02, G, 0.642, 0.12, -0.075); tube(g, 0.58, 0.66, 0.018, 0.014, D, 0.11, 0.075, 6);   // (guidance and sight pods)
   strut(g, P3(0.64, 0.17, 0.05), P3(0.78, 0.17, 0.06), 0.004, D);   // (air data boom)
   for (const s of [-1, 1]) {
-    for (const x of [0.17, 0.08, -0.01]) box(g, 0.04, 0.035, 0.006, G, x, 0.21, s * 0.094);   // (troop cabin windows)
-    box(g, 0.12, 0.13, 0.005, C3, 0.18, 0.16, s * 0.097);   // (the clamshell door)
-    tube(g, -0.2, 0.15, 0.05, 0.05, C2, 0.33, s * 0.11, 8); tube(g, 0.15, 0.22, 0.055, 0.035, C3, 0.33, s * 0.11, 8);   // (engine, the intake's dust filter)
+    for (const x of [0.17, 0.08, -0.01]) box(g, 0.04, 0.035, 0.006, G, x, 0.21, s * 0.103);   // (troop cabin windows)
+    skin(g, B, 0.12, 0.24, 0.095, 0.225, s, C3);   // (the clamshell door, on the body's curve)
+    tube(g, -0.2, 0.15, 0.05, 0.05, C2, 0.33, s * 0.11, 12); tube(g, 0.15, 0.22, 0.055, 0.035, C3, 0.33, s * 0.11, 12);   // (engine, the intake's dust filter)
     for (const x of [-0.12, -0.04, 0.04]) box(g, 0.05, 0.006, 0.04, D, x, 0.381, s * 0.11);
-    const e = tube(g, -0.29, -0.2, 0.04, 0.035, X, 0.33, s * 0.14, 8); e.rotation.y = s * 0.5; box(g, 0.012, 0.05, 0.05, X2, -0.285, 0.33, s * 0.18).rotation.y = s * 0.5;   // (exhaust, its hot mouth)
+    const e = tube(g, -0.29, -0.2, 0.04, 0.035, X, 0.33, s * 0.14, 12); e.rotation.y = s * 0.5; box(g, 0.012, 0.05, 0.05, X2, -0.285, 0.33, s * 0.18).rotation.y = s * 0.5;   // (exhaust, its hot mouth)
     box(g, 0.24, 0.02, 0.3, C, -0.05, 0.2, s * 0.22).rotation.x = s * 0.2;   // (stub wing, tips down)
     for (const z of [0.17, 0.28]) { const y = 0.2 - (z - 0.22) * 0.2; box(g, 0.06, 0.025, 0.012, D, -0.05, y - 0.022, s * z); tube(g, -0.15, 0.08, 0.03, 0.03, D, y - 0.06, s * z, 8); tube(g, 0.08, 0.1, 0.03, 0.016, D, y - 0.06, s * z, 8); }   // (rocket pods)
     box(g, 0.2, 0.06, 0.012, D, -0.05, 0.16, s * 0.375); for (const y of [0.135, 0.185]) tube(g, -0.13, 0.08, 0.011, 0.011, C3, y, s * 0.39, 6);   // (the wingtip's missile rails and tubes)
-    box(g, 0.06, 0.025, 0.006, D, -0.36, 0.24, s * 0.042);   // (flare dispenser)
+    box(g, 0.06, 0.025, 0.006, D, -0.4, 0.24, s * 0.043);   // (flare dispenser)
     strut(g, P3(-0.03, 0.12, s * 0.09), P3(-0.03, 0.035, s * 0.19), 0.01, D); strut(g, P3(-0.1, 0.13, s * 0.09), P3(-0.03, 0.04, s * 0.19), 0.006, D); wheel(g, -0.03, 0.035, s * 0.19, 0.035, 0.025, K);   // (main gear)
     wheel(g, 0.52, 0.025, s * 0.02, 0.025, 0.015, K);
   }
   strut(g, P3(0.5, 0.08, 0), P3(0.52, 0.025, 0), 0.008, D);   // (nose gear)
-  taper(g, 0.34, 0.06, 0.12, C, -0.02, 0.32, 0, 0.85, 0.7); box(g, 0.12, 0.04, 0.09, GB, 0.0, 0.37, 0); cyl(g, 0.035, 0.035, 0.02, 10, D, -0.14, 0.355, 0);   // (deck, gearbox, the oil cooler's fan)
-  const tb = taper(g, 0.1, 0.78, 0.08, C, -0.59, 0.24, 0, 0.45, 0.5, 0.04); tb.rotation.z = Math.PI / 2;   // (into the cabin's sloped back)
-  box(g, 0.5, 0.012, 0.018, C3, -0.55, 0.29, 0); strut(g, P3(-0.4, 0.28, 0), P3(-0.45, 0.34, 0), 0.004, D); strut(g, P3(-0.83, 0.26, 0), P3(-0.87, 0.12, 0), 0.006, D);   // (shaft cover, antenna, tail skid)
+  hull(g, [[-0.2, 0.3, 0.035, 0.02, 0.02], [-0.15, 0.3, 0.06, 0.02, 0.05], [0.1, 0.3, 0.06, 0.02, 0.05], [0.17, 0.29, 0.03, 0.02, 0.02]], C, { k: 3 }); box(g, 0.12, 0.04, 0.09, GB, 0.0, 0.37, 0); cyl(g, 0.035, 0.035, 0.02, 10, D, -0.14, 0.355, 0);   // (deck, gearbox, the oil cooler's fan)
+  box(g, 0.5, 0.012, 0.018, C3, -0.55, 0.294, 0); strut(g, P3(-0.4, 0.28, 0), P3(-0.45, 0.34, 0), 0.004, D); strut(g, P3(-0.83, 0.26, 0), P3(-0.87, 0.12, 0), 0.006, D);   // (shaft cover, antenna, tail skid)
   pair(g, [[-0.8, 0.0], [-0.82, 0.15], [-0.9, 0.15], [-0.9, 0.0]], 0.26, 0.012, C);
   taper(g, 0.14, 0.26, 0.025, C, -0.98, 0.36, 0, 0.6, 0.8, -0.05); box(g, 0.05, 0.035, 0.035, GB, -1.0, 0.38, 0);
   tailRotor(g, -1.0, 0.38, 0.04, 0.15, R, [0, TAU / 3, TAU * 2 / 3]);
@@ -236,31 +295,29 @@ function buildAH1Z() {
    each and missile tubes at their tips, a clamshell tail, a long boom, five blades, three on the tail rotor (port), wheels */
 function buildMi8() {
   const g = new THREE.Group(), { C, C3, C2, D, X, X2, GB, G, K, HUB } = heliMats(0x5e6349, 0x686d52, 0x545940), R = 0x262924;
-  taper(g, 0.78, 0.25, 0.25, C, 0.04, 0.215, 0, 0.95, 0.9);   // (cabin)
-  taper(g, 0.16, 0.12, 0.22, C, 0.5, 0.15, 0, 0.7, 0.8);   // (the lower nose)
-  canopy(g, 0.16, 0.13, 0.22, C, G, 0.48, 0.275, 0, 0.5, 0.7, -0.05, [['f', 3, 0.05], ['s', 2, 0.15], ['t', 2, 0]]);   // (the glazed upper nose)
-  for (const s of [-1, 1]) box(g, 0.004, 0.045, 0.05, G, 0.567, 0.15, s * 0.045);   // (chin windows)
-  const rf = taper(g, 0.22, 0.2, 0.22, C, -0.42, 0.24, 0, 0.55, 0.7); rf.rotation.z = Math.PI / 2;   // (the clamshell doors, narrowing to the boom)
-  const tb = taper(g, 0.1, 0.6, 0.08, C, -0.78, 0.3, 0, 0.5, 0.55, 0.04); tb.rotation.z = Math.PI / 2;   // (tail boom)
+  const B = [[-1.1, 0.34, 0.016, 0.018, 0.018], [-1.08, 0.34, 0.022, 0.025, 0.025], [-0.6, 0.3, 0.042, 0.05, 0.05], [-0.52, 0.27, 0.07, 0.07, 0.075],   // (one body: the boom out of the clamshell doors,
+    [-0.42, 0.235, 0.105, 0.1, 0.11, 3], [-0.33, 0.215, 0.125, 0.125, 0.125, 3.2], [0.4, 0.215, 0.125, 0.125, 0.125, 3.2], [0.47, 0.21, 0.118, 0.12, 0.125, 2.8],   //  the cabin,
+    [0.53, 0.205, 0.105, 0.11, 0.115, 2.4], [0.58, 0.2, 0.085, 0.095, 0.095, 2.2], [0.615, 0.195, 0.055, 0.07, 0.065, 2], [0.635, 0.19, 0.02, 0.03, 0.025, 2]];   //  the round nose: glazed above, its chin windows)
+  hull(g, B, C, { G, glass: [[0.47, 0.635, -8, 188], [0.53, 0.615, -62, -30], [0.53, 0.615, 210, 242]], seg: 18, fr: 0.007 });
   taper(g, 0.16, 0.3, 0.03, C, -1.1, 0.48, 0, 0.55, 0.8, -0.07); box(g, 0.05, 0.04, 0.04, GB, -1.13, 0.58, 0);   // (tail pylon, its gearbox)
   pair(g, [[-0.94, 0.0], [-0.96, 0.14], [-1.02, 0.14], [-1.02, 0.0]], 0.31, 0.012, C);   // (stabiliser)
   strut(g, P3(-1.0, 0.31, 0), P3(-1.04, 0.2, 0), 0.006, D);   // (tail bumper)
-  taper(g, 0.5, 0.08, 0.2, C, 0.08, 0.38, 0, 0.9, 0.6);   // (the engines' cowling)
+  hull(g, [[-0.19, 0.37, 0.05, 0.03, 0.02], [-0.14, 0.37, 0.1, 0.035, 0.05], [0.28, 0.37, 0.1, 0.035, 0.05], [0.35, 0.36, 0.06, 0.025, 0.03]], C, { k: 3 });   // (the engines' cowling)
   for (const s of [-1, 1]) {
-    tube(g, -0.12, 0.28, 0.05, 0.05, C2, 0.39, s * 0.065, 8); tube(g, 0.28, 0.36, 0.055, 0.045, C3, 0.39, s * 0.065, 8); tube(g, 0.36, 0.363, 0.035, 0.035, K, 0.39, s * 0.065, 8);   // (engine, dust filter, intake)
+    tube(g, -0.12, 0.28, 0.05, 0.05, C2, 0.39, s * 0.065, 12); tube(g, 0.28, 0.36, 0.055, 0.045, C3, 0.39, s * 0.065, 12); tube(g, 0.36, 0.363, 0.035, 0.035, K, 0.39, s * 0.065, 12);   // (engine, dust filter, intake)
     for (const x of [-0.04, 0.06, 0.16]) box(g, 0.06, 0.006, 0.04, D, x, 0.441, s * 0.065);
-    const e = tube(g, -0.22, -0.12, 0.045, 0.04, X, 0.39, s * 0.1, 8); e.rotation.y = s * 0.6; box(g, 0.012, 0.055, 0.055, X2, -0.21, 0.39, s * 0.145).rotation.y = s * 0.6;   // (exhaust turned out, its hot mouth)
+    const e = tube(g, -0.22, -0.12, 0.045, 0.04, X, 0.39, s * 0.1, 12); e.rotation.y = s * 0.6; box(g, 0.012, 0.055, 0.055, X2, -0.21, 0.39, s * 0.145).rotation.y = s * 0.6;   // (exhaust turned out, its hot mouth)
     tube(g, -0.32, -0.08, 0.055, 0.055, C3, 0.14, s * 0.15, 10); tube(g, -0.08, -0.04, 0.055, 0.025, C3, 0.14, s * 0.15, 10); tube(g, -0.36, -0.32, 0.025, 0.055, C3, 0.14, s * 0.15, 10);   // (fuel tank)
     box(g, 0.07, 0.02, 0.2, C, 0.1, 0.24, s * 0.215); strut(g, P3(0.1, 0.12, s * 0.12), P3(0.1, 0.232, s * 0.28), 0.008, D);   // (outrigger, its brace)
     for (const z of [0.2, 0.27]) { box(g, 0.05, 0.025, 0.012, D, 0.1, 0.218, s * z); tube(g, -0.02, 0.2, 0.032, 0.032, D, 0.175, s * z, 8); tube(g, 0.2, 0.22, 0.032, 0.02, D, 0.175, s * z, 8); }   // (rocket pods)
     box(g, 0.16, 0.05, 0.012, D, 0.1, 0.27, s * 0.312); for (const y of [0.255, 0.285]) tube(g, 0.02, 0.2, 0.011, 0.011, C3, y, s * 0.326, 6);   // (missile tubes at the tip)
-    box(g, 0.06, 0.03, 0.006, D, -0.55, 0.3, s * 0.048);   // (flare dispenser)
-    strut(g, P3(0.0, 0.1, s * 0.11), P3(0.0, 0.045, s * 0.2), 0.012, D); strut(g, P3(0.08, 0.11, s * 0.12), P3(0.0, 0.05, s * 0.2), 0.008, D); strut(g, P3(0.0, 0.05, s * 0.2), P3(0.0, 0.2, s * 0.13), 0.01, D);   // (main gear: legs, brace, shock strut)
+    box(g, 0.06, 0.03, 0.006, D, -0.55, 0.3, s * 0.062);   // (flare dispenser)
+    strut(g, P3(0.0, 0.1, s * (hullAt(B, 0, 0.1) - 0.005)), P3(0.0, 0.045, s * 0.2), 0.012, D); strut(g, P3(0.08, 0.11, s * (hullAt(B, 0.08, 0.11) - 0.005)), P3(0.0, 0.05, s * 0.2), 0.008, D); strut(g, P3(0.0, 0.05, s * 0.2), P3(0.0, 0.2, s * hullAt(B, 0, 0.2)), 0.01, D);   // (main gear: legs, brace, shock strut, from the body's side)
     wheel(g, 0.0, 0.045, s * 0.2, 0.045, 0.03, K); wheel(g, 0.5, 0.035, s * 0.025, 0.035, 0.02, K);
   }
-  for (const x of [0.33, 0.23, 0.13, 0.03, -0.07]) cyl(g, 0.022, 0.022, 0.006, 10, G, x, 0.25, 0.119).rotation.x = Math.PI / 2;   // (round windows, starboard)
-  for (const x of [0.13, 0.03, -0.07]) cyl(g, 0.022, 0.022, 0.006, 10, G, x, 0.25, -0.119).rotation.x = Math.PI / 2;
-  box(g, 0.1, 0.16, 0.004, C3, 0.33, 0.19, -0.121); cyl(g, 0.02, 0.02, 0.006, 10, G, 0.33, 0.25, -0.124).rotation.x = Math.PI / 2;   // (the sliding door, port, its window)
+  for (const x of [0.33, 0.23, 0.13, 0.03, -0.07]) cyl(g, 0.022, 0.022, 0.006, 10, G, x, 0.25, 0.126).rotation.x = Math.PI / 2;   // (round windows, starboard)
+  for (const x of [0.13, 0.03, -0.07]) cyl(g, 0.022, 0.022, 0.006, 10, G, x, 0.25, -0.126).rotation.x = Math.PI / 2;
+  skin(g, B, 0.28, 0.38, 0.11, 0.27, -1, C3); cyl(g, 0.02, 0.02, 0.006, 10, G, 0.33, 0.25, -0.129).rotation.x = Math.PI / 2;   // (the sliding door, port, its window)
   strut(g, P3(0.5, 0.1, 0), P3(0.5, 0.035, 0), 0.01, D);   // (nose gear)
   strut(g, P3(0.3, 0.34, 0), P3(0.25, 0.4, 0), 0.004, D);   // (antenna)
   box(g, 0.16, 0.06, 0.14, GB, -0.04, 0.45, 0); cyl(g, 0.025, 0.03, 0.08, 8, GB, -0.02, 0.5, 0);   // (main gearbox, mast)

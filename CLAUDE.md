@@ -504,6 +504,15 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
   test 18 m/s² (16: an allied car leaving its outpost, where the start of a path is not smoothed). The AH-1Z's nose is one wedge
   out of its body (top down, belly up to the point; it was a lower block with a step and a gap under the gunner's canopy), the TSS
   ball on its point.
+- **The Mi-24 and the Mi-8 rounded**: their bodies were boxes (tapers) end to end. Now each is one lofted body, cabin, nose and
+  boom (`hull(g, stations, C, o)` in helis.js: stations `[x, y, w, hb, ht, k]` along x, each section a superellipse, `k` 2 an
+  ellipse, higher a box with round corners; `o.glass` glazes the cells within an x range and an angle round: a flat pane in each,
+  the body round it the frames). The Mi-24's two canopies are bubbles of their own (`hull` with glass over the top), its deck and
+  the Mi-8's engine cowling rounded too, their engines and exhausts 12-sided (were 8); the Mi-8's nose is round, glazed above,
+  with its chin windows. What sits on a side follows it: `hullAt(st, x, y)` is the side's half width there (the Mi-8's gear legs,
+  brace and shock strut start from it; they hung 0.3 m off the rounded side), `skin(...)` a panel laid on the curve (the doors:
+  flat plates stood 0.2–0.3 m off it at their bottom edge). The glass panes of `canopy()` and `hull()` are made by one `pane()`.
+  The Mi-24's shaft cover raised onto the round boom (it was inside it). Sheets: the showroom.
 ## Design
 - **Camera**: a slow left orbit over a district, a transit to another every few minutes in silence, slewing onto enemies in
   combat; in a fight it works one zone and leaves it only in a quiet part of the music (`ZONE`), the enemy coming to it. Per-weapon zoom. Always looking down: no sky in frame.
@@ -553,7 +562,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `js/sensor.js` | `SENSOR` (modes, render target, post shader), `SU` shared uniforms, `sensorHook` / `sensorMat` (the heat term) |
 | `js/models.js` | mesh helpers (`M`, `HOT`, `box`, `cyl`, `taper`, `prism`, `strut`…), `mergeStatic` (bakes `aHeat`), `disposeTree`, seasonal materials |
 | `js/armor.js` | vehicle models facing +x (×`ARMOR_SCALE`): T-90, BTR (enemy), Abrams, Bradley, Humvee (ally), technical (enemy car), each with a roof machine gun `mg` (not the Bradley); `WRECK_MATS`, `toWreck` |
-| `js/helis.js` | helicopter models (FAB airframes, ×`HELI_SCALE` = 10): AH-64, UH-60, AH-1Z (ally), Mi-24, Ka-52, Mi-8 (enemy), all on wheels; rotors named `rotor` / `rotor2` / `trotor`; `userData.nav`: their navigation lights |
+| `js/helis.js` | helicopter models (FAB airframes, ×`HELI_SCALE` = 10): AH-64, UH-60, AH-1Z (ally), Mi-24, Ka-52, Mi-8 (enemy), all on wheels (the Mi-24's and Mi-8's bodies lofted round: `hull`, `hullAt`, `skin`); rotors named `rotor` / `rotor2` / `trotor`; `userData.nav`: their navigation lights |
 | `js/mapgen.js` | `MAP` (seeded heights and masks on a 4 m grid, built as a generator run in slices), `vnoise`, `groundH` (exactly the mesh's triangles), `groundN` |
 | `js/layout.js` | `LAYOUT`: outposts (`OP_W`×`OP_D` walled compounds beside a country road: parts, gate, inner drive, pad), lakes, the river, towns, the railway, roads (A* on a 16 m grid, profiles, carving into `MAP.h`), streets, building lots, the station, farms, tracks, fields; the occupancy grid `OCC` (2 m cells, `OCC_*` flags: `occAt`), `MAP.water` / `MAP.wl` (`waterAt`, `waterLevelAt`), the land-use canvas (fields as premultiplied rgb(coverage, row angle, crop)) |
 | `js/terrain.js` | `TERRAIN`: ground chunks (16×16 of 128 m), the ground material (mask + tiled detail in world space, `GROUND_PAL` per season), vegetation (one InstancedMesh per kind and chunk; roles fixed per seed, shapes per season) |
@@ -575,7 +584,7 @@ The stages ended at 18: later changes are no longer numbered — each is a bulle
 | `project.json` | Wallpaper Engine: title, description, `preview.gif`, `supportsaudioprocessing`, the properties (orders by group: 1–9 sensor & HUD, 10–19 time & weather, 20–29 weapons `w_<id>`, 30–39 fight & music, 40–49 map & quality). `applyUserProperties` (main.js) handles each; the URL's test parameters win; a new seed reloads |
 
 ## Rules / conventions
-- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=121`.
+- **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in `index.html`. Current: `v=123`.
 - Personal git identity in this repo (`wladbelsky`); remote `origin` = github.com/wladbelsky/Danger-Close. Commits and pushes: see the commit rule under "Plan".
 - Match the sibling projects' style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T`; real time is `RT()`. No scrolling UI (WE does not pass the wheel).
